@@ -10,6 +10,7 @@ echo "1. Running Unit Tests..."
 ./test_trigger
 ./test_easter_egg
 ./test_calendar
+./test_client_props
 echo "--> All Unit Tests Passed!"
 
 echo ""
