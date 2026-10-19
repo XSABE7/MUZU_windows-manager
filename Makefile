@@ -3,7 +3,7 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext)
 LIBS = $(shell pkg-config --libs cairo x11 xext) -lm
 
-SRCS = src/wm.c src/titlebar.c src/trigger.c src/launchpad.c src/easter_egg.c src/dock.c src/client_props.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/trigger.c src/launchpad.c src/easter_egg.c src/dock.c src/client_props.c src/icon_fetcher.c src/main.c
 OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
@@ -20,16 +20,19 @@ test_trigger: tests/test_trigger.c src/trigger.c
 test_easter_egg: tests/test_easter_egg.c src/easter_egg.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_calendar: tests/test_calendar.c src/launchpad.c src/easter_egg.c
+test_calendar: tests/test_calendar.c src/launchpad.c src/easter_egg.c src/icon_fetcher.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_client_props: tests/test_client_props.c src/client_props.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+test_icon_fetcher: tests/test_icon_fetcher.c src/icon_fetcher.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 muzuwm: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 clean:
-	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props muzuwm
+	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher muzuwm
 
 .PHONY: all clean
