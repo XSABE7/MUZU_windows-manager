@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include "wm.h"
+#include "dock.h"
 
 int main(void) {
     LayoutConfig cfg = { .screen_width = 1920, .screen_height = 1080, .master_count = 1 };
@@ -35,17 +36,34 @@ int main(void) {
     Client *c = client_find(head, 101);
     assert(c->mode == CLIENT_TILED);
     c->mode = CLIENT_FLOATING;
-    // When 101 is detached to floating, only 102 and 103 are tiled.
-    // 102 becomes master (100% or 50% depending on count of tiled: 2 tiled windows -> 50:50 split).
     layout_calculate(&cfg, head, 2);
     assert(client_find(head, 102)->width == 960);
     assert(client_find(head, 103)->width == 960);
 
-    // If 103 is also detached, only 102 is tiled -> auto-maximize to 1920!
     Client *c3 = client_find(head, 103);
     c3->mode = CLIENT_FLOATING;
     layout_calculate(&cfg, head, 1);
     assert(client_find(head, 102)->width == 1920);
+
+    // Test 5: Dock 4-edge positioning geometry calculation
+    Dock dock = {0};
+    dock_calculate_geometry(&dock, DOCK_BOTTOM, 0, 1920, 1080);
+    assert(dock.pos == DOCK_BOTTOM);
+    assert(dock.y > 1000);
+    assert(dock.x == (1920 - dock.width) / 2);
+
+    dock_calculate_geometry(&dock, DOCK_TOP, 0, 1920, 1080);
+    assert(dock.pos == DOCK_TOP);
+    assert(dock.y == 6);
+
+    dock_calculate_geometry(&dock, DOCK_LEFT, 0, 1920, 1080);
+    assert(dock.pos == DOCK_LEFT);
+    assert(dock.x == 6);
+    assert(dock.y == (1080 - dock.height) / 2);
+
+    dock_calculate_geometry(&dock, DOCK_RIGHT, 0, 1920, 1080);
+    assert(dock.pos == DOCK_RIGHT);
+    assert(dock.x > 1800);
 
     printf("test_layout passed!\n");
     return 0;

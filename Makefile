@@ -11,7 +11,7 @@ all: muzuwm
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-test_layout: tests/test_layout.c src/wm.c
+test_layout: tests/test_layout.c src/wm.c src/dock.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_trigger: tests/test_trigger.c src/trigger.c
