@@ -309,6 +309,7 @@ int main(void) {
         }
     }
 
+    launchpad_cleanup(&launchpad);
     XCloseDisplay(dpy);
     return 0;
 }

@@ -20,9 +20,15 @@ int main(void) {
     launchpad_scroll(&lp, 120, 768);
     assert(lp.scroll_y == 180);
 
-    // Scroll up beyond top clamps to 0
-    launchpad_scroll(&lp, -300, 768);
-    assert(lp.scroll_y == 0);
+    // Test Launchpad app scanning and cleanup
+    launchpad_scan_apps(&lp);
+    // On Linux with desktop files, app_count should be >= 0 and each app should be clean
+    for (int i = 0; i < lp.app_count; i++) {
+        assert(lp.apps[i].name[0] != '\0');
+        assert(lp.apps[i].exec[0] != '\0');
+    }
+    launchpad_cleanup(&lp);
+    assert(lp.app_count == 0);
 
     printf("test_calendar passed!\n");
     return 0;

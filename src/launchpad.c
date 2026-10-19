@@ -10,6 +10,7 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include "launchpad.h"
+#include "icon_fetcher.h"
 
 int days_in_month(int year, int month) {
     if (month == 2) {
@@ -63,8 +64,21 @@ void launchpad_scroll(Launchpad *lp, int delta_y, int screen_h) {
     if (lp->scroll_y > max_scroll) lp->scroll_y = max_scroll;
 }
 
-void launchpad_scan_apps(Launchpad *lp) {
+void launchpad_cleanup(Launchpad *lp) {
+    if (!lp) return;
+    for (int i = 0; i < lp->app_count; i++) {
+        if (lp->apps[i].icon_surface) {
+            cairo_surface_destroy(lp->apps[i].icon_surface);
+            lp->apps[i].icon_surface = NULL;
+        }
+    }
     lp->app_count = 0;
+}
+
+void launchpad_scan_apps(Launchpad *lp) {
+    if (!lp) return;
+    launchpad_cleanup(lp);
+
     DIR *dir = opendir("/usr/share/applications");
     if (!dir) return;
 
@@ -79,10 +93,15 @@ void launchpad_scan_apps(Launchpad *lp) {
             char line[256];
             char name[64] = {0};
             char exec[128] = {0};
+            char icon[128] = {0};
             int is_app = 0;
+            int no_display = 0;
 
             while (fgets(line, sizeof(line), f)) {
                 if (strncmp(line, "Type=Application", 16) == 0) is_app = 1;
+                if (strncmp(line, "NoDisplay=true", 14) == 0 || strncmp(line, "Hidden=true", 11) == 0) {
+                    no_display = 1;
+                }
                 if (strncmp(line, "Name=", 5) == 0 && name[0] == '\0') {
                     snprintf(name, sizeof(name), "%.63s", line + 5);
                     name[strcspn(name, "\r\n")] = '\0';
@@ -93,12 +112,18 @@ void launchpad_scan_apps(Launchpad *lp) {
                     char *pct = strchr(exec, '%');
                     if (pct) *pct = '\0';
                 }
+                if (strncmp(line, "Icon=", 5) == 0 && icon[0] == '\0') {
+                    snprintf(icon, sizeof(icon), "%.127s", line + 5);
+                    icon[strcspn(icon, "\r\n")] = '\0';
+                }
             }
             fclose(f);
 
-            if (is_app && name[0] != '\0' && exec[0] != '\0') {
+            if (is_app && !no_display && name[0] != '\0' && exec[0] != '\0') {
                 snprintf(lp->apps[lp->app_count].name, sizeof(lp->apps[lp->app_count].name), "%s", name);
                 snprintf(lp->apps[lp->app_count].exec, sizeof(lp->apps[lp->app_count].exec), "%s", exec);
+                snprintf(lp->apps[lp->app_count].icon, sizeof(lp->apps[lp->app_count].icon), "%s", icon);
+                lp->apps[lp->app_count].icon_surface = icon_load_surface(icon);
                 lp->app_count++;
             }
         }
@@ -177,10 +202,8 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
             int gy = start_y - lp->scroll_y + (displayed / 3) * 60;
 
             if (gy + 60 >= start_y && gy <= screen_h) {
-                // App Icon Box
-                cairo_set_source_rgba(cr, 0.22, 0.28, 0.38, 0.85);
-                cairo_rectangle(cr, gx, gy, 38, 38);
-                cairo_fill(cr);
+                // App Icon (Real PNG surface with procedural fallback)
+                icon_render(cr, lp->apps[i].icon_surface, lp->apps[i].name, gx, gy, 38);
 
                 // App Name with UTF-8 safe copy
                 cairo_set_source_rgb(cr, 0.90, 0.92, 0.96);

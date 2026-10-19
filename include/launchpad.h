@@ -2,11 +2,14 @@
 #define MUZU_LAUNCHPAD_H
 
 #include <X11/Xlib.h>
+#include <cairo/cairo.h>
 #include "easter_egg.h"
 
 typedef struct {
     char name[64];
     char exec[128];
+    char icon[128];
+    cairo_surface_t *icon_surface;
 } AppItem;
 
 typedef struct {
@@ -23,6 +26,7 @@ typedef struct {
 int days_in_month(int year, int month);
 int first_weekday_of_month(int year, int month);
 void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h);
+void launchpad_cleanup(Launchpad *lp);
 void launchpad_scan_apps(Launchpad *lp);
 void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h);
 void launchpad_toggle(Display *dpy, Launchpad *lp);
