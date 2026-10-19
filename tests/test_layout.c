@@ -31,6 +31,22 @@ int main(void) {
     assert(third->width == 960 && third->height == 540);
     assert(third->y == 540);
 
+    // Test 4: Drag-to-Float state transition
+    Client *c = client_find(head, 101);
+    assert(c->mode == CLIENT_TILED);
+    c->mode = CLIENT_FLOATING;
+    // When 101 is detached to floating, only 102 and 103 are tiled.
+    // 102 becomes master (100% or 50% depending on count of tiled: 2 tiled windows -> 50:50 split).
+    layout_calculate(&cfg, head, 2);
+    assert(client_find(head, 102)->width == 960);
+    assert(client_find(head, 103)->width == 960);
+
+    // If 103 is also detached, only 102 is tiled -> auto-maximize to 1920!
+    Client *c3 = client_find(head, 103);
+    c3->mode = CLIENT_FLOATING;
+    layout_calculate(&cfg, head, 1);
+    assert(client_find(head, 102)->width == 1920);
+
     printf("test_layout passed!\n");
     return 0;
 }
