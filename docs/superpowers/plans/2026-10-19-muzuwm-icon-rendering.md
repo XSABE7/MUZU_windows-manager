@@ -35,20 +35,20 @@
 - Create: `tests/test_icon_fetcher.c`
 - Modify: `Makefile`
 
-- [ ] **Step 1: Write failing unit test for `icon_fetcher`**
+- [x] **Step 1: Write failing unit test for `icon_fetcher`**
   - Test `icon_find_png()` with absolute paths, nonexistent names, and standard system icon names.
   - Test fallback icon rendering helper.
   - Compile with new test target in Makefile.
 
-- [ ] **Step 2: Implement `src/icon_fetcher.c` and `include/icon_fetcher.h`**
+- [x] **Step 2: Implement `src/icon_fetcher.c` and `include/icon_fetcher.h`**
   - Implement `icon_find_png(const char *icon_name, char *out_path, size_t maxlen)`.
   - Implement `icon_load_surface(const char *icon_name)`.
   - Implement `icon_render(cairo_t *cr, cairo_surface_t *icon, const char *fallback_name, int x, int y, int size)`.
 
-- [ ] **Step 3: Run unit tests and verify pass**
+- [x] **Step 3: Run unit tests and verify pass**
   - Run `./test_icon_fetcher` and ensure assertions pass.
 
-- [ ] **Step 4: Commit Task 1 changes**
+- [x] **Step 4: Commit Task 1 changes**
   - Git commit: `feat: implement icon_fetcher module with XDG search and Cairo rendering`
 
 ---
@@ -60,21 +60,21 @@
 - Modify: `src/launchpad.c:66-107,175-210,390-410`
 - Modify: `Makefile`
 
-- [ ] **Step 1: Update `AppItem` struct and `.desktop` scanner**
+- [x] **Step 1: Update `AppItem` struct and `.desktop` scanner**
   - Add `char icon[128]` and `cairo_surface_t *icon_surface` to `AppItem`.
   - In `launchpad_scan_apps()`, parse `Icon=` from `.desktop`.
   - Filter out files with `NoDisplay=true` or `Hidden=true`.
   - Load and cache `cairo_surface_t *` for each scanned app via `icon_load_surface()`.
 
-- [ ] **Step 2: Update Launchpad rendering**
+- [x] **Step 2: Update Launchpad rendering**
   - In `launchpad_render()`, call `icon_render()` at `(gx, gy, 38)` for each app item.
   - Clean up surfaces in `launchpad_cleanup()` or re-scan.
 
-- [ ] **Step 3: Verify build and unit tests**
+- [x] **Step 3: Verify build and unit tests**
   - Run `make all test_calendar test_icon_fetcher`.
   - Verify clean compilation with zero warnings.
 
-- [ ] **Step 4: Commit Task 2 changes**
+- [x] **Step 4: Commit Task 2 changes**
   - Git commit: `feat(launchpad): render real application icons and filter NoDisplay apps`
 
 ---
@@ -85,10 +85,10 @@
 - Modify: `tests/test_runner.sh`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Update `tests/test_runner.sh` to include `test_icon_fetcher`**
-- [ ] **Step 2: Add `test_icon_fetcher` to `.gitignore`**
-- [ ] **Step 3: Run all tests and measure memory consumption**
+- [x] **Step 1: Update `tests/test_runner.sh` to include `test_icon_fetcher`**
+- [x] **Step 2: Add `test_icon_fetcher` to `.gitignore`**
+- [x] **Step 3: Run all tests and measure memory consumption**
   - Verify unit tests pass: `test_layout`, `test_trigger`, `test_easter_egg`, `test_calendar`, `test_client_props`, `test_icon_fetcher`.
   - Verify RSS memory remains well under 200 MB (target < 10 MB).
-- [ ] **Step 4: Commit Task 3 changes**
+- [x] **Step 4: Commit Task 3 changes**
   - Git commit: `test: add test_icon_fetcher to test runner and update gitignore`
