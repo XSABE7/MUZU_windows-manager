@@ -35,19 +35,19 @@
 - Create: `tests/test_client_props.c`
 - Modify: `Makefile:6,14-30`
 
-- [ ] **Step 1: Write failing unit test for `client_props` helper functions**
+- [x] **Step 1: Write failing unit test for `client_props` helper functions**
   - Test protocol detection logic: matching `WM_DELETE_WINDOW` against protocol list.
   - Test fallback title generator when properties are absent.
   - Compile with test target in Makefile.
 
-- [ ] **Step 2: Implement `src/client_props.c` and `include/client_props.h`**
+- [x] **Step 2: Implement `src/client_props.c` and `include/client_props.h`**
   - `client_has_protocol(Display *dpy, Window win, Atom protocol)`: Checks `XGetWMProtocols`.
   - `client_close(Display *dpy, Window win)`: Sends `WM_PROTOCOLS` `ClientMessage` with `WM_DELETE_WINDOW`. If unsupported, invokes `XKillClient(dpy, win)`.
 
-- [ ] **Step 3: Run unit test and verify it passes**
+- [x] **Step 3: Run unit test and verify it passes**
   - Run `./test_client_props` and ensure assertions pass.
 
-- [ ] **Step 4: Commit Task 1 changes**
+- [x] **Step 4: Commit Task 1 changes**
   - Git commit: `feat: implement client_props module and ICCCM graceful close`
 
 ---
@@ -62,17 +62,17 @@
 - Modify: `src/main.c:29-45,78-83,105-124,174-178,253-261`
 - Modify: `tests/test_client_props.c`
 
-- [ ] **Step 1: Write tests for title resolution chain**
+- [x] **Step 1: Write tests for title resolution chain**
   - Test fallback priority: UTF-8 `_NET_WM_NAME` -> `WM_NAME` -> `WM_CLASS` -> default `"MUZUwm Window"`.
   - Verify truncation to 255 characters with null termination.
 
-- [ ] **Step 2: Implement `client_get_title` in `src/client_props.c`**
+- [x] **Step 2: Implement `client_get_title` in `src/client_props.c`**
   - Query `_NET_WM_NAME` (atom `UTF8_STRING`).
   - Fallback to `XGetWMName` or `XGetTextProperty(dpy, win, &text_prop, XA_WM_NAME)`.
   - Fallback to `XGetClassHint(dpy, win, &class_hints)`.
   - Copy into target buffer with safe bounds.
 
-- [ ] **Step 3: Update `src/titlebar.c` and `src/main.c`**
+- [x] **Step 3: Update `src/titlebar.c` and `src/main.c`**
   - In `src/titlebar.c`, render actual `c->title` using Cairo.
   - In `src/main.c`:
     - Listen for `PropertyChangeMask` on managed client windows.
@@ -81,11 +81,11 @@
     - Add `case PropertyNotify:` in event loop: if `ev.xproperty.atom == XA_WM_NAME` or `_NET_WM_NAME`, update `curr->title` and call `titlebar_draw(dpy, curr->frame, curr->title, curr->width)`.
     - Replace `XDestroyWindow(dpy, curr->win)` with `client_close(dpy, curr->win)`.
 
-- [ ] **Step 4: Verify tests and build**
+- [x] **Step 4: Verify tests and build**
   - Run `make test_client_props test_layout test_trigger test_easter_egg test_calendar`.
   - Run all unit tests.
 
-- [ ] **Step 5: Commit Task 2 changes**
+- [x] **Step 5: Commit Task 2 changes**
   - Git commit: `feat: add dynamic titlebar updates with PropertyNotify support`
 
 ---
@@ -98,16 +98,16 @@
 - Modify: `src/main.c:105-124`
 - Modify: `tests/test_client_props.c`
 
-- [ ] **Step 1: Write tests for dialog detection and centering logic**
+- [x] **Step 1: Write tests for dialog detection and centering logic**
   - Test helper that identifies dialog window types (`_NET_WM_WINDOW_TYPE_DIALOG`, `_NET_WM_WINDOW_TYPE_SPLASH`, `_NET_WM_WINDOW_TYPE_UTILITY`).
   - Test geometry centering math: given screen 1366x768 and dialog 500x300, verify coordinates `(433, 234)`.
 
-- [ ] **Step 2: Implement `client_is_dialog` in `src/client_props.c`**
+- [x] **Step 2: Implement `client_is_dialog` in `src/client_props.c`**
   - Check `XGetTransientForHint(dpy, win, &transient_for_win)`.
   - Query `_NET_WM_WINDOW_TYPE` for dialog / splash / utility atoms.
   - Return 1 if dialog/transient, 0 otherwise.
 
-- [ ] **Step 3: Integrate Dialog Floating in `src/main.c`**
+- [x] **Step 3: Integrate Dialog Floating in `src/main.c`**
   - On `MapRequest`, if `client_is_dialog(dpy, w)`:
     - Add client with `CLIENT_FLOATING` mode.
     - Read requested window dimensions (via `XGetGeometry`).
@@ -117,11 +117,11 @@
     - Create titlebar frame, position floating window, and map.
     - Do NOT reflow existing tiled windows when a dialog appears!
 
-- [ ] **Step 4: Verify test suite and interactive run**
+- [x] **Step 4: Verify test suite and interactive run**
   - Run `./test_client_props`.
   - Run `bash tests/test_runner.sh`.
 
-- [ ] **Step 5: Commit Task 3 changes**
+- [x] **Step 5: Commit Task 3 changes**
   - Git commit: `feat: add smart dialog and transient window floating support`
 
 ---
@@ -131,9 +131,9 @@
 **Files:**
 - Modify: `tests/test_runner.sh`
 
-- [ ] **Step 1: Update `tests/test_runner.sh` to include `test_client_props`**
-- [ ] **Step 2: Run all tests and measure memory consumption**
+- [x] **Step 1: Update `tests/test_runner.sh` to include `test_client_props`**
+- [x] **Step 2: Run all tests and measure memory consumption**
   - Verify unit tests pass: `test_layout`, `test_trigger`, `test_easter_egg`, `test_calendar`, `test_client_props`.
   - Verify RSS memory remains well under 200 MB (target < 10 MB).
-- [ ] **Step 3: Commit Task 4**
+- [x] **Step 3: Commit Task 4**
   - Git commit: `test: update test runner with client_props verification`
