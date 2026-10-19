@@ -13,6 +13,7 @@ typedef struct Client {
     Window frame;
     int x, y, width, height;
     ClientMode mode;
+    char title[256];
     struct Client *next;
 } Client;
 

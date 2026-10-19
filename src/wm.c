@@ -11,6 +11,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->width = 100;
     c->height = 100;
     c->mode = mode;
+    c->title[0] = '\0';
     c->next = *head;
     *head = c;
 }

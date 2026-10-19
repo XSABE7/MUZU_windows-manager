@@ -33,12 +33,16 @@ void titlebar_draw(Display *dpy, Window frame, const char *title, int width) {
     cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
     cairo_paint(cr);
 
-    // Title text
+    // Title text (clipped to prevent overlapping close button)
+    cairo_save(cr);
+    cairo_rectangle(cr, 12, 0, (width > 48 ? width - 40 : 10), TITLEBAR_HEIGHT);
+    cairo_clip(cr);
     cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, 11.0);
     cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
     cairo_move_to(cr, 12, 16);
     cairo_show_text(cr, title ? title : "MUZUwm Window");
+    cairo_restore(cr);
 
     // Close button (red dot on top-right)
     cairo_set_source_rgb(cr, 0.94, 0.27, 0.24);

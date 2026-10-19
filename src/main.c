@@ -12,6 +12,7 @@
 #include "trigger.h"
 #include "launchpad.h"
 #include "dock.h"
+#include "client_props.h"
 
 static int running = 1;
 
@@ -36,7 +37,7 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
                 int client_h = curr->height - TITLEBAR_HEIGHT;
                 if (client_h < 10) client_h = 10;
                 XResizeWindow(dpy, curr->win, curr->width, client_h);
-                titlebar_draw(dpy, curr->frame, "Application", curr->width);
+                titlebar_draw(dpy, curr->frame, curr->title[0] ? curr->title : "MUZUwm Window", curr->width);
             }
         }
     }
@@ -113,8 +114,11 @@ int main(void) {
                     Window frame = titlebar_create(dpy, w, 600);
                     client_add(&clients, w, CLIENT_TILED);
                     Client *c = client_find(clients, w);
-                    if (c) c->frame = frame;
-
+                    if (c) {
+                        c->frame = frame;
+                        client_get_title(dpy, w, c->title, sizeof(c->title));
+                    }
+                    XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask);
                     reflow_all(dpy, clients, &cfg);
                 }
                 XMapWindow(dpy, w);
@@ -173,7 +177,7 @@ int main(void) {
 
                         // Close button clicked (red dot on right)
                         if (ev.xbutton.x >= curr->width - 24) {
-                            XDestroyWindow(dpy, curr->win);
+                            client_close(dpy, curr->win);
                             break;
                         }
 
@@ -253,8 +257,20 @@ int main(void) {
                 } else {
                     for (Client *curr = clients; curr; curr = curr->next) {
                         if (curr->frame && ev.xexpose.window == curr->frame) {
-                            titlebar_draw(dpy, curr->frame, "Application", curr->width);
+                            titlebar_draw(dpy, curr->frame, curr->title[0] ? curr->title : "MUZUwm Window", curr->width);
                         }
+                    }
+                }
+                break;
+            }
+
+            case PropertyNotify: {
+                Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+                if (ev.xproperty.atom == XA_WM_NAME || ev.xproperty.atom == net_wm_name) {
+                    Client *c = client_find(clients, ev.xproperty.window);
+                    if (c && c->frame) {
+                        client_get_title(dpy, c->win, c->title, sizeof(c->title));
+                        titlebar_draw(dpy, c->frame, c->title[0] ? c->title : "MUZUwm Window", c->width);
                     }
                 }
                 break;
