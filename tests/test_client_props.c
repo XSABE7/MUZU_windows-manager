@@ -52,6 +52,18 @@ int main(void) {
     assert(h <= 768);
     assert(x >= 0 && y >= 0);
 
+    // Dialog on small screen (e.g. 800x600)
+    client_calculate_dialog_geometry(800, 600, 0, 0, &x, &y, &w, &h);
+    assert(w == 600);
+    assert(h == 400);
+    assert(x == 100 && y == 100);
+
+    // Dialog on ultra-compact screen (e.g. 640x480) with oversized window
+    client_calculate_dialog_geometry(640, 480, 800, 800, &x, &y, &w, &h);
+    assert(w == 640 - 40);
+    assert(h == 480 - 60);
+    assert(x == 20 && y == 30);
+
     printf("test_client_props passed!\n");
     return 0;
 }

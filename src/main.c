@@ -111,17 +111,48 @@ int main(void) {
                 }
 
                 if (!client_find(clients, w)) {
-                    Window frame = titlebar_create(dpy, w, 600);
-                    client_add(&clients, w, CLIENT_TILED);
+                    int is_dialog = client_is_dialog(dpy, w);
+                    ClientMode mode = is_dialog ? CLIENT_FLOATING : CLIENT_TILED;
+
+                    int win_w = 600, win_h = 400;
+                    XWindowAttributes wa;
+                    if (XGetWindowAttributes(dpy, w, &wa) && wa.width > 0 && wa.height > 0) {
+                        win_w = wa.width;
+                        win_h = wa.height;
+                    }
+
+                    int init_x = 0, init_y = 0;
+                    if (is_dialog) {
+                        client_calculate_dialog_geometry(screen_w, screen_h, win_w, win_h,
+                                                         &init_x, &init_y, &win_w, &win_h);
+                    }
+
+                    Window frame = titlebar_create(dpy, w, win_w);
+                    client_add(&clients, w, mode);
                     Client *c = client_find(clients, w);
                     if (c) {
                         c->frame = frame;
+                        c->x = init_x;
+                        c->y = init_y;
+                        c->width = win_w;
+                        c->height = win_h + TITLEBAR_HEIGHT;
                         client_get_title(dpy, w, c->title, sizeof(c->title));
                     }
                     XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask);
-                    reflow_all(dpy, clients, &cfg);
+
+                    if (is_dialog) {
+                        XMoveResizeWindow(dpy, frame, init_x, init_y, win_w, win_h + TITLEBAR_HEIGHT);
+                        XResizeWindow(dpy, w, win_w, win_h);
+                        titlebar_draw(dpy, frame, c && c->title[0] ? c->title : "MUZUwm Window", win_w);
+                    } else {
+                        reflow_all(dpy, clients, &cfg);
+                    }
                 }
                 XMapWindow(dpy, w);
+                Client *c = client_find(clients, w);
+                if (c && c->frame) {
+                    XRaiseWindow(dpy, c->frame);
+                }
                 XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 break;
             }
