@@ -162,7 +162,7 @@ int main(void) {
 
             case ButtonPress: {
                 if (launchpad.is_visible) {
-                    launchpad_handle_click(dpy, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                    launchpad_handle_click(dpy, &launchpad, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
                     break;
                 }
 

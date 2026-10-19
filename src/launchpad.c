@@ -50,6 +50,19 @@ static void utf8_safe_copy(char *dest, const char *src, size_t max_bytes) {
     dest[i] = '\0';
 }
 
+void launchpad_scroll(Launchpad *lp, int delta_y, int screen_h) {
+    if (!lp) return;
+    int rows = (lp->app_count + 2) / 3;
+    int content_h = rows * 60;
+    int visible_h = screen_h - 110;
+    int max_scroll = content_h - visible_h;
+    if (max_scroll < 0) max_scroll = 0;
+
+    lp->scroll_y += delta_y;
+    if (lp->scroll_y < 0) lp->scroll_y = 0;
+    if (lp->scroll_y > max_scroll) lp->scroll_y = max_scroll;
+}
+
 void launchpad_scan_apps(Launchpad *lp) {
     lp->app_count = 0;
     DIR *dir = opendir("/usr/share/applications");
@@ -110,6 +123,7 @@ void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     lp->is_visible = 0;
     lp->search_query[0] = '\0';
     lp->current_month_offset = 0;
+    lp->scroll_y = 0;
     easter_egg_init(&lp->egg);
 
     launchpad_scan_apps(lp);
@@ -128,52 +142,81 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     cairo_set_source_rgba(cr, 0.07, 0.09, 0.13, 0.96);
     cairo_paint(cr);
 
-    int mid_x = screen_w * 0.55;
+    // Optimized layout for 1366x768 and modern displays
+    int mid_x = (int)(screen_w * 0.54);
 
-    // LEFT: Search Input
+    // LEFT: Search Input (tuned height and padding)
     cairo_set_source_rgba(cr, 0.18, 0.22, 0.28, 0.90);
-    cairo_rectangle(cr, 60, 60, mid_x - 100, 44);
+    cairo_rectangle(cr, 40, 32, mid_x - 60, 40);
     cairo_fill(cr);
 
     cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-    cairo_set_font_size(cr, 14.0);
+    cairo_set_font_size(cr, 13.0);
     cairo_set_source_rgb(cr, 0.95, 0.96, 0.98);
-    cairo_move_to(cr, 76, 88);
+    cairo_move_to(cr, 56, 57);
     if (strlen(lp->search_query) > 0) {
         cairo_show_text(cr, lp->search_query);
     } else {
         cairo_set_source_rgb(cr, 0.55, 0.60, 0.68);
-        cairo_show_text(cr, "Search applications...");
+        cairo_show_text(cr, "Search applications (Use mouse wheel to scroll)...");
     }
 
-    // LEFT: App Grid
-    int start_y = 130;
-    int col_w = (mid_x - 100) / 3;
+    // LEFT: App Grid with Cairo Scissor Clipping for Smooth Scrolling
+    int start_y = 88;
+    int grid_h = screen_h - start_y - 12;
+    int col_w = (mid_x - 64) / 3;
     int displayed = 0;
 
-    for (int i = 0; i < lp->app_count && displayed < 24; i++) {
+    cairo_save(cr);
+    cairo_rectangle(cr, 30, start_y, mid_x - 50, grid_h);
+    cairo_clip(cr);
+
+    for (int i = 0; i < lp->app_count; i++) {
         if (strlen(lp->search_query) == 0 || strcasestr(lp->apps[i].name, lp->search_query)) {
-            int gx = 60 + (displayed % 3) * col_w;
-            int gy = start_y + (displayed / 3) * 70;
+            int gx = 40 + (displayed % 3) * col_w;
+            int gy = start_y - lp->scroll_y + (displayed / 3) * 60;
 
-            // App Icon Box
-            cairo_set_source_rgba(cr, 0.22, 0.28, 0.38, 0.85);
-            cairo_rectangle(cr, gx, gy, 42, 42);
-            cairo_fill(cr);
+            if (gy + 60 >= start_y && gy <= screen_h) {
+                // App Icon Box
+                cairo_set_source_rgba(cr, 0.22, 0.28, 0.38, 0.85);
+                cairo_rectangle(cr, gx, gy, 38, 38);
+                cairo_fill(cr);
 
-            // App Name with UTF-8 safe copy
-            cairo_set_source_rgb(cr, 0.90, 0.92, 0.96);
-            cairo_set_font_size(cr, 11.0);
-            cairo_move_to(cr, gx + 50, gy + 25);
-            char trunc_name[32];
-            utf8_safe_copy(trunc_name, lp->apps[i].name, sizeof(trunc_name));
-            cairo_show_text(cr, trunc_name);
-
+                // App Name with UTF-8 safe copy
+                cairo_set_source_rgb(cr, 0.90, 0.92, 0.96);
+                cairo_set_font_size(cr, 11.0);
+                cairo_move_to(cr, gx + 46, gy + 24);
+                char trunc_name[28];
+                utf8_safe_copy(trunc_name, lp->apps[i].name, sizeof(trunc_name));
+                cairo_show_text(cr, trunc_name);
+            }
             displayed++;
         }
     }
+    cairo_restore(cr);
 
-    // RIGHT: Digital Clock
+    // Scrollbar indicator on left panel
+    int rows = (displayed + 2) / 3;
+    int total_content_h = rows * 60;
+    if (total_content_h > grid_h) {
+        int bar_x = mid_x - 22;
+        int bar_w = 4;
+        cairo_set_source_rgba(cr, 0.25, 0.30, 0.40, 0.4);
+        cairo_rectangle(cr, bar_x, start_y, bar_w, grid_h);
+        cairo_fill(cr);
+
+        double ratio = (double)grid_h / total_content_h;
+        int thumb_h = (int)(grid_h * ratio);
+        if (thumb_h < 24) thumb_h = 24;
+        int thumb_y = start_y + (int)((double)lp->scroll_y / (total_content_h - grid_h) * (grid_h - thumb_h));
+
+        cairo_set_source_rgba(cr, 0.45, 0.65, 0.95, 0.8);
+        cairo_rectangle(cr, bar_x, thumb_y, bar_w, thumb_h);
+        cairo_fill(cr);
+    }
+
+    // RIGHT PANEL (Clock, Date, Calendar)
+    int right_x = mid_x + 32;
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);
 
@@ -183,44 +226,44 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     char date_str[64];
     strftime(date_str, sizeof(date_str), "%A, %d %B %Y", tm_info);
 
+    // Digital Clock
     cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-    cairo_set_font_size(cr, 48.0);
+    cairo_set_font_size(cr, 44.0);
     cairo_set_source_rgb(cr, 0.98, 0.99, 1.0);
-    cairo_move_to(cr, mid_x + 40, 110);
+    cairo_move_to(cr, right_x, 75);
     cairo_show_text(cr, time_str);
 
     cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-    cairo_set_font_size(cr, 14.0);
+    cairo_set_font_size(cr, 13.0);
     cairo_set_source_rgb(cr, 0.65, 0.70, 0.78);
-    cairo_move_to(cr, mid_x + 44, 140);
+    cairo_move_to(cr, right_x + 2, 102);
     cairo_show_text(cr, date_str);
 
-    // RIGHT: Monthly Calendar
+    // Monthly Calendar
     int year = tm_info->tm_year + 1900;
     int month = tm_info->tm_mon + 1;
     int total_days = days_in_month(year, month);
-    // Align columns: Monday = 0, Sunday = 6
     int start_col = (first_weekday_of_month(year, month) + 6) % 7;
 
-    int cal_x = mid_x + 40;
-    int cal_y = 190;
+    int cal_x = right_x;
+    int cal_y = 128;
     cairo_set_source_rgba(cr, 0.14, 0.17, 0.23, 0.85);
-    cairo_rectangle(cr, cal_x, cal_y, 320, 240);
+    cairo_rectangle(cr, cal_x, cal_y, 320, 220);
     cairo_fill(cr);
 
     cairo_set_source_rgb(cr, 0.40, 0.70, 0.95);
-    cairo_set_font_size(cr, 12.0);
-    cairo_move_to(cr, cal_x + 20, cal_y + 30);
+    cairo_set_font_size(cr, 11.5);
+    cairo_move_to(cr, cal_x + 18, cal_y + 26);
     cairo_show_text(cr, "Mo   Tu   We   Th   Fr   Sa   Su");
 
     for (int day = 1; day <= total_days; day++) {
         int cell_idx = start_col + (day - 1);
-        int cell_x = cal_x + 20 + (cell_idx % 7) * 40;
-        int cell_y = cal_y + 65 + (cell_idx / 7) * 30;
+        int cell_x = cal_x + 18 + (cell_idx % 7) * 40;
+        int cell_y = cal_y + 58 + (cell_idx / 7) * 28;
 
         if (day == tm_info->tm_mday) {
             cairo_set_source_rgb(cr, 0.20, 0.55, 0.95);
-            cairo_arc(cr, cell_x + 8, cell_y - 4, 12, 0, 2 * 3.14159);
+            cairo_arc(cr, cell_x + 8, cell_y - 4, 11, 0, 2 * 3.14159);
             cairo_fill(cr);
             cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
         } else {
@@ -233,24 +276,24 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
         cairo_show_text(cr, day_num);
     }
 
-    // RIGHT: "Will She Know" Button (only when easter egg is triggered)
+    // RIGHT: "Will She Know" Button (Easter Egg)
     if (lp->egg.triggered) {
-        int btn_x = screen_w - 280;
-        int btn_y = screen_h - 100;
+        int btn_x = screen_w - 290;
+        int btn_y = screen_h - 76;
 
         cairo_set_source_rgba(cr, 0.88, 0.20, 0.35, 0.95);
-        cairo_rectangle(cr, btn_x, btn_y, 240, 48);
+        cairo_rectangle(cr, btn_x, btn_y, 250, 44);
         cairo_fill(cr);
 
         cairo_set_source_rgb(cr, 1.0, 0.8, 0.8);
         cairo_set_line_width(cr, 2.0);
-        cairo_rectangle(cr, btn_x, btn_y, 240, 48);
+        cairo_rectangle(cr, btn_x, btn_y, 250, 44);
         cairo_stroke(cr);
 
         cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-        cairo_set_font_size(cr, 13.0);
+        cairo_set_font_size(cr, 12.5);
         cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-        cairo_move_to(cr, btn_x + 18, btn_y + 30);
+        cairo_move_to(cr, btn_x + 16, btn_y + 27);
         cairo_show_text(cr, "🎸 Will She Know (เธอจะรู้บ้างไหม)");
     }
 
@@ -270,6 +313,7 @@ void launchpad_toggle(Display *dpy, Launchpad *lp) {
         XGrabKeyboard(dpy, lp->win, True, GrabModeAsync, GrabModeAsync, CurrentTime);
         lp->is_visible = 1;
         lp->search_query[0] = '\0';
+        lp->scroll_y = 0; // Reset scroll position when opening
         int screen = DefaultScreen(dpy);
         launchpad_render(dpy, lp, DisplayWidth(dpy, screen), DisplayHeight(dpy, screen));
     }
@@ -278,9 +322,23 @@ void launchpad_toggle(Display *dpy, Launchpad *lp) {
 void launchpad_handle_key(Display *dpy, Launchpad *lp, XKeyEvent *ev) {
     if (!lp->is_visible) return;
 
+    int screen = DefaultScreen(dpy);
+    int screen_h = DisplayHeight(dpy, screen);
+
     KeySym sym = XLookupKeysym(ev, 0);
     if (sym == XK_Escape) {
         launchpad_toggle(dpy, lp);
+        return;
+    }
+
+    // Scroll up/down with PageUp/PageDown or Up/Down arrows
+    if (sym == XK_Page_Up || sym == XK_Up) {
+        launchpad_scroll(lp, -60, screen_h);
+        launchpad_render(dpy, lp, DisplayWidth(dpy, screen), screen_h);
+        return;
+    } else if (sym == XK_Page_Down || sym == XK_Down) {
+        launchpad_scroll(lp, 60, screen_h);
+        launchpad_render(dpy, lp, DisplayWidth(dpy, screen), screen_h);
         return;
     }
 
@@ -291,37 +349,52 @@ void launchpad_handle_key(Display *dpy, Launchpad *lp, XKeyEvent *ev) {
 
         if (sym == XK_BackSpace) {
             int cur_len = strlen(lp->search_query);
-            if (cur_len > 0) lp->search_query[cur_len - 1] = '\0';
+            if (cur_len > 0) {
+                lp->search_query[cur_len - 1] = '\0';
+                lp->scroll_y = 0;
+            }
         } else if (sym >= 32 && sym <= 126) {
             int cur_len = strlen(lp->search_query);
             if (cur_len < (int)sizeof(lp->search_query) - 1) {
                 lp->search_query[cur_len] = buf[0];
                 lp->search_query[cur_len + 1] = '\0';
+                lp->scroll_y = 0; // Reset scroll when filtering
             }
         }
     }
 
-    int screen = DefaultScreen(dpy);
-    launchpad_render(dpy, lp, DisplayWidth(dpy, screen), DisplayHeight(dpy, screen));
+    launchpad_render(dpy, lp, DisplayWidth(dpy, screen), screen_h);
 }
 
-void launchpad_handle_click(Display *dpy, Launchpad *lp, int x, int y) {
+void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, int x, int y) {
     if (!lp->is_visible) return;
     int screen = DefaultScreen(dpy);
     int screen_w = DisplayWidth(dpy, screen);
     int screen_h = DisplayHeight(dpy, screen);
-    int mid_x = screen_w * 0.55;
+
+    // Mouse wheel scrolling: Button4 = Scroll Up, Button5 = Scroll Down
+    if (button == Button4) {
+        launchpad_scroll(lp, -60, screen_h);
+        launchpad_render(dpy, lp, screen_w, screen_h);
+        return;
+    } else if (button == Button5) {
+        launchpad_scroll(lp, 60, screen_h);
+        launchpad_render(dpy, lp, screen_w, screen_h);
+        return;
+    }
+
+    int mid_x = (int)(screen_w * 0.54);
 
     // Check if clicked inside search box -> ignore click dismiss
-    if (x >= 60 && x <= mid_x - 40 && y >= 60 && y <= 104) {
+    if (x >= 40 && x <= mid_x - 20 && y >= 32 && y <= 72) {
         return;
     }
 
     // Check if clicked "Will She Know" button
     if (lp->egg.triggered) {
-        int btn_x = screen_w - 280;
-        int btn_y = screen_h - 100;
-        if (x >= btn_x && x <= btn_x + 240 && y >= btn_y && y <= btn_y + 48) {
+        int btn_x = screen_w - 290;
+        int btn_y = screen_h - 76;
+        if (x >= btn_x && x <= btn_x + 250 && y >= btn_y && y <= btn_y + 44) {
             easter_egg_launch_music();
             launchpad_toggle(dpy, lp);
             return;
@@ -329,14 +402,14 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, int x, int y) {
     }
 
     // Check if clicked an app in the grid
-    int start_y = 130;
-    int col_w = (mid_x - 100) / 3;
+    int start_y = 88;
+    int col_w = (mid_x - 64) / 3;
     int displayed = 0;
 
-    for (int i = 0; i < lp->app_count && displayed < 24; i++) {
+    for (int i = 0; i < lp->app_count; i++) {
         if (strlen(lp->search_query) == 0 || strcasestr(lp->apps[i].name, lp->search_query)) {
-            int gx = 60 + (displayed % 3) * col_w;
-            int gy = start_y + (displayed / 3) * 70;
+            int gx = 40 + (displayed % 3) * col_w;
+            int gy = start_y - lp->scroll_y + (displayed / 3) * 60;
 
             if (x >= gx && x <= gx + col_w && y >= gy && y <= gy + 50) {
                 pid_t pid = fork();

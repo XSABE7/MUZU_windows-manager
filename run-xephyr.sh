@@ -4,8 +4,8 @@ set -e
 # Build the window manager
 make muzuwm
 
-echo "Starting nested X11 server (Xephyr) on DISPLAY=:2..."
-Xephyr -br -ac -noreset -screen 1280x720 :2 &
+echo "Starting nested X11 server (Xephyr 1366x768) on DISPLAY=:2..."
+Xephyr -br -ac -noreset -screen 1366x768 :2 &
 XEPHYR_PID=$!
 sleep 1
 
