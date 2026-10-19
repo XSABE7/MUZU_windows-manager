@@ -1,6 +1,6 @@
 # MUZUwm (むず) — System Design Document
 **Date:** 2026-10-19  
-**Status:** Draft (Awaiting Builder Check & User Approval)  
+**Status:** Approved by Human Partner  
 **Topic:** Mouse UserZ Window Manager for X11  
 
 ---
@@ -12,45 +12,48 @@ Traditional lightweight window managers (e.g., i3, bspwm, dwm) are heavily keybo
 
 **MUZUwm** (*Mouse UserZ Window Manager*, aka **むず / Muzu**) fills the gap:
 * **The User Experience (UX):** Effortless, single-handed mouse-first control. Zero muscle-memory learning curve. Works immediately Out-of-the-Box (OOTB) with polished Launchpad, Dock, Window Bars, and Calendar.
-* **The Developer Reality (むず - Muzukashii):** The developer absorbs the complexity of building low-latency XCB event loops, Cairo-based software overlays, double-tap timers, and EWMH/ICCCM compliance.
+* **The Developer Reality (むず - Muzukashii):** The developer absorbs the complexity of building low-latency X11 event loops, Cairo-based software overlays, double-tap timers, and window management state.
+* **Codebase Foundation:** Based on the minimalist event loop architecture of `tinywm` (`tinywm/tinywm.c`).
 
 ---
 
 ## 2. Goals, Non-Goals, and Anti-Goals
 
 ### Goals
-1. **Mouse-First Hybrid Windowing:**
-   - 1st window automatically maximizes.
-   - 2nd window automatically tiles side-by-side (50:50).
+1. **Mouse-First Hybrid Windowing (Tiling & Floating):**
+   - 1st window automatically maximizes (100% of workspace).
+   - 2nd window automatically tiles side-by-side (50:50 split).
+   - 3rd and subsequent windows sub-split in a Master-Stack layout (Window 1 stays Master 50% left; Windows 2, 3... stack vertically on the right 50%).
    - Dragging a window's titlebar instantly detaches it into a free-floating window.
+   - Re-tiling: Dragging a floating window to the top edge maximizes; dragging to left/right edge snaps to tiling slot; double-clicking titlebar toggles maximize/re-tile.
 2. **Integrated Full Launchpad:**
-   - Triggerable via **Double-tap Super** (within 200–250 ms) or **GNOME-style Hot Corner** (top-left).
-   - Split Dashboard layout: Left side contains search input + categorized app grid; Right side contains digital clock + interactive monthly calendar.
+   - Triggerable via **Double-tap Super** (within 200–250 ms) or **GNOME-style Hot Corner** (top-left $0, 0$).
+   - Split Dashboard layout: Left side contains search input + categorized app grid; Right side contains digital clock + month-to-month calendar.
    - Wallpaper overlay background.
 3. **Flexible Quick-Access Dock:**
    - Positionable at any screen edge: **Bottom, Top, Left, or Right** dynamically.
-   - **Auto-Hide** behavior (slides out when mouse hovers the corresponding edge).
+   - **Auto-Hide** behavior (slides out when mouse hovers the corresponding edge; overlay mode so windows don't stutter).
 4. **Lightweight Footprint:**
-   - Total system memory consumption of **MUZUwm + picom < 200 MB RAM** (MUZUwm ~35–50 MB, picom ~50–70 MB).
-5. **Special Easter Egg:**
+   - Total system memory consumption of **MUZUwm + picom < 200 MB RAM** (MUZUwm ~30–50 MB, picom ~50–70 MB).
+5. **Special Easter Egg ("Will She Know"):**
    - Typing `wwssadadba` while on Launchpad dynamically reveals the hidden **"Will She Know"** button at the right corner.
    - Clicking "Will She Know" immediately opens the YouTube music video *“เธอจะรู้บ้างไหม - เสก โลโซ”* (`https://youtu.be/-3haoCPz6MM?si=-nqANYwpOqBDr81x`) via `xdg-open`.
 
 ### Non-Goals
-* Re-implementing a heavy desktop suite (no bespoke systemd desktop portals, notifications daemon, or network manager applets in core WM).
-* Complex multi-node manual tiling trees (e.g., BSP tree splitting, master-stack ratios) — only clean auto-maximize, side-by-side split, and floating windows.
-* Wayland support in phase 1 (dedicated to X11 with XCB for maximum lightweight predictability).
+* Multi-monitor (XRandR) in Phase 1: Strictly focused on single-monitor displays.
+* Complex calendar event sync / database: Month-to-month calendar navigation only.
+* Wayland support in Phase 1 (dedicated to X11 for predictable minimal footprint).
 
 ### Anti-Goals
 * Requiring user shell scripts or config files just to get a functional desktop environment.
-* Stuttering animations or input lag (> 16ms frame drops on Cairo redraws).
+* Stuttering animations or input lag (> 16ms frame drops on redraws).
 
 ---
 
 ## 3. Architecture & Tech Stack
 
-* **Platform / Protocol:** Linux X11 using **XCB** (`libxcb`, `xcb-ewmh`, `xcb-icccm`, `xcb-keysyms`, `xcb-util`).
-* **UI Rendering:** **Cairo** (`cairo-xcb` / `cairo`) for rendering vector titlebars, Launchpad dashboard, calendar, clock, and Dock icons.
+* **Platform / Protocol:** Linux X11 based on `tinywm` event foundation, using Xlib/XCB (`libX11`, `libXext`, `libXrandr` [optional in future]).
+* **UI Rendering:** **Cairo** (`cairo-xlib`) for vector titlebars, Launchpad dashboard, calendar, clock, and Dock icons.
 * **Compositor:** **picom** (external X11 compositor for transparent overlays, subtle drop shadows, and wallpaper background dimming/blur).
 * **Language & Build Tooling:** C (C11 standard) with `gcc`/`clang` and a clean `Makefile`.
 
@@ -60,16 +63,15 @@ Traditional lightweight window managers (e.g., i3, bspwm, dwm) are heavily keybo
 
 ### 4.1 Launchpad
 * **Invocation:**
-  * Double-tap the `Super` (Windows) key within a 200–250 ms window.
+  * Double-tap the `Super` key within a 200–250 ms window.
   * Move pointer into the **Top-Left Hot Corner** ($0, 0$ screen coordinates).
 * **Layout (Dashboard Split):**
   * **Left Column:**
     * Search bar with instant real-time filtering as the user types.
     * Grid of installed desktop applications (discovered from standard `.desktop` files).
   * **Right Column:**
-    * Prominent digital clock (HH:MM) and full Thai/Gregorian date.
-    * Monthly calendar grid with today highlighted.
-    * *(Note: RAM stats removed as requested by user).*
+    * Prominent digital clock (HH:MM) and full date.
+    * Monthly calendar grid with today highlighted and month navigation (< / >).
 * **Dismissal:**
   * Clicking any app icon (launches app and closes Launchpad).
   * Clicking anywhere outside interactive elements or pressing `Esc` / `Super`.
@@ -77,30 +79,31 @@ Traditional lightweight window managers (e.g., i3, bspwm, dwm) are heavily keybo
 ### 4.2 Easter Egg ("Will She Know")
 * **Sequence:** When Launchpad is open, user enters keyboard sequence: `w` `w` `s` `s` `a` `d` `a` `d` `b` `a`.
 * **Behavior:**
-  * A dedicated button labeled **"Will She Know"** (or guitar/heart icon) dynamically appears at the right corner of the Launchpad.
+  * A dedicated button labeled **"Will She Know"** dynamically appears at the right corner of the Launchpad.
   * Clicking the button executes: `xdg-open "https://youtu.be/-3haoCPz6MM?si=-nqANYwpOqBDr81x"`.
 
 ### 4.3 Dock
 * **Contents:** Pinned favorite applications and running window indicators.
 * **Edge Configuration:** Can be placed on any edge (**Top, Bottom, Left, Right**).
 * **Auto-Hide:**
-  * When mouse cursor leaves the dock area, it smoothly slides into the screen edge.
-  * When mouse cursor hits that screen edge, it pops up immediately (with a tiny 100ms threshold to prevent accidental triggers).
+  * Floating overlay (`override_redirect = True`) that does not trigger window resizes.
+  * When mouse cursor leaves the dock area, it smoothly hides.
+  * When mouse cursor hits that screen edge, it reveals.
 
-### 4.4 Window Management (Auto-Tiling to Floating)
-* **Single Window Rule:** First managed window auto-maximizes to fill the screen (accounting for any non-hidden dock margins).
-* **Two Windows Rule:** Second managed window auto-tiles side-by-side ($50\% : 50\%$ split).
-* **Drag-to-Float:**
-  * Left-clicking and dragging a window by its titlebar immediately detaches it from the tiling container into an unconstrained floating window.
-  * Floating windows can be freely moved and resized using edge/corner handles or mouse drag.
+### 4.4 Window Management (Auto-Tiling to Floating & Re-tiling)
+* **Single Window:** 1st window auto-maximizes to fill the screen.
+* **Two Windows:** 2nd window auto-tiles side-by-side (50% left, 50% right).
+* **Three+ Windows:** 3rd and subsequent windows sub-tile on the right side (Master on left 50%, stack on right divided equally vertically).
+* **Closing / Detaching:** When a tiled window closes, remaining tiled windows reflow automatically to fill space.
+* **Drag-to-Float:** Left-clicking and dragging a window by its titlebar immediately detaches it into an unconstrained floating window.
+* **Re-Tiling & Snapping:**
+  * Dragging a floating window to the top screen edge snaps to Maximize.
+  * Dragging to left or right screen edge snaps back into Tiling layout.
+  * Double-clicking titlebar toggles between Floating and Maximize/Tiled.
 
 ---
 
-## 5. What's Left to the Builder
-
-The builder has full discretion over:
-1. **Double-Tap Super Implementation:** Choice between `timerfd_create` or event loop timestamp comparison (`event->time - last_super_time < 250ms`).
-2. **App Discovery:** Parsing `/usr/share/applications` and `~/.local/share/applications` for `.desktop` files (extracting `Name`, `Exec`, `Icon`).
-3. **Wallpaper Drawing:** Calling `feh`/`hsetroot` or setting the root pixmap directly via XCB if no external background setter is found.
-4. **Dock Right-Click Menu:** Providing a simple pop-up menu on right-click to choose dock placement: [Top, Bottom, Left, Right].
-5. **Titlebar Controls:** Exact dimensions (e.g. 24px height) with minimal Close/Minimize buttons drawn with Cairo.
+## 5. Builder's Decisions (Technical Calls)
+* **Dock Overlay Mechanism:** Implemented as a top-level unmanaged (`override_redirect`) window to avoid window reflow stutter.
+* **Calendar Scope:** Self-contained date calculation using standard `<time.h>` for month-to-month view without external database dependencies.
+* **App Scanner:** Reads `.desktop` entries from `/usr/share/applications` and caches names and icon paths.
