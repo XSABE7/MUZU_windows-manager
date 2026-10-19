@@ -23,7 +23,24 @@ static void sig_handler(int sig) {
 static int x_error_handler(Display *dpy, XErrorEvent *e) {
     (void)dpy;
     (void)e;
-    return 0; // Ignore non-fatal X errors (e.g. BadWindow when client crashes)
+    return 0; // Ignore non-fatal X errors
+}
+
+static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
+    layout_calculate(cfg, clients, 0);
+    for (Client *curr = clients; curr; curr = curr->next) {
+        if (curr->mode == CLIENT_TILED) {
+            Window target = curr->frame ? curr->frame : curr->win;
+            XMoveResizeWindow(dpy, target, curr->x, curr->y, curr->width, curr->height);
+            if (curr->frame) {
+                int client_h = curr->height - TITLEBAR_HEIGHT;
+                if (client_h < 10) client_h = 10;
+                XResizeWindow(dpy, curr->win, curr->width, client_h);
+                titlebar_draw(dpy, curr->frame, "Application", curr->width);
+            }
+        }
+    }
+    XFlush(dpy);
 }
 
 int main(void) {
@@ -35,6 +52,7 @@ int main(void) {
 
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
+    signal(SIGCHLD, SIG_IGN); // Automatically reap zombie child processes
     XSetErrorHandler(x_error_handler);
 
     int screen = DefaultScreen(dpy);
@@ -57,7 +75,7 @@ int main(void) {
     launchpad_init(dpy, &launchpad, screen_w, screen_h);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h);
 
-    // Select root window events: window redirection, mouse motion, substructure changes
+    // Select root window events
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
                             ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
                             KeyPressMask | KeyReleaseMask);
@@ -66,7 +84,7 @@ int main(void) {
     KeyCode super_kc = XKeysymToKeycode(dpy, XK_Super_L);
     if (super_kc == 0) super_kc = XKeysymToKeycode(dpy, XK_Super_R);
     if (super_kc != 0) {
-        XGrabKey(dpy, super_kc, AnyModifier, root, True, GrabModeAsync, GrabModeAsync);
+        XGrabKey(dpy, super_kc, 0, root, True, GrabModeAsync, GrabModeAsync);
     }
 
     // Grab Alt+F1 as fallback trigger
@@ -78,6 +96,8 @@ int main(void) {
     int drag_start_y = 0;
     int client_start_x = 0;
     int client_start_y = 0;
+    Time last_titlebar_click_time = 0;
+    Window last_titlebar_click_win = None;
 
     XEvent ev;
     while (running && !XNextEvent(dpy, &ev)) {
@@ -89,63 +109,46 @@ int main(void) {
                     break;
                 }
 
-                // Check if already managed
                 if (!client_find(clients, w)) {
-                    // Create titlebar frame
                     Window frame = titlebar_create(dpy, w, 600);
                     client_add(&clients, w, CLIENT_TILED);
                     Client *c = client_find(clients, w);
                     if (c) c->frame = frame;
 
-                    // Reflow tiled windows
-                    layout_calculate(&cfg, clients, 0);
-                    for (Client *curr = clients; curr; curr = curr->next) {
-                        if (curr->mode == CLIENT_TILED) {
-                            Window target = curr->frame ? curr->frame : curr->win;
-                            XMoveResizeWindow(dpy, target, curr->x, curr->y, curr->width, curr->height);
-                            if (curr->frame) {
-                                XResizeWindow(dpy, curr->win, curr->width, curr->height - TITLEBAR_HEIGHT);
-                                titlebar_draw(dpy, curr->frame, "Application", curr->width);
-                            }
-                        }
-                    }
+                    reflow_all(dpy, clients, &cfg);
                 }
                 XMapWindow(dpy, w);
+                XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 break;
             }
 
-            case UnmapNotify:
+            case UnmapNotify: {
+                // Safely hide frame without destroying client
+                Window w = ev.xunmap.window;
+                Client *c = client_find(clients, w);
+                if (c && c->frame) {
+                    XUnmapWindow(dpy, c->frame);
+                }
+                break;
+            }
+
             case DestroyNotify: {
-                Window w = (ev.type == DestroyNotify) ? ev.xdestroywindow.window : ev.xunmap.window;
+                Window w = ev.xdestroywindow.window;
                 Client *c = client_find(clients, w);
                 if (c) {
                     if (c->frame) XDestroyWindow(dpy, c->frame);
                     client_remove(&clients, w);
-
-                    // Reflow remaining tiled windows
-                    layout_calculate(&cfg, clients, 0);
-                    for (Client *curr = clients; curr; curr = curr->next) {
-                        if (curr->mode == CLIENT_TILED) {
-                            Window target = curr->frame ? curr->frame : curr->win;
-                            XMoveResizeWindow(dpy, target, curr->x, curr->y, curr->width, curr->height);
-                            if (curr->frame) {
-                                XResizeWindow(dpy, curr->win, curr->width, curr->height - TITLEBAR_HEIGHT);
-                                titlebar_draw(dpy, curr->frame, "Application", curr->width);
-                            }
-                        }
-                    }
+                    reflow_all(dpy, clients, &cfg);
                 }
                 break;
             }
 
             case KeyPress: {
-                // If Launchpad visible, forward keys to Launchpad
                 if (launchpad.is_visible) {
                     launchpad_handle_key(dpy, &launchpad, &ev.xkey);
                     break;
                 }
 
-                // Check Super Double-tap
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
                 if (sym == XK_Super_L || sym == XK_Super_R) {
                     if (trigger_check_super(&trigger, ev.xkey.time)) {
@@ -163,22 +166,47 @@ int main(void) {
                     break;
                 }
 
-                // Check if titlebar clicked
                 for (Client *curr = clients; curr; curr = curr->next) {
                     if (curr->frame && ev.xbutton.window == curr->frame) {
-                        // Check if close button clicked (right side of titlebar)
+                        XSetInputFocus(dpy, curr->win, RevertToPointerRoot, CurrentTime);
+                        XRaiseWindow(dpy, curr->frame);
+
+                        // Close button clicked (red dot on right)
                         if (ev.xbutton.x >= curr->width - 24) {
                             XDestroyWindow(dpy, curr->win);
                             break;
                         }
 
-                        // Drag start
+                        // Check double click on titlebar
+                        if (ev.xbutton.time - last_titlebar_click_time <= 250 &&
+                            ev.xbutton.window == last_titlebar_click_win) {
+                            handle_titlebar_double_click(dpy, curr, &cfg);
+                            reflow_all(dpy, clients, &cfg);
+                            last_titlebar_click_time = 0;
+                            last_titlebar_click_win = None;
+                            break;
+                        }
+                        last_titlebar_click_time = ev.xbutton.time;
+                        last_titlebar_click_win = ev.xbutton.window;
+
+                        // Start dragging with pointer grab
                         if (ev.xbutton.button == Button1) {
                             drag_client = curr;
                             drag_start_x = ev.xbutton.x_root;
                             drag_start_y = ev.xbutton.y_root;
                             client_start_x = curr->x;
                             client_start_y = curr->y;
+
+                            // If tiled, detach to floating and reflow remaining tiled windows!
+                            if (curr->mode == CLIENT_TILED) {
+                                curr->mode = CLIENT_FLOATING;
+                                reflow_all(dpy, clients, &cfg);
+                            }
+
+                            XGrabPointer(dpy, root, False,
+                                         ButtonReleaseMask | PointerMotionMask,
+                                         GrabModeAsync, GrabModeAsync,
+                                         None, None, CurrentTime);
                         }
                         break;
                     }
@@ -187,42 +215,30 @@ int main(void) {
             }
 
             case MotionNotify: {
-                // Check Hot corner
                 if (trigger_check_hot_corner(ev.xmotion.x_root, ev.xmotion.y_root, DEFAULT_HOT_CORNER_SIZE)) {
                     if (!launchpad.is_visible) {
                         launchpad_toggle(dpy, &launchpad);
                     }
                 }
 
-                // Handle window dragging
                 if (drag_client) {
                     int dx = ev.xmotion.x_root - drag_start_x;
                     int dy = ev.xmotion.y_root - drag_start_y;
                     handle_titlebar_drag(dpy, drag_client, client_start_x + dx, client_start_y + dy, screen_w, screen_h);
                 }
 
-                // Dock hover check
                 dock_handle_motion(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
                 break;
             }
 
             case ButtonRelease: {
                 if (drag_client) {
-                    // Check edge snapping to retile / maximize
-                    if (ev.xbutton.y_root <= 5) {
-                        // Drag to top -> Maximize (or re-tile)
+                    XUngrabPointer(dpy, CurrentTime);
+
+                    // Edge snapping: top maximizes, left/right retiles
+                    if (ev.xbutton.y_root <= 10 || ev.xbutton.x_root <= 10 || ev.xbutton.x_root >= screen_w - 10) {
                         drag_client->mode = CLIENT_TILED;
-                        layout_calculate(&cfg, clients, 0);
-                        for (Client *curr = clients; curr; curr = curr->next) {
-                            if (curr->mode == CLIENT_TILED) {
-                                Window target = curr->frame ? curr->frame : curr->win;
-                                XMoveResizeWindow(dpy, target, curr->x, curr->y, curr->width, curr->height);
-                                if (curr->frame) {
-                                    XResizeWindow(dpy, curr->win, curr->width, curr->height - TITLEBAR_HEIGHT);
-                                    titlebar_draw(dpy, curr->frame, "Application", curr->width);
-                                }
-                            }
-                        }
+                        reflow_all(dpy, clients, &cfg);
                     }
                     drag_client = NULL;
                 }

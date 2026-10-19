@@ -24,6 +24,32 @@ int days_in_month(int year, int month) {
     return 31;
 }
 
+int first_weekday_of_month(int year, int month) {
+    struct tm t;
+    memset(&t, 0, sizeof(struct tm));
+    t.tm_year = year - 1900;
+    t.tm_mon = month - 1;
+    t.tm_mday = 1;
+    mktime(&t);
+    return t.tm_wday; // 0=Sunday, 1=Monday...
+}
+
+static void utf8_safe_copy(char *dest, const char *src, size_t max_bytes) {
+    if (!dest || !src || max_bytes == 0) return;
+    size_t i = 0;
+    while (src[i] != '\0' && i < max_bytes - 1) {
+        dest[i] = src[i];
+        i++;
+    }
+    while (i > 0 && ((unsigned char)dest[i - 1] & 0xC0) == 0x80) {
+        i--;
+    }
+    if (i > 0 && ((unsigned char)dest[i - 1] & 0x80)) {
+        i--;
+    }
+    dest[i] = '\0';
+}
+
 void launchpad_scan_apps(Launchpad *lp) {
     lp->app_count = 0;
     DIR *dir = opendir("/usr/share/applications");
@@ -51,7 +77,6 @@ void launchpad_scan_apps(Launchpad *lp) {
                 if (strncmp(line, "Exec=", 5) == 0 && exec[0] == '\0') {
                     snprintf(exec, sizeof(exec), "%.127s", line + 5);
                     exec[strcspn(exec, "\r\n")] = '\0';
-                    // Strip %u, %F, etc.
                     char *pct = strchr(exec, '%');
                     if (pct) *pct = '\0';
                 }
@@ -136,12 +161,12 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
             cairo_rectangle(cr, gx, gy, 42, 42);
             cairo_fill(cr);
 
-            // App Name
+            // App Name with UTF-8 safe copy
             cairo_set_source_rgb(cr, 0.90, 0.92, 0.96);
             cairo_set_font_size(cr, 11.0);
             cairo_move_to(cr, gx + 50, gy + 25);
             char trunc_name[32];
-            snprintf(trunc_name, sizeof(trunc_name), "%s", lp->apps[i].name);
+            utf8_safe_copy(trunc_name, lp->apps[i].name, sizeof(trunc_name));
             cairo_show_text(cr, trunc_name);
 
             displayed++;
@@ -174,6 +199,8 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     int year = tm_info->tm_year + 1900;
     int month = tm_info->tm_mon + 1;
     int total_days = days_in_month(year, month);
+    // Align columns: Monday = 0, Sunday = 6
+    int start_col = (first_weekday_of_month(year, month) + 6) % 7;
 
     int cal_x = mid_x + 40;
     int cal_y = 190;
@@ -187,8 +214,9 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     cairo_show_text(cr, "Mo   Tu   We   Th   Fr   Sa   Su");
 
     for (int day = 1; day <= total_days; day++) {
-        int cell_x = cal_x + 20 + ((day - 1) % 7) * 40;
-        int cell_y = cal_y + 65 + ((day - 1) / 7) * 30;
+        int cell_idx = start_col + (day - 1);
+        int cell_x = cal_x + 20 + (cell_idx % 7) * 40;
+        int cell_y = cal_y + 65 + (cell_idx / 7) * 30;
 
         if (day == tm_info->tm_mday) {
             cairo_set_source_rgb(cr, 0.20, 0.55, 0.95);
@@ -210,18 +238,15 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
         int btn_x = screen_w - 280;
         int btn_y = screen_h - 100;
 
-        // Glowing button background
         cairo_set_source_rgba(cr, 0.88, 0.20, 0.35, 0.95);
         cairo_rectangle(cr, btn_x, btn_y, 240, 48);
         cairo_fill(cr);
 
-        // Border
         cairo_set_source_rgb(cr, 1.0, 0.8, 0.8);
         cairo_set_line_width(cr, 2.0);
         cairo_rectangle(cr, btn_x, btn_y, 240, 48);
         cairo_stroke(cr);
 
-        // Text
         cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cr, 13.0);
         cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
@@ -236,10 +261,13 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
 
 void launchpad_toggle(Display *dpy, Launchpad *lp) {
     if (lp->is_visible) {
+        XUngrabKeyboard(dpy, CurrentTime);
         XUnmapWindow(dpy, lp->win);
         lp->is_visible = 0;
+        easter_egg_init(&lp->egg);
     } else {
         XMapRaised(dpy, lp->win);
+        XGrabKeyboard(dpy, lp->win, True, GrabModeAsync, GrabModeAsync, CurrentTime);
         lp->is_visible = 1;
         lp->search_query[0] = '\0';
         int screen = DefaultScreen(dpy);
@@ -259,7 +287,6 @@ void launchpad_handle_key(Display *dpy, Launchpad *lp, XKeyEvent *ev) {
     char buf[16] = {0};
     int len = XLookupString(ev, buf, sizeof(buf) - 1, NULL, NULL);
     if (len > 0) {
-        // Feed into Easter Egg buffer
         easter_egg_feed_key(&lp->egg, buf[0]);
 
         if (sym == XK_BackSpace) {
@@ -283,6 +310,12 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, int x, int y) {
     int screen = DefaultScreen(dpy);
     int screen_w = DisplayWidth(dpy, screen);
     int screen_h = DisplayHeight(dpy, screen);
+    int mid_x = screen_w * 0.55;
+
+    // Check if clicked inside search box -> ignore click dismiss
+    if (x >= 60 && x <= mid_x - 40 && y >= 60 && y <= 104) {
+        return;
+    }
 
     // Check if clicked "Will She Know" button
     if (lp->egg.triggered) {
@@ -296,7 +329,6 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, int x, int y) {
     }
 
     // Check if clicked an app in the grid
-    int mid_x = screen_w * 0.55;
     int start_y = 130;
     int col_w = (mid_x - 100) / 3;
     int displayed = 0;
@@ -307,7 +339,6 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, int x, int y) {
             int gy = start_y + (displayed / 3) * 70;
 
             if (x >= gx && x <= gx + col_w && y >= gy && y <= gy + 50) {
-                // Launch app
                 pid_t pid = fork();
                 if (pid == 0) {
                     setsid();

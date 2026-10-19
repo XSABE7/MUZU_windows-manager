@@ -20,6 +20,7 @@ typedef struct {
 } Launchpad;
 
 int days_in_month(int year, int month);
+int first_weekday_of_month(int year, int month);
 void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h);
 void launchpad_scan_apps(Launchpad *lp);
 void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h);

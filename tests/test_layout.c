@@ -32,7 +32,7 @@ int main(void) {
     assert(third->width == 960 && third->height == 540);
     assert(third->y == 540);
 
-    // Test 4: Drag-to-Float state transition
+    // Test 4: Drag-to-Float state transition and reflow
     Client *c = client_find(head, 101);
     assert(c->mode == CLIENT_TILED);
     c->mode = CLIENT_FLOATING;
@@ -64,6 +64,15 @@ int main(void) {
     dock_calculate_geometry(&dock, DOCK_RIGHT, 0, 1920, 1080);
     assert(dock.pos == DOCK_RIGHT);
     assert(dock.x > 1800);
+
+    // Test 6 (Reviewer Fix): Buffer overflow resistance with > 128 clients
+    Client *many_head = NULL;
+    for (int i = 1; i <= 150; i++) {
+        client_add(&many_head, 1000 + i, CLIENT_TILED);
+    }
+    // Must safely clamp to buffer capacity without crashing
+    layout_calculate(&cfg, many_head, 150);
+    assert(client_find(many_head, 1001)->width > 0);
 
     printf("test_layout passed!\n");
     return 0;

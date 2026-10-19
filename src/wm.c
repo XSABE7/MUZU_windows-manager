@@ -44,14 +44,7 @@ int client_count_tiled(Client *head) {
 }
 
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
-    (void)count; // Calculate directly from tiled clients list
-    int tiled_count = client_count_tiled(head);
-    if (tiled_count == 0) return;
-
-    // Collect tiled clients in insertion order or list order
-    // To preserve consistent layout, traverse list
-    // Note: client_add pushes to head, so reversing or indexing:
-    // Let's index tiled clients into a temporary array
+    (void)count;
     Client *tiled[128];
     int idx = 0;
     for (Client *curr = head; curr && idx < 128; curr = curr->next) {
@@ -59,6 +52,9 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
             tiled[idx++] = curr;
         }
     }
+    if (idx == 0) return;
+    int tiled_count = idx; // Clamp strictly to buffer capacity
+
     // Reverse so first added is master
     for (int i = 0; i < idx / 2; i++) {
         Client *tmp = tiled[i];
@@ -91,16 +87,19 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
 
         int stack_count = tiled_count - 1;
         int stack_h = cfg->screen_height / stack_count;
+        if (stack_h < 34) stack_h = 34;
+
         for (int i = 0; i < stack_count; i++) {
             Client *c = tiled[i + 1];
             c->x = half_w;
             c->y = i * stack_h;
             c->width = cfg->screen_width - half_w;
             if (i == stack_count - 1) {
-                c->height = cfg->screen_height - c->y; // Remainder
+                c->height = cfg->screen_height - c->y;
             } else {
                 c->height = stack_h;
             }
+            if (c->height < 34) c->height = 34;
         }
     }
 }

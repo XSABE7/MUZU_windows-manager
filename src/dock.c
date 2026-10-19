@@ -40,9 +40,9 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
 
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h) {
     dock->size = 48;
-    dock->is_hidden = 0;
+    dock->is_hidden = 1; // Auto-hidden by default
     dock->hover_state = 0;
-    dock_calculate_geometry(dock, pos, 0, screen_w, screen_h);
+    dock_calculate_geometry(dock, pos, dock->is_hidden, screen_w, screen_h);
 
     int screen = DefaultScreen(dpy);
     Window root = RootWindow(dpy, screen);
@@ -70,7 +70,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     cairo_surface_t *surface = cairo_xlib_surface_create(dpy, dock->win, visual, dock->width, dock->height);
     cairo_t *cr = cairo_create(surface);
 
-    // Pill container background
+    // Container background
     cairo_set_source_rgba(cr, 0.12, 0.15, 0.20, 0.92);
     cairo_rectangle(cr, 0, 0, dock->width, dock->height);
     cairo_fill(cr);
@@ -81,11 +81,12 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     cairo_rectangle(cr, 0, 0, dock->width, dock->height);
     cairo_stroke(cr);
 
-    // Render sample favorite app slots (Files, Terminal, Browser, Settings)
+    // Render launcher icons
     int icon_size = 32;
     int margin = 8;
     int icons = 4;
     int start_x = (dock->width - (icons * (icon_size + margin))) / 2;
+    if (start_x < 4) start_x = 4;
 
     double colors[4][3] = {
         {0.25, 0.55, 0.95}, // Web
@@ -106,11 +107,20 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 }
 
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h) {
-    (void)x;
-    (void)y;
-    // When hovering near trigger boundary, reveal dock
-    if (dock->is_hidden) {
+    if (!dock) return;
+
+    int in_trigger = 0;
+    if (dock->pos == DOCK_BOTTOM && y >= screen_h - dock->size - 10) in_trigger = 1;
+    else if (dock->pos == DOCK_TOP && y <= dock->size + 10) in_trigger = 1;
+    else if (dock->pos == DOCK_LEFT && x <= dock->size + 10) in_trigger = 1;
+    else if (dock->pos == DOCK_RIGHT && x >= screen_w - dock->size - 10) in_trigger = 1;
+
+    if (in_trigger && dock->is_hidden) {
         dock_calculate_geometry(dock, dock->pos, 0, screen_w, screen_h);
+        XMoveWindow(dpy, dock->win, dock->x, dock->y);
+        XRaiseWindow(dpy, dock->win);
+    } else if (!in_trigger && !dock->is_hidden) {
+        dock_calculate_geometry(dock, dock->pos, 1, screen_w, screen_h);
         XMoveWindow(dpy, dock->win, dock->x, dock->y);
     }
 }
