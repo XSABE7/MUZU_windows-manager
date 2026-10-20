@@ -272,6 +272,7 @@ void dock_cleanup(Dock *dock) {
     if (!dock) return;
     for (int i = 0; i < dock->item_count; i++) {
         if (dock->items[i].icon_surface) {
+            cairo_surface_finish(dock->items[i].icon_surface);
             cairo_surface_destroy(dock->items[i].icon_surface);
             dock->items[i].icon_surface = NULL;
         }

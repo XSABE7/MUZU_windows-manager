@@ -56,6 +56,14 @@ int main(void) {
     launchpad_handle_click(NULL, &test_lp, Button1, 1000 - 40, 40);
     assert(test_lp.is_visible == 0);
 
+    // 4. Non-Button1 clicks (Button3 right click, Button2 middle click) must NOT close
+    test_lp.is_visible = 1;
+    launchpad_handle_click(NULL, &test_lp, Button3, 1000 - 40, 40);
+    assert(test_lp.is_visible == 1);
+
+    launchpad_handle_click(NULL, &test_lp, Button2, 1000 - 40, 40);
+    assert(test_lp.is_visible == 1);
+
     printf("test_calendar passed!\n");
     return 0;
 }

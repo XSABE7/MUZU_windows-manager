@@ -456,16 +456,6 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, in
         screen_h = DisplayHeight(dpy, screen);
     }
 
-    // Check if clicked top-right explicit close button ('✕')
-    int close_btn_x = screen_w - 56;
-    int close_btn_y = 24;
-    int close_btn_size = 32;
-    if (x >= close_btn_x - 6 && x <= close_btn_x + close_btn_size + 6 &&
-        y >= close_btn_y - 6 && y <= close_btn_y + close_btn_size + 6) {
-        launchpad_toggle(dpy, lp);
-        return;
-    }
-
     // Mouse wheel scrolling: Button4 = Scroll Up, Button5 = Scroll Down
     if (button == Button4) {
         launchpad_scroll(lp, -60, screen_h);
@@ -474,6 +464,19 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, in
     } else if (button == Button5) {
         launchpad_scroll(lp, 60, screen_h);
         if (dpy) launchpad_render(dpy, lp, screen_w, screen_h);
+        return;
+    }
+
+    // Only primary button (Button1) activates buttons and applications
+    if (button != Button1) return;
+
+    // Check if clicked top-right explicit close button ('✕')
+    int close_btn_x = screen_w - 56;
+    int close_btn_y = 24;
+    int close_btn_size = 32;
+    if (x >= close_btn_x - 6 && x <= close_btn_x + close_btn_size + 6 &&
+        y >= close_btn_y - 6 && y <= close_btn_y + close_btn_size + 6) {
+        launchpad_toggle(dpy, lp);
         return;
     }
 

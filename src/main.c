@@ -179,7 +179,7 @@ int main(void) {
                     break;
                 }
 
-                XWindowAttributes wa;
+                XWindowAttributes wa = {0};
                 if (XGetWindowAttributes(dpy, w, &wa) && wa.override_redirect) {
                     XMapWindow(dpy, w);
                     break;
@@ -240,12 +240,18 @@ int main(void) {
 
             case ClientMessage: {
                 if (ev.xclient.message_type == net_wm_moveresize) {
+                    if (ev.xclient.format != 32) break;
                     Window target_win = ev.xclient.window;
+                    if (target_win == None) break;
                     Client *c = client_find_by_any(clients, target_win);
                     if (c) {
-                        // Direction 8 = _NET_WM_MOVERESIZE_MOVE
                         long direction = ev.xclient.data.l[2];
-                        if (direction == 8 || direction == 9) {
+                        if (direction == 11 && drag_client == c) {
+                            XUngrabPointer(dpy, CurrentTime);
+                            drag_client = NULL;
+                            break;
+                        }
+                        if ((direction == 8 || direction == 10) && !drag_client) {
                             XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
                             Window raise_target = c->frame ? c->frame : c->win;
                             XRaiseWindow(dpy, raise_target);
@@ -268,7 +274,16 @@ int main(void) {
                         }
                     }
                 } else if (ev.xclient.message_type == net_close_window) {
-                    client_close(dpy, ev.xclient.window);
+                    if (ev.xclient.window != None) {
+                        client_close(dpy, ev.xclient.window);
+                    }
+                } else if (ev.xclient.message_type == net_active_window) {
+                    Client *c = client_find_by_any(clients, ev.xclient.window);
+                    if (c) {
+                        XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+                        Window raise_target = c->frame ? c->frame : c->win;
+                        XRaiseWindow(dpy, raise_target);
+                    }
                 }
                 break;
             }
@@ -315,7 +330,9 @@ int main(void) {
                 }
 
                 if (ev.xbutton.window == dock.win) {
-                    dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                    if (ev.xbutton.button == Button1) {
+                        dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                    }
                     break;
                 }
 
@@ -428,7 +445,6 @@ int main(void) {
             }
 
             case PropertyNotify: {
-                Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
                 if (ev.xproperty.atom == XA_WM_NAME || ev.xproperty.atom == net_wm_name) {
                     Client *c = client_find_by_any(clients, ev.xproperty.window);
                     if (c && c->frame) {

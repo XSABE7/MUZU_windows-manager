@@ -142,6 +142,23 @@ int main(void) {
     assert(dock_get_item_at(&test_dock, start_x + 2 * (icon_size + margin) + 16, 24) == 2);
     assert(dock_get_item_at(&test_dock, start_x + 3 * (icon_size + margin) + 16, 24) == 3);
 
+    // Test 9 (Reviewer CRIT-1 Fix): client_find_by_any and client_remove with None
+    Client *csd_list = NULL;
+    client_add(&csd_list, 999, CLIENT_TILED);
+    csd_list->frame = None; // CSD window has no frame
+    csd_list->is_csd = 1;
+
+    // Searching for None must return NULL, NOT the CSD client!
+    assert(client_find_by_any(csd_list, None) == NULL);
+    assert(client_find(csd_list, None) == NULL);
+
+    // client_remove with None must not remove the CSD client!
+    client_remove(&csd_list, None);
+    assert(client_find(csd_list, 999) != NULL);
+
+    client_remove(&csd_list, 999);
+    assert(csd_list == NULL);
+
     printf("test_layout passed!\n");
     return 0;
 }

@@ -19,9 +19,10 @@ void client_add(Client **head, Window win, ClientMode mode) {
 }
 
 void client_remove(Client **head, Window win) {
+    if (win == None) return;
     Client **curr = head;
     while (*curr) {
-        if ((*curr)->win == win || (*curr)->frame == win) {
+        if ((*curr)->win == win || ((*curr)->frame != None && (*curr)->frame == win)) {
             Client *to_free = *curr;
             *curr = (*curr)->next;
             if (to_free->titlebar_surface) {
@@ -37,6 +38,7 @@ void client_remove(Client **head, Window win) {
 }
 
 Client *client_find(Client *head, Window win) {
+    if (win == None) return NULL;
     for (Client *curr = head; curr; curr = curr->next) {
         if (curr->win == win) return curr;
     }
@@ -44,8 +46,9 @@ Client *client_find(Client *head, Window win) {
 }
 
 Client *client_find_by_any(Client *head, Window win) {
+    if (win == None) return NULL;
     for (Client *curr = head; curr; curr = curr->next) {
-        if (curr->win == win || curr->frame == win) return curr;
+        if (curr->win == win || (curr->frame != None && curr->frame == win)) return curr;
     }
     return NULL;
 }
