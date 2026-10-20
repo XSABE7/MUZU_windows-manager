@@ -33,6 +33,7 @@ typedef struct {
     DockPosition pos;
     int size;           // Thickness (e.g. 48px)
     int is_hidden;      // 1 if auto-hidden
+    int autohide_enabled; // 1 = auto-hide on cursor leave, 0 = always visible on screen
     int is_dragging;    // 1 if currently being dragged by user
     int drag_offset_x, drag_offset_y; // Drag anchor offset
     int hover_state;
@@ -59,6 +60,9 @@ int dock_add_app(Dock *dock, const char *name, const char *exec, const char *ico
 int dock_remove_app(Dock *dock, int index);
 void dock_save_pinned_apps(const Dock *dock);
 void dock_load_pinned_apps(Dock *dock);
+void dock_save_settings(const Dock *dock);
+void dock_load_settings(Dock *dock);
+void dock_set_autohide(Dock *dock, int enabled, int screen_w, int screen_h, Display *dpy);
 void dock_set_magnification(Dock *dock, int enabled);
 double dock_get_magnification_scale(const Dock *dock, int item_center);
 int dock_add_minimized(Dock *dock, Client *c);

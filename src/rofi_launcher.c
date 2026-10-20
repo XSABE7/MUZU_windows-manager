@@ -500,7 +500,10 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
 
     cairo_destroy(cr);
     cairo_surface_flush(rofi->surface);
-    XFlush(dpy);
+    if (dpy && rofi->win && rofi->is_visible) {
+        XRaiseWindow(dpy, rofi->win);
+    }
+    if (dpy) XFlush(dpy);
 }
 
 void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi) {
@@ -516,6 +519,7 @@ void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi) {
             rofi->y = rofi->anim_start_y;
             XMoveWindow(dpy, rofi->win, rofi->x, rofi->y);
             XMapRaised(dpy, rofi->win);
+            XRaiseWindow(dpy, rofi->win);
             XSetInputFocus(dpy, rofi->win, RevertToPointerRoot, CurrentTime);
 
             // 6-step ease-out cubic animation (~80ms)
@@ -525,12 +529,14 @@ void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi) {
                 double ease = 1.0 - pow(1.0 - t, 3.0); // Ease-out cubic
                 int cur_y = (int)(rofi->anim_start_y + (rofi->target_y - rofi->anim_start_y) * ease);
                 XMoveWindow(dpy, rofi->win, rofi->x, cur_y);
+                XRaiseWindow(dpy, rofi->win);
                 rofi_launcher_render(dpy, rofi, 0, 0);
                 XFlush(dpy);
                 usleep(12000); // ~12ms per frame
             }
             rofi->y = rofi->target_y;
             XMoveWindow(dpy, rofi->win, rofi->x, rofi->y);
+            XRaiseWindow(dpy, rofi->win);
             rofi_launcher_render(dpy, rofi, 0, 0);
         }
     } else {

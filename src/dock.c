@@ -97,11 +97,6 @@ double dock_get_magnification_scale(const Dock *dock, int item_center) {
     return 1.0 + 0.45 * (cosine * cosine); // Scales smoothly from 1.0 to 1.45
 }
 
-void dock_set_magnification(Dock *dock, int enabled) {
-    if (!dock) return;
-    dock->magnification_enabled = enabled ? 1 : 0;
-}
-
 int dock_get_item_at(const Dock *dock, int x, int y) {
     if (!dock || dock->item_count <= 0) return -1;
     int icon_size = dock_get_base_icon_size(dock);
@@ -316,10 +311,82 @@ void dock_load_pinned_apps(Dock *dock) {
     fclose(f);
 }
 
+void dock_save_settings(const Dock *dock) {
+    if (!dock) return;
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/.config", home);
+    mkdir(dir, 0755);
+    snprintf(dir, sizeof(dir), "%s/.config/muzuwm", home);
+    mkdir(dir, 0755);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/.config/muzuwm/dock_settings.ini", home);
+
+    FILE *f = fopen(path, "w");
+    if (!f) return;
+
+    fprintf(f, "autohide=%d\n", dock->autohide_enabled);
+    fprintf(f, "magnification=%d\n", dock->magnification_enabled);
+    fprintf(f, "position=%d\n", (int)dock->pos);
+    fprintf(f, "size=%d\n", dock->size);
+    fclose(f);
+}
+
+void dock_load_settings(Dock *dock) {
+    if (!dock) return;
+    const char *home = getenv("HOME");
+    if (!home) return;
+    char path[512];
+    snprintf(path, sizeof(path), "%s/.config/muzuwm/dock_settings.ini", home);
+
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+
+    char line[128];
+    while (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        int val = 0;
+        if (sscanf(line, "autohide=%d", &val) == 1) {
+            dock->autohide_enabled = (val != 0);
+            dock->is_hidden = dock->autohide_enabled ? 1 : 0;
+        } else if (sscanf(line, "magnification=%d", &val) == 1) {
+            dock->magnification_enabled = (val != 0);
+        } else if (sscanf(line, "position=%d", &val) == 1) {
+            if (val >= 0 && val <= 3) dock->pos = (DockPosition)val;
+        } else if (sscanf(line, "size=%d", &val) == 1) {
+            if (val >= 24 && val <= 128) dock->size = val;
+        }
+    }
+    fclose(f);
+}
+
+void dock_set_autohide(Dock *dock, int enabled, int screen_w, int screen_h, Display *dpy) {
+    if (!dock) return;
+    dock->autohide_enabled = enabled ? 1 : 0;
+    dock->is_hidden = dock->autohide_enabled ? 1 : 0;
+    dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+    if (dpy && dock->win) {
+        XMoveWindow(dpy, dock->win, dock->x, dock->y);
+        if (!dock->is_hidden) {
+            XRaiseWindow(dpy, dock->win);
+        }
+    }
+    dock_render(dpy, dock, screen_w, screen_h);
+    dock_save_settings(dock);
+}
+
+void dock_set_magnification(Dock *dock, int enabled) {
+    if (!dock) return;
+    dock->magnification_enabled = enabled ? 1 : 0;
+    dock_save_settings(dock);
+}
+
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme) {
     if (!dock) return;
     dock->size = 48;
-    dock->is_hidden = 1; // Auto-hidden by default
+    dock->autohide_enabled = 0; // Default: Always visible dock (can be toggled)
+    dock->is_hidden = 0;
     dock->is_dragging = 0;
     dock->drag_offset_x = 0;
     dock->drag_offset_y = 0;
@@ -332,14 +399,16 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->theme = theme;
     dock->item_count = 0;
     dock->minimized_count = 0;
+    dock->pos = pos;
 
     // Item 0: Apps Launcher (three dots icon)
     dock_add_app(dock, "Apps", "__ROFI__", "view-app-grid");
 
-    // Load user pinned apps
+    // Load user pinned apps and user settings
     dock_load_pinned_apps(dock);
+    dock_load_settings(dock);
 
-    dock_calculate_geometry(dock, pos, dock->is_hidden, screen_w, screen_h);
+    dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
 
     if (dpy) {
         int screen = DefaultScreen(dpy);
@@ -563,11 +632,28 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
     cairo_destroy(cr);
     cairo_surface_flush(dock->surface);
-    if (dpy) XFlush(dpy);
+    if (dpy) {
+        if (!dock->is_hidden) {
+            XRaiseWindow(dpy, dock->win);
+        }
+        XFlush(dpy);
+    }
 }
 
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h) {
     if (!dock) return;
+
+    if (!dock->autohide_enabled) {
+        if (dock->is_hidden) {
+            dock->is_hidden = 0;
+            dock_calculate_geometry(dock, dock->pos, 0, screen_w, screen_h);
+            if (dpy && dock->win) {
+                XMoveWindow(dpy, dock->win, dock->x, dock->y);
+                XRaiseWindow(dpy, dock->win);
+            }
+        }
+        return;
+    }
 
     int in_trigger = 0;
     if (dock->pos == DOCK_BOTTOM && y >= screen_h - dock->size - 10) in_trigger = 1;
@@ -577,14 +663,18 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
 
     if (in_trigger && dock->is_hidden) {
         dock_calculate_geometry(dock, dock->pos, 0, screen_w, screen_h);
-        XMoveWindow(dpy, dock->win, dock->x, dock->y);
-        XRaiseWindow(dpy, dock->win);
+        if (dpy && dock->win) {
+            XMoveWindow(dpy, dock->win, dock->x, dock->y);
+            XRaiseWindow(dpy, dock->win);
+        }
     } else if (!in_trigger && !dock->is_hidden) {
         dock->hover_item = -1;
         dock->is_hovered = 0;
         dock->mouse_pos = -1.0;
         dock_calculate_geometry(dock, dock->pos, 1, screen_w, screen_h);
-        XMoveWindow(dpy, dock->win, dock->x, dock->y);
+        if (dpy && dock->win) {
+            XMoveWindow(dpy, dock->win, dock->x, dock->y);
+        }
     }
 }
 
@@ -593,6 +683,10 @@ void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
     dock->is_hovered = 1;
     dock->mouse_pos = is_vertical ? (double)y : (double)x;
+
+    if (dpy && dock->win) {
+        XRaiseWindow(dpy, dock->win);
+    }
 
     int item = dock_get_item_at(dock, x, y);
     if (item != dock->hover_item || dock->magnification_enabled) {
@@ -625,11 +719,15 @@ void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int scree
     dock_calculate_geometry(dock, new_pos, dock->is_hidden, screen_w, screen_h);
     if (dpy && dock->win) {
         XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+        if (!dock->is_hidden) {
+            XRaiseWindow(dpy, dock->win);
+        }
     }
     if (dock->surface) {
         cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
     }
     dock_render(dpy, dock, screen_w, screen_h);
+    dock_save_settings(dock);
 }
 
 void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {

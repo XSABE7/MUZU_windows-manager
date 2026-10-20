@@ -48,12 +48,7 @@ static void handle_menu_action(int action_id, void *userdata) {
             break;
 
         case DOCK_ACTION_TOGGLE_AUTOHIDE:
-            dock->is_hidden = !dock->is_hidden;
-            dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
-            if (dock->win) {
-                XMoveWindow(dpy, dock->win, dock->x, dock->y);
-            }
-            dock_render(dpy, dock, screen_w, screen_h);
+            dock_set_autohide(dock, !dock->autohide_enabled, screen_w, screen_h, dpy);
             break;
 
         case DOCK_ACTION_POS_BOTTOM:
@@ -194,6 +189,23 @@ static int x_error_handler(Display *dpy, XErrorEvent *e) {
     return 0; // Ignore non-fatal X errors
 }
 
+static Dock *g_dock = NULL;
+static RofiLauncher *g_rofi = NULL;
+static Menu *g_menu = NULL;
+
+static void raise_system_overlays(Display *dpy) {
+    if (!dpy) return;
+    if (g_dock && g_dock->win) {
+        XRaiseWindow(dpy, g_dock->win);
+    }
+    if (g_rofi && g_rofi->win && g_rofi->is_visible) {
+        XRaiseWindow(dpy, g_rofi->win);
+    }
+    if (g_menu && g_menu->win && g_menu->is_visible) {
+        XRaiseWindow(dpy, g_menu->win);
+    }
+}
+
 static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
     layout_calculate(cfg, clients, 0);
     for (Client *curr = clients; curr; curr = curr->next) {
@@ -209,6 +221,7 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
             }
         }
     }
+    raise_system_overlays(dpy);
     XFlush(dpy);
 }
 
@@ -315,6 +328,10 @@ int main(int argc, char **argv) {
         .right_clicked_dock_item = -1
     };
     menu_init(dpy, &context_menu, &current_theme, handle_menu_action, &wm_ctx);
+
+    g_dock = &dock;
+    g_rofi = &rofi_launcher;
+    g_menu = &context_menu;
 
     // Select root window events
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
@@ -442,6 +459,22 @@ int main(int argc, char **argv) {
                 XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 dock_update_running(&dock, clients);
                 dock_render(dpy, &dock, screen_w, screen_h);
+                raise_system_overlays(dpy);
+                break;
+            }
+
+            case ConfigureRequest: {
+                XConfigureRequestEvent *cre = &ev.xconfigurerequest;
+                XWindowChanges wc;
+                wc.x = cre->x;
+                wc.y = cre->y;
+                wc.width = cre->width;
+                wc.height = cre->height;
+                wc.border_width = cre->border_width;
+                wc.sibling = cre->above;
+                wc.stack_mode = cre->detail;
+                XConfigureWindow(dpy, cre->window, cre->value_mask, &wc);
+                raise_system_overlays(dpy);
                 break;
             }
 
@@ -462,6 +495,7 @@ int main(int argc, char **argv) {
                             XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
                             Window raise_target = c->frame ? c->frame : c->win;
                             XRaiseWindow(dpy, raise_target);
+                            raise_system_overlays(dpy);
 
                             if (c->mode == CLIENT_TILED) {
                                 c->mode = CLIENT_FLOATING;
@@ -503,6 +537,7 @@ int main(int argc, char **argv) {
                         XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
                         Window raise_target = c->frame ? c->frame : c->win;
                         XRaiseWindow(dpy, raise_target);
+                        raise_system_overlays(dpy);
                     }
                 }
                 break;
@@ -583,7 +618,7 @@ int main(int argc, char **argv) {
                         }
 
                         menu_add_item(&context_menu, dock.magnification_enabled ? "Magnification: On ✓" : "Magnification: Off", DOCK_ACTION_TOGGLE_MAGNIFICATION);
-                        menu_add_item(&context_menu, dock.is_hidden ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
+                        menu_add_item(&context_menu, dock.autohide_enabled ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
                         menu_add_item(&context_menu, "Position: Left", DOCK_ACTION_POS_LEFT);
@@ -609,6 +644,7 @@ int main(int argc, char **argv) {
                                 XMapWindow(dpy, min_c->win);
                             }
                             XRaiseWindow(dpy, target);
+                            raise_system_overlays(dpy);
                             XSetInputFocus(dpy, min_c->win, RevertToPointerRoot, CurrentTime);
                             dock_remove_minimized(&dock, min_c);
                             reflow_all(dpy, clients, &cfg);
@@ -637,6 +673,7 @@ int main(int argc, char **argv) {
                     if (curr->frame && ev.xbutton.window == curr->frame) {
                         XSetInputFocus(dpy, curr->win, RevertToPointerRoot, CurrentTime);
                         XRaiseWindow(dpy, curr->frame);
+                        raise_system_overlays(dpy);
 
                         if (ev.xbutton.button == Button1) {
                             TitlebarAction action = titlebar_get_action(ev.xbutton.x, curr->width);

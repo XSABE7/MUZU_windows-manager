@@ -339,6 +339,30 @@ int main(void) {
         assert(dock_remove_app(&d, 0) == 0);
         assert(d.item_count == 2);
 
+        // Test Auto-Hide toggle and behavior
+        // 1. Auto-hide disabled -> cursor moving away does NOT hide dock
+        dock_set_autohide(&d, 0, 1920, 1080, NULL);
+        assert(d.autohide_enabled == 0);
+        assert(d.is_hidden == 0);
+        dock_handle_motion(NULL, &d, 100, 100, 1920, 1080); // Far away
+        assert(d.is_hidden == 0); // Stays visible!
+
+        // 2. Auto-hide enabled -> cursor moving away hides dock
+        dock_set_autohide(&d, 1, 1920, 1080, NULL);
+        assert(d.autohide_enabled == 1);
+        assert(d.is_hidden == 1);
+        dock_handle_motion(NULL, &d, 960, 1075, 1920, 1080); // Trigger zone
+        assert(d.is_hidden == 0); // Slid up
+        dock_handle_motion(NULL, &d, 960, 500, 1920, 1080); // Outside trigger zone
+        assert(d.is_hidden == 1); // Auto-hidden
+
+        // 3. Settings persistence round-trip
+        dock_set_autohide(&d, 0, 1920, 1080, NULL);
+        Dock d2 = {0};
+        dock_load_settings(&d2);
+        assert(d2.autohide_enabled == 0);
+        assert(d2.is_hidden == 0);
+
         dock_cleanup(&d);
     }
 
