@@ -12,3 +12,8 @@ test_client_props
 test_icon_fetcher
 test_gtk_theme
 test_x11_stress
+test_rofi_launcher
+test_wallpaper
+test_menu
+gtk/
+for_imperment/
