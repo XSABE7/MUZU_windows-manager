@@ -123,6 +123,25 @@ int main(void) {
     assert(dock_800.pos == DOCK_RIGHT);
     assert(dock_800.x > 700);
 
+    // Test 8: Dock items and click bounds
+    Dock test_dock = {0};
+    test_dock.size = 48;
+    test_dock.item_count = 4;
+    test_dock.hover_item = -1;
+    dock_calculate_geometry(&test_dock, DOCK_BOTTOM, 0, 1000, 700);
+
+    // Coordinate outside dock items should return -1
+    assert(dock_get_item_at(&test_dock, 2, 24) == -1);
+
+    // Center of items 0..3 should return 0..3
+    int icon_size = 32;
+    int margin = 8;
+    int start_x = (test_dock.width - (4 * (icon_size + margin))) / 2;
+    assert(dock_get_item_at(&test_dock, start_x + 16, 24) == 0);
+    assert(dock_get_item_at(&test_dock, start_x + (icon_size + margin) + 16, 24) == 1);
+    assert(dock_get_item_at(&test_dock, start_x + 2 * (icon_size + margin) + 16, 24) == 2);
+    assert(dock_get_item_at(&test_dock, start_x + 3 * (icon_size + margin) + 16, 24) == 3);
+
     printf("test_layout passed!\n");
     return 0;
 }

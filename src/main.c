@@ -314,6 +314,11 @@ int main(void) {
                     break;
                 }
 
+                if (ev.xbutton.window == dock.win) {
+                    dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                    break;
+                }
+
                 for (Client *curr = clients; curr; curr = curr->next) {
                     if (curr->frame && ev.xbutton.window == curr->frame) {
                         XSetInputFocus(dpy, curr->win, RevertToPointerRoot, CurrentTime);
@@ -375,7 +380,21 @@ int main(void) {
                     handle_titlebar_drag(dpy, drag_client, client_start_x + dx, client_start_y + dy, screen_w, screen_h);
                 }
 
+                if (ev.xmotion.window == dock.win) {
+                    dock_handle_hover(dpy, &dock, ev.xmotion.x, ev.xmotion.y, screen_w, screen_h);
+                }
+
                 dock_handle_motion(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
+                break;
+            }
+
+            case LeaveNotify: {
+                if (ev.xcrossing.window == dock.win) {
+                    if (dock.hover_item != -1) {
+                        dock.hover_item = -1;
+                        dock_render(dpy, &dock, screen_w, screen_h);
+                    }
+                }
                 break;
             }
 

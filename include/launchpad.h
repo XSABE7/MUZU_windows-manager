@@ -13,7 +13,7 @@ typedef struct {
     cairo_surface_t *icon_surface;
 } AppItem;
 
-typedef struct {
+typedef struct Launchpad {
     Window win;
     int is_visible;
     AppItem apps[128];

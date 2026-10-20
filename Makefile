@@ -13,7 +13,7 @@ tests: test_layout test_trigger test_easter_egg test_calendar test_client_props 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c
+test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/launchpad.c src/easter_egg.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_trigger: tests/test_trigger.c src/trigger.c
