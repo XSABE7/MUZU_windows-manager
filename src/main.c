@@ -358,7 +358,13 @@ int main(void) {
 
                 if (ev.xbutton.window == dock.win) {
                     if (ev.xbutton.button == Button3) {
-                        dock_cycle_position(dpy, &dock, screen_w, screen_h);
+                        dock.is_dragging = 1;
+                        dock.drag_offset_x = ev.xbutton.x;
+                        dock.drag_offset_y = ev.xbutton.y;
+                        XGrabPointer(dpy, root, False,
+                                     ButtonReleaseMask | PointerMotionMask,
+                                     GrabModeAsync, GrabModeAsync,
+                                     None, None, CurrentTime);
                         break;
                     }
                     if (ev.xbutton.button == Button1) {
@@ -450,6 +456,11 @@ int main(void) {
             }
 
             case MotionNotify: {
+                if (dock.is_dragging) {
+                    dock_handle_drag(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
+                    break;
+                }
+
                 if (trigger_check_hot_corner(ev.xmotion.x_root, ev.xmotion.y_root, DEFAULT_HOT_CORNER_SIZE)) {
                     if (!launchpad.is_visible) {
                         launchpad_toggle(dpy, &launchpad);
@@ -481,6 +492,12 @@ int main(void) {
             }
 
             case ButtonRelease: {
+                if (dock.is_dragging && ev.xbutton.button == Button3) {
+                    XUngrabPointer(dpy, CurrentTime);
+                    dock_end_drag(dpy, &dock, screen_w, screen_h);
+                    break;
+                }
+
                 if (drag_client) {
                     XUngrabPointer(dpy, CurrentTime);
 

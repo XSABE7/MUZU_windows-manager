@@ -551,6 +551,57 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     dock_set_position(dpy, dock, next_pos, screen_w, screen_h);
 }
 
+DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_w, int screen_h) {
+    int dist_bottom = screen_h - center_y;
+    int dist_top = center_y;
+    int dist_left = center_x;
+    int dist_right = screen_w - center_x;
+
+    int min_dist = dist_bottom;
+    DockPosition pos = DOCK_BOTTOM;
+
+    if (dist_top < min_dist) {
+        min_dist = dist_top;
+        pos = DOCK_TOP;
+    }
+    if (dist_left < min_dist) {
+        min_dist = dist_left;
+        pos = DOCK_LEFT;
+    }
+    if (dist_right < min_dist) {
+        min_dist = dist_right;
+        pos = DOCK_RIGHT;
+    }
+
+    return pos;
+}
+
+void dock_handle_drag(Display *dpy, Dock *dock, int root_x, int root_y, int screen_w, int screen_h) {
+    if (!dock || !dock->is_dragging) return;
+    int nx = root_x - dock->drag_offset_x;
+    int ny = root_y - dock->drag_offset_y;
+
+    if (nx < 0) nx = 0;
+    if (ny < 0) ny = 0;
+    if (nx + dock->width > screen_w) nx = screen_w - dock->width;
+    if (ny + dock->height > screen_h) ny = screen_h - dock->height;
+
+    dock->x = nx;
+    dock->y = ny;
+    if (dpy && dock->win) {
+        XMoveWindow(dpy, dock->win, dock->x, dock->y);
+    }
+}
+
+void dock_end_drag(Display *dpy, Dock *dock, int screen_w, int screen_h) {
+    if (!dock) return;
+    dock->is_dragging = 0;
+    int cx = dock->x + dock->width / 2;
+    int cy = dock->y + dock->height / 2;
+    DockPosition nearest = dock_calculate_nearest_edge(cx, cy, screen_w, screen_h);
+    dock_set_position(dpy, dock, nearest, screen_w, screen_h);
+}
+
 void dock_update_running(Dock *dock, const Client *clients) {
     if (!dock) return;
     for (int i = 0; i < dock->item_count; i++) {

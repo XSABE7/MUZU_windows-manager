@@ -33,6 +33,8 @@ typedef struct {
     DockPosition pos;
     int size;           // Thickness (e.g. 48px)
     int is_hidden;      // 1 if auto-hidden
+    int is_dragging;    // 1 if currently being dragged by user
+    int drag_offset_x, drag_offset_y; // Drag anchor offset
     int hover_state;
     int hover_item;     // -1 if none, 0..item_count-1
     int item_count;
@@ -56,6 +58,9 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y);
 void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y);
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h);
 void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h);
+DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_w, int screen_h);
+void dock_handle_drag(Display *dpy, Dock *dock, int root_x, int root_y, int screen_w, int screen_h);
+void dock_end_drag(Display *dpy, Dock *dock, int screen_w, int screen_h);
 void dock_update_running(Dock *dock, const Client *clients);
 void dock_cleanup(Dock *dock);
 

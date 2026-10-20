@@ -315,6 +315,21 @@ int main(void) {
         dock_cleanup(&d);
     }
 
+    // Test 13: Dock Calculate Nearest Edge for Drag-and-Snap
+    {
+        // Bottom: near (960, 1000) on 1920x1080 screen
+        assert(dock_calculate_nearest_edge(960, 1000, 1920, 1080) == DOCK_BOTTOM);
+
+        // Top: near (960, 50) on 1920x1080 screen
+        assert(dock_calculate_nearest_edge(960, 50, 1920, 1080) == DOCK_TOP);
+
+        // Left: near (50, 540) on 1920x1080 screen
+        assert(dock_calculate_nearest_edge(50, 540, 1920, 1080) == DOCK_LEFT);
+
+        // Right: near (1880, 540) on 1920x1080 screen
+        assert(dock_calculate_nearest_edge(1880, 540, 1920, 1080) == DOCK_RIGHT);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }
