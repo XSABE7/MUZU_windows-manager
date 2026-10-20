@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
-CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext fontconfig)
-LIBS = $(shell pkg-config --libs cairo x11 xext fontconfig) -lm
+CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext fontconfig gdk-pixbuf-2.0)
+LIBS = $(shell pkg-config --libs cairo x11 xext fontconfig gdk-pixbuf-2.0) -lm
 
 SRCS = src/wm.c src/titlebar.c src/trigger.c src/rofi_launcher.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/wallpaper.c src/menu.c src/main.c
 OBJS = $(SRCS:.c=.o)

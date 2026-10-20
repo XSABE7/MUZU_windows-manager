@@ -95,6 +95,32 @@ int main(void) {
     cairo_surface_write_to_png(dummy, long_png_path);
     cairo_surface_destroy(dummy);
 
+    // Create a test SVG icon in ChildTheme scalable/apps
+    system("mkdir -p /tmp/muzuwm_test_icons/ChildTheme/scalable/apps");
+    FILE *fsvg = fopen("/tmp/muzuwm_test_icons/ChildTheme/scalable/apps/vector_app.svg", "w");
+    if (fsvg) {
+        fprintf(fsvg, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"48\" height=\"48\" viewBox=\"0 0 48 48\">\n"
+                      "  <rect width=\"48\" height=\"48\" fill=\"#FF8800\"/>\n"
+                      "</svg>\n");
+        fclose(fsvg);
+    }
+
+    // Create a test XPM icon in ChildTheme apps/48
+    FILE *fxpm = fopen("/tmp/muzuwm_test_icons/ChildTheme/apps/48/pixmap_app.xpm", "w");
+    if (fxpm) {
+        fprintf(fxpm, "/* XPM */\n"
+                      "static char *test_xpm[] = {\n"
+                      "\"4 4 2 1\",\n"
+                      "\"  c None\",\n"
+                      "\". c #FF0000\",\n"
+                      "\"....\",\n"
+                      "\"....\",\n"
+                      "\"....\",\n"
+                      "\"....\"\n"
+                      "};\n");
+        fclose(fxpm);
+    }
+
     // Set theme to ChildTheme
     icon_theme_set("ChildTheme");
 
@@ -109,6 +135,50 @@ int main(void) {
     int found_long = icon_find_themed_png(long_name, themed_path, sizeof(themed_path));
     assert(found_long == 1);
     assert(strstr(themed_path, long_name) != NULL);
+
+    // Test SVG icon lookup and loading
+    int found_svg = icon_find_themed_png("vector_app", themed_path, sizeof(themed_path));
+    assert(found_svg == 1);
+    assert(strstr(themed_path, "vector_app.svg") != NULL);
+
+    cairo_surface_t *svg_surf = icon_load_surface("vector_app");
+    assert(svg_surf != NULL);
+    assert(cairo_surface_status(svg_surf) == CAIRO_STATUS_SUCCESS);
+    assert(cairo_image_surface_get_width(svg_surf) == 48);
+    assert(cairo_image_surface_get_height(svg_surf) == 48);
+    cairo_surface_destroy(svg_surf);
+
+    // Test XPM icon lookup and loading
+    int found_xpm = icon_find_themed_png("pixmap_app", themed_path, sizeof(themed_path));
+    assert(found_xpm == 1);
+    assert(strstr(themed_path, "pixmap_app.xpm") != NULL);
+
+    cairo_surface_t *xpm_surf = icon_load_surface("pixmap_app");
+    assert(xpm_surf != NULL);
+    assert(cairo_surface_status(xpm_surf) == CAIRO_STATUS_SUCCESS);
+    assert(cairo_image_surface_get_width(xpm_surf) == 4);
+    assert(cairo_image_surface_get_height(xpm_surf) == 4);
+    cairo_surface_destroy(xpm_surf);
+
+    // Test direct absolute path with SVG and XPM
+    cairo_surface_t *direct_svg = icon_load_surface("/tmp/muzuwm_test_icons/ChildTheme/scalable/apps/vector_app.svg");
+    assert(direct_svg != NULL);
+    assert(cairo_surface_status(direct_svg) == CAIRO_STATUS_SUCCESS);
+    cairo_surface_destroy(direct_svg);
+
+    // Test system SVG and XPM if present on host
+    if (access("/usr/share/icons/hicolor/scalable/apps/btop.svg", R_OK) == 0) {
+        cairo_surface_t *btop_surf = icon_load_surface("btop");
+        assert(btop_surf != NULL);
+        assert(cairo_surface_status(btop_surf) == CAIRO_STATUS_SUCCESS);
+        cairo_surface_destroy(btop_surf);
+    }
+    if (access("/usr/share/pixmaps/python3.xpm", R_OK) == 0) {
+        cairo_surface_t *py_surf = icon_load_surface("python3");
+        assert(py_surf != NULL);
+        assert(cairo_surface_status(py_surf) == CAIRO_STATUS_SUCCESS);
+        cairo_surface_destroy(py_surf);
+    }
 
     // Test _NET_WM_ICON parser
     {
