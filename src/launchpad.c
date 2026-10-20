@@ -296,7 +296,7 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
             cairo_set_source_rgb(cr, 0.80, 0.85, 0.90);
         }
 
-        char day_num[8];
+        char day_num[16];
         snprintf(day_num, sizeof(day_num), "%2d", day);
         cairo_move_to(cr, cell_x, cell_y);
         cairo_show_text(cr, day_num);

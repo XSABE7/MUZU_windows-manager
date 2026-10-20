@@ -32,7 +32,11 @@ test_icon_fetcher: tests/test_icon_fetcher.c src/icon_fetcher.c
 muzuwm: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+asan: CFLAGS += -fsanitize=address -g -O1
+asan: LIBS += -fsanitize=address
+asan: clean all
+
 clean:
 	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher muzuwm
 
-.PHONY: all clean
+.PHONY: all clean asan
