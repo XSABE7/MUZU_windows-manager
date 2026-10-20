@@ -74,6 +74,55 @@ int main(void) {
     layout_calculate(&cfg, many_head, 150);
     assert(client_find(many_head, 1001)->width > 0);
 
+    // Test 7: 800x600 Compact Screen Layout & Dock
+    LayoutConfig cfg_800 = { .screen_width = 800, .screen_height = 600, .master_count = 1 };
+    Client *head_800 = NULL;
+
+    // Single window auto-maximize on 800x600
+    client_add(&head_800, 201, CLIENT_TILED);
+    layout_calculate(&cfg_800, head_800, 1);
+    assert(head_800->width == 800);
+    assert(head_800->height == 600);
+    assert(head_800->x == 0 && head_800->y == 0);
+
+    // Two windows 50:50 split on 800x600
+    client_add(&head_800, 202, CLIENT_TILED);
+    layout_calculate(&cfg_800, head_800, 2);
+    Client *w1 = client_find(head_800, 201);
+    Client *w2 = client_find(head_800, 202);
+    assert(w1->width == 400 && w1->height == 600);
+    assert(w2->width == 400 && w2->height == 600);
+    assert(w1->x == 0 && w2->x == 400);
+
+    // Three windows (Master 400x600 left, Stack 2x 400x300 right)
+    client_add(&head_800, 203, CLIENT_TILED);
+    layout_calculate(&cfg_800, head_800, 3);
+    Client *w3 = client_find(head_800, 203);
+    assert(w1->width == 400 && w1->height == 600);
+    assert(w2->width == 400 && w2->height == 300);
+    assert(w3->width == 400 && w3->height == 300);
+    assert(w3->y == 300);
+
+    // Dock positioning on 800x600
+    Dock dock_800 = {0};
+    dock_calculate_geometry(&dock_800, DOCK_BOTTOM, 0, 800, 600);
+    assert(dock_800.pos == DOCK_BOTTOM);
+    assert(dock_800.y > 530);
+    assert(dock_800.x == (800 - dock_800.width) / 2);
+
+    dock_calculate_geometry(&dock_800, DOCK_TOP, 0, 800, 600);
+    assert(dock_800.pos == DOCK_TOP);
+    assert(dock_800.y == 6);
+
+    dock_calculate_geometry(&dock_800, DOCK_LEFT, 0, 800, 600);
+    assert(dock_800.pos == DOCK_LEFT);
+    assert(dock_800.x == 6);
+    assert(dock_800.y == (600 - dock_800.height) / 2);
+
+    dock_calculate_geometry(&dock_800, DOCK_RIGHT, 0, 800, 600);
+    assert(dock_800.pos == DOCK_RIGHT);
+    assert(dock_800.x > 700);
+
     printf("test_layout passed!\n");
     return 0;
 }

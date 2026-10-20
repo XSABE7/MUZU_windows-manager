@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
 set -e
 
+# Support resolution argument: default to 1366x768, allow 800x600, 1920x1080, etc.
+RES="${1:-1366x768}"
+if [ "$RES" = "800" ]; then
+    RES="800x600"
+elif [ "$RES" = "1366" ]; then
+    RES="1366x768"
+elif [ "$RES" = "1080" ] || [ "$RES" = "1920" ]; then
+    RES="1920x1080"
+fi
+
 # Build the window manager
 make muzuwm
 
-echo "Starting nested X11 server (Xephyr 1366x768) on DISPLAY=:2..."
-Xephyr -br -ac -noreset -screen 1366x768 :2 &
+echo "========================================================"
+echo " Starting nested X11 server (Xephyr $RES) on DISPLAY=:2..."
+echo " Usage: ./run-xephyr.sh [resolution] (e.g. ./run-xephyr.sh 800x600)"
+echo "========================================================"
+Xephyr -br -ac -noreset -screen "$RES" :2 &
 XEPHYR_PID=$!
 sleep 1
 
@@ -21,7 +34,7 @@ DISPLAY=:2 xterm &
 
 echo ""
 echo "========================================================"
-echo " MUZUwm is now running inside the Xephyr window!"
+echo " MUZUwm is now running inside the Xephyr window ($RES)!"
 echo " Things you can test with your mouse and keyboard:"
 echo " 1. First xterm is auto-maximized, second is 50:50 tiled"
 echo " 2. Drag a titlebar -> detaches window into Floating"

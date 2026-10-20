@@ -53,7 +53,8 @@ static void utf8_safe_copy(char *dest, const char *src, size_t max_bytes) {
 
 void launchpad_scroll(Launchpad *lp, int delta_y, int screen_h) {
     if (!lp) return;
-    int rows = (lp->app_count + 2) / 3;
+    int cols = (screen_h <= 600) ? 2 : 3;
+    int rows = (lp->app_count + cols - 1) / cols;
     int content_h = rows * 60;
     int visible_h = screen_h - 110;
     int max_scroll = content_h - visible_h;
@@ -167,8 +168,10 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     cairo_set_source_rgba(cr, 0.07, 0.09, 0.13, 0.96);
     cairo_paint(cr);
 
-    // Optimized layout for 1366x768 and modern displays
-    int mid_x = (int)(screen_w * 0.54);
+    // Optimized layout for 800x600, 1366x768, and modern displays
+    int is_compact = (screen_w < 1000 || screen_h <= 600);
+    int cols = is_compact ? 2 : 3;
+    int mid_x = is_compact ? (int)(screen_w * 0.52) : (int)(screen_w * 0.54);
 
     // LEFT: Search Input (tuned height and padding)
     cairo_set_source_rgba(cr, 0.18, 0.22, 0.28, 0.90);
@@ -176,30 +179,30 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     cairo_fill(cr);
 
     cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-    cairo_set_font_size(cr, 13.0);
+    cairo_set_font_size(cr, is_compact ? 12.0 : 13.0);
     cairo_set_source_rgb(cr, 0.95, 0.96, 0.98);
     cairo_move_to(cr, 56, 57);
     if (strlen(lp->search_query) > 0) {
         cairo_show_text(cr, lp->search_query);
     } else {
         cairo_set_source_rgb(cr, 0.55, 0.60, 0.68);
-        cairo_show_text(cr, "Search applications (Use mouse wheel to scroll)...");
+        cairo_show_text(cr, is_compact ? "Search apps..." : "Search applications (Use mouse wheel to scroll)...");
     }
 
     // LEFT: App Grid with Cairo Scissor Clipping for Smooth Scrolling
     int start_y = 88;
     int grid_h = screen_h - start_y - 12;
-    int col_w = (mid_x - 64) / 3;
+    int col_w = (mid_x - 60) / cols;
     int displayed = 0;
 
     cairo_save(cr);
-    cairo_rectangle(cr, 30, start_y, mid_x - 50, grid_h);
+    cairo_rectangle(cr, 30, start_y, mid_x - 45, grid_h);
     cairo_clip(cr);
 
     for (int i = 0; i < lp->app_count; i++) {
         if (strlen(lp->search_query) == 0 || strcasestr(lp->apps[i].name, lp->search_query)) {
-            int gx = 40 + (displayed % 3) * col_w;
-            int gy = start_y - lp->scroll_y + (displayed / 3) * 60;
+            int gx = 40 + (displayed % cols) * col_w;
+            int gy = start_y - lp->scroll_y + (displayed / cols) * 60;
 
             if (gy + 60 >= start_y && gy <= screen_h) {
                 // App Icon (Real PNG surface with procedural fallback)
@@ -219,7 +222,7 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     cairo_restore(cr);
 
     // Scrollbar indicator on left panel
-    int rows = (displayed + 2) / 3;
+    int rows = (displayed + cols - 1) / cols;
     int total_content_h = rows * 60;
     if (total_content_h > grid_h) {
         int bar_x = mid_x - 22;
@@ -406,7 +409,9 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, in
         return;
     }
 
-    int mid_x = (int)(screen_w * 0.54);
+    int is_compact = (screen_w < 1000 || screen_h <= 600);
+    int cols = is_compact ? 2 : 3;
+    int mid_x = is_compact ? (int)(screen_w * 0.52) : (int)(screen_w * 0.54);
 
     // Check if clicked inside search box -> ignore click dismiss
     if (x >= 40 && x <= mid_x - 20 && y >= 32 && y <= 72) {
@@ -426,13 +431,13 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, in
 
     // Check if clicked an app in the grid
     int start_y = 88;
-    int col_w = (mid_x - 64) / 3;
+    int col_w = (mid_x - 60) / cols;
     int displayed = 0;
 
     for (int i = 0; i < lp->app_count; i++) {
         if (strlen(lp->search_query) == 0 || strcasestr(lp->apps[i].name, lp->search_query)) {
-            int gx = 40 + (displayed % 3) * col_w;
-            int gy = start_y - lp->scroll_y + (displayed / 3) * 60;
+            int gx = 40 + (displayed % cols) * col_w;
+            int gy = start_y - lp->scroll_y + (displayed / cols) * 60;
 
             if (x >= gx && x <= gx + col_w && y >= gy && y <= gy + 50) {
                 pid_t pid = fork();
