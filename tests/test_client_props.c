@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include "client_props.h"
@@ -82,6 +83,36 @@ int main(void) {
     // Case D: Invalid/truncated hints
     assert(client_parse_motif_decorations(NULL, 0) == 1);
     assert(client_parse_motif_decorations(csd_hints, 2) == 1);
+
+    // Test 5: Client opacity manipulation
+    client_set_opacity(NULL, None, 0xA6AAAAAA); // Safe null check
+    Display *test_dpy = XOpenDisplay(NULL);
+    if (test_dpy) {
+        Window root_w = DefaultRootWindow(test_dpy);
+        Window test_win = XCreateSimpleWindow(test_dpy, root_w, 0, 0, 100, 100, 0, 0, 0);
+        client_set_opacity(test_dpy, test_win, 0xA6AAAAAA);
+
+        Atom actual_type;
+        int actual_format;
+        unsigned long nitems, bytes_after;
+        unsigned char *prop = NULL;
+        Atom net_opacity = XInternAtom(test_dpy, "_NET_WM_WINDOW_OPACITY", False);
+        XGetWindowProperty(test_dpy, test_win, net_opacity, 0, 1, False, XA_CARDINAL,
+                           &actual_type, &actual_format, &nitems, &bytes_after, &prop);
+        assert(nitems == 1);
+        assert((uint32_t)*(unsigned long *)prop == (uint32_t)0xA6AAAAAA);
+        XFree(prop);
+
+        // Reset opacity to full (removes property)
+        client_set_opacity(test_dpy, test_win, 0xFFFFFFFF);
+        XGetWindowProperty(test_dpy, test_win, net_opacity, 0, 1, False, XA_CARDINAL,
+                           &actual_type, &actual_format, &nitems, &bytes_after, &prop);
+        assert(nitems == 0);
+        if (prop) XFree(prop);
+
+        XDestroyWindow(test_dpy, test_win);
+        XCloseDisplay(test_dpy);
+    }
 
     printf("test_client_props passed!\n");
     return 0;

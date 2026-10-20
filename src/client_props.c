@@ -286,3 +286,18 @@ cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, in
 
     return NULL;
 }
+
+void client_set_opacity(Display *dpy, Window win, unsigned int opacity) {
+    if (!dpy || win == None) return;
+    static Atom net_opacity = None;
+    if (net_opacity == None) {
+        net_opacity = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
+    }
+    if (opacity >= 0xFFFFFFFF) {
+        XDeleteProperty(dpy, win, net_opacity);
+    } else {
+        unsigned long val = opacity;
+        XChangeProperty(dpy, win, net_opacity, XA_CARDINAL, 32, PropModeReplace,
+                        (unsigned char *)&val, 1);
+    }
+}

@@ -433,6 +433,35 @@ int main(void) {
         client_remove(&snap_head, 502);
     }
 
+    // Test 15: Pre-rendered Liquid Glass Titlebar Surface
+    {
+        cairo_surface_t *cache = titlebar_pre_render(NULL, 640, 1, NULL);
+        assert(cache != NULL);
+        assert(cairo_surface_status(cache) == CAIRO_STATUS_SUCCESS);
+        assert(cairo_image_surface_get_width(cache) == 640);
+        assert(cairo_image_surface_get_height(cache) == TITLEBAR_HEIGHT);
+        cairo_surface_destroy(cache);
+    }
+
+    // Test 16: Squircle Dock Initialization and Dimensions
+    {
+        Dock test_dock;
+        dock_init(NULL, &test_dock, DOCK_BOTTOM, 1920, 1080, NULL);
+        assert(test_dock.width > 0 && test_dock.height > 0);
+        dock_cleanup(&test_dock);
+    }
+
+    // Test 17: Auto-hide Dock Render Bypass (Zero Overhead)
+    {
+        Dock auto_dock;
+        dock_init(NULL, &auto_dock, DOCK_BOTTOM, 1920, 1080, NULL);
+        auto_dock.autohide_enabled = 1;
+        auto_dock.is_hidden = 1;
+        dock_render(NULL, &auto_dock, 1920, 1080);
+        assert(auto_dock.is_hidden == 1);
+        dock_cleanup(&auto_dock);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

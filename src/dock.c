@@ -431,6 +431,9 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
 
 void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     if (!dpy || !dock) return;
+    if (dock->autohide_enabled && dock->is_hidden) {
+        return; // Zero CPU consumption while hidden
+    }
     (void)screen_w;
     (void)screen_h;
     int screen = DefaultScreen(dpy);
@@ -443,17 +446,32 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     }
     cairo_t *cr = cairo_create(dock->surface);
 
+    // Clear surface completely to remove any ghost artifacts or trails
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
-    // Solid sleek deep black background
-    cairo_set_source_rgba(cr, 0.04, 0.04, 0.04, 0.98);
+    // Liquid Frosted Smoked Glass Squircle Plate (Rounded Rectangle with 14px continuous curvature)
+    cairo_pattern_t *pat = cairo_pattern_create_linear(0, 0, 0, dock->height);
+    cairo_pattern_add_color_stop_rgba(pat, 0.0, 0.10, 0.12, 0.16, 0.82);
+    cairo_pattern_add_color_stop_rgba(pat, 1.0, 0.06, 0.07, 0.10, 0.72);
+    cairo_set_source(cr, pat);
     draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 14.0);
     cairo_fill(cr);
+    cairo_pattern_destroy(pat);
 
-    // Subtle crisp border
-    cairo_set_source_rgba(cr, 0.22, 0.22, 0.22, 0.70);
+    // Outer subtle shadow stroke
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.50);
+    cairo_set_line_width(cr, 1.5);
+    draw_rounded_rectangle(cr, 0.5, 0.5, dock->width - 1.0, dock->height - 1.0, 14.0);
+    cairo_stroke(cr);
+
+    // Inner specular refraction rim
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.16);
     cairo_set_line_width(cr, 1.0);
-    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 14.0);
+    draw_rounded_rectangle(cr, 1.5, 1.5, dock->width - 3.0, dock->height - 3.0, 13.0);
     cairo_stroke(cr);
 
     // Render launcher icons
@@ -662,12 +680,15 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
     else if (dock->pos == DOCK_RIGHT && x >= screen_w - dock->size - 10) in_trigger = 1;
 
     if (in_trigger && dock->is_hidden) {
+        dock->is_hidden = 0;
         dock_calculate_geometry(dock, dock->pos, 0, screen_w, screen_h);
         if (dpy && dock->win) {
             XMoveWindow(dpy, dock->win, dock->x, dock->y);
             XRaiseWindow(dpy, dock->win);
+            dock_render(dpy, dock, screen_w, screen_h);
         }
-    } else if (!in_trigger && !dock->is_hidden) {
+    } else if (!in_trigger && !dock->is_hidden && !dock->is_dragging) {
+        dock->is_hidden = 1;
         dock->hover_item = -1;
         dock->is_hovered = 0;
         dock->mouse_pos = -1.0;

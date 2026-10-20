@@ -15,5 +15,6 @@ test_x11_stress
 test_rofi_launcher
 test_wallpaper
 test_menu
+test_compositor
 gtk/
 for_imperment/
