@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <poll.h>
+#include <locale.h>
 #include <fontconfig/fontconfig.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -96,19 +97,8 @@ static void handle_menu_action(int action_id, void *userdata) {
             dock_render(dpy, dock, screen_w, screen_h);
             break;
 
-        case DOCK_ACTION_MOVE:
-            dock->drag_offset_x = dock->width / 2;
-            dock->drag_offset_y = dock->height / 2;
-            if (XGrabPointer(dpy, ctx->root, False,
-                             ButtonReleaseMask | PointerMotionMask,
-                             GrabModeAsync, GrabModeAsync,
-                             None, None, CurrentTime) == GrabSuccess) {
-                dock->is_dragging = 1;
-            }
-            break;
-
         case DOCK_ACTION_REMOVE_APP:
-            if (ctx->right_clicked_dock_item > 0 && ctx->right_clicked_dock_item < dock->item_count) {
+            if (ctx->right_clicked_dock_item >= 0 && ctx->right_clicked_dock_item < dock->item_count) {
                 dock_remove_app(dock, ctx->right_clicked_dock_item);
                 dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
                 if (dock->win) {
@@ -117,6 +107,15 @@ static void handle_menu_action(int action_id, void *userdata) {
                 }
                 dock_render(dpy, dock, screen_w, screen_h);
             }
+            break;
+
+        case DOCK_ACTION_TOGGLE_APPS_CORNER:
+            dock_set_apps_corner(dock, !dock->apps_at_left);
+            dock_render(dpy, dock, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_EMPTY_TRASH:
+            dock_empty_trash();
             break;
 
         case DESKTOP_ACTION_WALLPAPER_BROWSE: {
@@ -461,6 +460,7 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
 }
 
 int main(int argc, char **argv) {
+    setlocale(LC_ALL, "");
     const char *cli_wallpaper = NULL;
     for (int i = 1; i < argc; i++) {
         if ((strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--wallpaper") == 0) && i + 1 < argc) {
@@ -856,12 +856,12 @@ int main(int argc, char **argv) {
                         }
                     } else if (p_act == TINT2_ACTION_POWER && (ev.xbutton.button == Button1 || ev.xbutton.button == Button3)) {
                         menu_clear(&context_menu);
-                        menu_add_item(&context_menu, "Suspend (พักเครื่อง)", POWER_ACTION_SUSPEND);
-                        menu_add_item(&context_menu, "Restart / Reboot (รีสตาร์ท)", POWER_ACTION_REBOOT);
-                        menu_add_item(&context_menu, "Power Off (ปิดเครื่อง)", POWER_ACTION_POWEROFF);
+                        menu_add_item(&context_menu, "Suspend", POWER_ACTION_SUSPEND);
+                        menu_add_item(&context_menu, "Restart / Reboot", POWER_ACTION_REBOOT);
+                        menu_add_item(&context_menu, "Power Off", POWER_ACTION_POWEROFF);
                         menu_add_separator(&context_menu);
-                        menu_add_item(&context_menu, "Lock Screen (ล็อกหน้าจอ)", POWER_ACTION_LOCK);
-                        menu_add_item(&context_menu, "Log Out (ออกจากระบบ)", POWER_ACTION_LOGOUT);
+                        menu_add_item(&context_menu, "Lock Screen", POWER_ACTION_LOCK);
+                        menu_add_item(&context_menu, "Log Out", POWER_ACTION_LOGOUT);
 
                         menu_show(dpy, &context_menu, screen_w - 220, TINT2_PANEL_HEIGHT + 4, screen_w, screen_h);
                         raise_system_overlays(dpy);
@@ -875,15 +875,22 @@ int main(int argc, char **argv) {
                         wm_ctx.right_clicked_dock_item = clicked_item;
 
                         menu_clear(&context_menu);
-                        if (clicked_item > 0 && clicked_item < dock.item_count) {
-                            char remove_lbl[128];
-                            snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", dock.items[clicked_item].name);
-                            menu_add_item(&context_menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
-                            menu_add_separator(&context_menu);
+                        if (clicked_item >= 0 && clicked_item < dock.item_count) {
+                            const char *cmd = dock.items[clicked_item].exec_cmd;
+                            if (strcmp(cmd, "__TRASH__") == 0) {
+                                menu_add_item(&context_menu, "Empty Trash", DOCK_ACTION_EMPTY_TRASH);
+                                menu_add_separator(&context_menu);
+                            } else if (strcmp(cmd, "__ROFI__") != 0 && strcmp(cmd, "__LAUNCHPAD__") != 0) {
+                                char remove_lbl[128];
+                                snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", dock.items[clicked_item].name);
+                                menu_add_item(&context_menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
+                                menu_add_separator(&context_menu);
+                            }
                         }
 
                         menu_add_item(&context_menu, dock.magnification_enabled ? "Magnification: On ✓" : "Magnification: Off", DOCK_ACTION_TOGGLE_MAGNIFICATION);
                         menu_add_item(&context_menu, dock.autohide_enabled ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
+                        menu_add_item(&context_menu, dock.apps_at_left ? "Apps Button: Left Corner ✓" : "Apps Button: Right Corner ✓", DOCK_ACTION_TOGGLE_APPS_CORNER);
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
                         menu_add_item(&context_menu, "Position: Left", DOCK_ACTION_POS_LEFT);
@@ -893,8 +900,6 @@ int main(int argc, char **argv) {
                         menu_add_item(&context_menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);
                         menu_add_item(&context_menu, "Size: Medium (48px)", DOCK_ACTION_SIZE_MEDIUM);
                         menu_add_item(&context_menu, "Size: Large (64px)", DOCK_ACTION_SIZE_LARGE);
-                        menu_add_separator(&context_menu);
-                        menu_add_item(&context_menu, "Move Dock", DOCK_ACTION_MOVE);
 
                         int menu_x = ev.xbutton.x_root;
                         int menu_y = ev.xbutton.y_root;
@@ -933,7 +938,17 @@ int main(int argc, char **argv) {
                             dock_render(dpy, &dock, screen_w, screen_h);
                             update_panel_state(dpy, clients, &cfg);
                         } else {
-                            dock_handle_click(dpy, &dock, &rofi_launcher, ev.xbutton.x, ev.xbutton.y);
+                            int item = dock_get_item_at(&dock, ev.xbutton.x, ev.xbutton.y);
+                            if (item >= 0) {
+                                dock.press_item = item;
+                                dock.press_x = ev.xbutton.x_root;
+                                dock.press_y = ev.xbutton.y_root;
+                                dock.is_reordering = 0;
+                                XGrabPointer(dpy, root, False,
+                                             ButtonReleaseMask | PointerMotionMask,
+                                             GrabModeAsync, GrabModeAsync,
+                                             None, None, CurrentTime);
+                            }
                         }
                     }
                     break;
@@ -1046,6 +1061,29 @@ int main(int argc, char **argv) {
                     break;
                 }
 
+                if (dock.press_item >= 0) {
+                    int dx = ev.xmotion.x_root - dock.press_x;
+                    int dy = ev.xmotion.y_root - dock.press_y;
+                    if (!dock.is_reordering && (dx * dx + dy * dy > 36)) {
+                        dock.is_reordering = 1;
+                    }
+                    int local_x = ev.xmotion.x_root - dock.x;
+                    int local_y = ev.xmotion.y_root - dock.y;
+                    dock_handle_hover(dpy, &dock, local_x, local_y, screen_w, screen_h);
+                    if (dock.is_reordering) {
+                        int target_idx = dock_get_item_at(&dock, local_x, local_y);
+                        if (target_idx >= 0 && target_idx != dock.press_item) {
+                            int new_idx = dock_reorder_item(&dock, dock.press_item, target_idx);
+                            if (new_idx != dock.press_item) {
+                                dock.press_item = new_idx;
+                                dock.hover_item = new_idx;
+                                dock_render(dpy, &dock, screen_w, screen_h);
+                            }
+                        }
+                    }
+                    break;
+                }
+
                 if (dock.is_dragging) {
                     dock_handle_drag(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
                     break;
@@ -1132,7 +1170,7 @@ int main(int argc, char **argv) {
                     break;
                 }
 
-                if (ev.xcrossing.window == dock.win && !rofi_launcher.is_dragging_out) {
+                if (ev.xcrossing.window == dock.win && !rofi_launcher.is_dragging_out && dock.press_item < 0) {
                     if (dock.hover_item != -1 || dock.is_hovered) {
                         dock.hover_item = -1;
                         dock.is_hovered = 0;
@@ -1169,6 +1207,33 @@ int main(int argc, char **argv) {
             }
 
             case ButtonRelease: {
+                if (dock.press_item >= 0 && ev.xbutton.button == Button1) {
+                    XUngrabPointer(dpy, CurrentTime);
+                    int local_x = ev.xbutton.x_root - dock.x;
+                    int local_y = ev.xbutton.y_root - dock.y;
+                    int was_reordering = dock.is_reordering;
+                    int pressed_idx = dock.press_item;
+                    dock.press_item = -1;
+                    dock.is_reordering = 0;
+
+                    if (was_reordering) {
+                        int drop_idx = dock_get_item_at(&dock, local_x, local_y);
+                        if (drop_idx >= 0 && drop_idx != pressed_idx &&
+                            strcmp(dock.items[drop_idx].exec_cmd, "__TRASH__") == 0) {
+                            if (dock_remove_app(&dock, pressed_idx)) {
+                                dock_calculate_geometry(&dock, dock.pos, dock.is_hidden, screen_w, screen_h);
+                                if (dock.win) {
+                                    XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
+                                    cairo_xlib_surface_set_size(dock.surface, dock.width, dock.height);
+                                }
+                            }
+                        }
+                        dock_render(dpy, &dock, screen_w, screen_h);
+                    } else {
+                        dock_handle_click(dpy, &dock, &rofi_launcher, local_x, local_y);
+                    }
+                    break;
+                }
                 if (rofi_launcher.is_pressing && ev.xbutton.button == Button1) {
                     XUngrabPointer(dpy, CurrentTime);
                     int was_dragging = rofi_launcher.is_dragging_out;

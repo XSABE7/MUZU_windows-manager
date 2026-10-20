@@ -52,13 +52,42 @@ void rofi_sanitize_exec(const char *raw, char *clean, size_t max_len) {
     }
 }
 
+static void get_system_lang_code(char *lang_out, size_t max_len) {
+    if (!lang_out || max_len == 0) return;
+    lang_out[0] = '\0';
+    const char *env = getenv("LC_ALL");
+    if (!env || !env[0]) env = getenv("LC_MESSAGES");
+    if (!env || !env[0]) env = getenv("LANG");
+    if (!env || !env[0] || strcmp(env, "C") == 0 || strcmp(env, "POSIX") == 0) return;
+
+    size_t i = 0;
+    while (i + 1 < max_len && env[i] != '\0' && env[i] != '_' && env[i] != '.' && env[i] != '@') {
+        lang_out[i] = env[i];
+        i++;
+    }
+    lang_out[i] = '\0';
+}
+
 static void parse_desktop_file(const char *path, RofiApp *app) {
     FILE *f = fopen(path, "r");
     if (!f) return;
 
+    char lang[16] = {0};
+    char name_loc_key[32] = {0};
+    char comment_loc_key[32] = {0};
+    get_system_lang_code(lang, sizeof(lang));
+    if (lang[0] != '\0' && strcmp(lang, "en") != 0) {
+        snprintf(name_loc_key, sizeof(name_loc_key), "Name[%s]=", lang);
+        snprintf(comment_loc_key, sizeof(comment_loc_key), "Comment[%s]=", lang);
+    }
+    size_t name_loc_len = strlen(name_loc_key);
+    size_t comment_loc_len = strlen(comment_loc_key);
+
     char line[512];
     int in_desktop_entry = 0;
     int no_display = 0;
+    int has_loc_name = 0;
+    int has_loc_comment = 0;
     app->name[0] = '\0';
     app->exec[0] = '\0';
     app->comment[0] = '\0';
@@ -89,12 +118,18 @@ static void parse_desktop_file(const char *path, RofiApp *app) {
             if (strcasecmp(line + 10, "true") == 0) {
                 no_display = 1;
             }
+        } else if (name_loc_len > 0 && strncmp(line, name_loc_key, name_loc_len) == 0 && !has_loc_name) {
+            safe_copy(app->name, line + name_loc_len, sizeof(app->name));
+            has_loc_name = 1;
         } else if (strncmp(line, "Name=", 5) == 0 && app->name[0] == '\0') {
             safe_copy(app->name, line + 5, sizeof(app->name));
         } else if (strncmp(line, "Exec=", 5) == 0 && app->exec[0] == '\0') {
             safe_copy(app->exec, line + 5, sizeof(app->exec));
         } else if (strncmp(line, "Icon=", 5) == 0 && app->icon_name[0] == '\0') {
             safe_copy(app->icon_name, line + 5, sizeof(app->icon_name));
+        } else if (comment_loc_len > 0 && strncmp(line, comment_loc_key, comment_loc_len) == 0 && !has_loc_comment) {
+            safe_copy(app->comment, line + comment_loc_len, sizeof(app->comment));
+            has_loc_comment = 1;
         } else if (strncmp(line, "Comment=", 8) == 0 && app->comment[0] == '\0') {
             safe_copy(app->comment, line + 8, sizeof(app->comment));
         }

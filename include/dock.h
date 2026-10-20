@@ -41,6 +41,10 @@ typedef struct {
     int magnification_enabled; // 1 = macOS magnification wave on, 0 = off
     double mouse_pos;   // Cursor coordinate along dock axis
     int is_hovered;     // 1 if cursor is currently within dock bounds
+    int apps_at_left;   // 0 = 3-dots Apps button at right corner (default), 1 = left corner
+    int press_item;     // Index of item currently held by left-click (-1 if none)
+    int press_x, press_y; // Initial press coordinates for reorder drag threshold
+    int is_reordering;  // 1 if actively dragging an app to reorder
     int item_count;
     DockItem items[DOCK_MAX_ITEMS];
     int minimized_count;
@@ -58,6 +62,10 @@ void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int
 int dock_get_item_at(const Dock *dock, int x, int y);
 int dock_add_app(Dock *dock, const char *name, const char *exec, const char *icon_name);
 int dock_remove_app(Dock *dock, int index);
+int dock_reorder_item(Dock *dock, int from_idx, int to_idx);
+void dock_enforce_special_items(Dock *dock);
+void dock_set_apps_corner(Dock *dock, int at_left);
+void dock_empty_trash(void);
 void dock_save_pinned_apps(const Dock *dock);
 void dock_load_pinned_apps(Dock *dock);
 void dock_save_settings(const Dock *dock);

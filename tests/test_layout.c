@@ -284,15 +284,39 @@ int main(void) {
         Dock d = {0};
         dock_init(NULL, &d, DOCK_BOTTOM, 1920, 1080, NULL);
         assert(d.pos == DOCK_BOTTOM);
-        assert(d.item_count == 1); // Clean default: only Apps (3 dots)
-        assert(strcmp(d.items[0].name, "Apps") == 0);
+        assert(d.item_count == 2); // Clean default: Trash + Apps (white 3-dots at right corner)
+        assert(strcmp(d.items[0].name, "Trash") == 0);
+        assert(strcmp(d.items[1].name, "Apps") == 0);
+        assert(d.width < 120); // Tight fit around icons, no 260px empty gap
 
-        // Add dynamic apps
+        // Add dynamic apps: Apps stays at right corner (last index), Trash right beside it
         int web_idx = dock_add_app(&d, "Web", "x-www-browser", "web-browser");
         int files_idx = dock_add_app(&d, "Files", "nautilus", "system-file-manager");
-        assert(d.item_count == 3);
-        assert(web_idx == 1);
-        assert(files_idx == 2);
+        assert(d.item_count == 4);
+        assert(web_idx == 0);
+        assert(files_idx == 1);
+        assert(strcmp(d.items[2].name, "Trash") == 0);
+        assert(strcmp(d.items[3].name, "Apps") == 0);
+
+        // Test left-click drag reordering of pinned apps
+        int new_idx = dock_reorder_item(&d, 0, 1);
+        assert(new_idx == 1);
+        assert(strcmp(d.items[0].name, "Files") == 0);
+        assert(strcmp(d.items[1].name, "Web") == 0);
+        assert(strcmp(d.items[3].name, "Apps") == 0); // Apps stays at right corner
+        // Reorder back
+        dock_reorder_item(&d, 1, 0);
+        assert(strcmp(d.items[0].name, "Web") == 0);
+        assert(strcmp(d.items[1].name, "Files") == 0);
+
+        // Test configurable Apps 3-dots corner (Left corner vs Right corner only)
+        dock_set_apps_corner(&d, 1);
+        assert(d.apps_at_left == 1);
+        assert(strcmp(d.items[0].name, "Apps") == 0); // Moved to Left corner!
+        assert(strcmp(d.items[d.item_count - 1].name, "Trash") == 0);
+        dock_set_apps_corner(&d, 0);
+        assert(d.apps_at_left == 0);
+        assert(strcmp(d.items[d.item_count - 1].name, "Apps") == 0); // Back at Right corner!
 
         // Test macOS magnification scale calculation
         d.magnification_enabled = 1;
@@ -328,16 +352,18 @@ int main(void) {
         Client app1 = {0};
         snprintf(app1.title, sizeof(app1.title), "Mozilla Firefox Web");
         dock_update_running(&d, &app1);
-        assert(d.items[0].is_running == 0); // Apps launcher never marked running
-        assert(d.items[1].is_running == 1); // Web running
-        assert(d.items[2].is_running == 0); // Files not running
+        assert(d.items[0].is_running == 1); // Web running
+        assert(d.items[1].is_running == 0); // Files not running
+        assert(d.items[2].is_running == 0); // Trash never marked running
+        assert(d.items[3].is_running == 0); // Apps launcher never marked running
 
-        // Remove dynamic app
-        assert(dock_remove_app(&d, files_idx) == 1);
-        assert(d.item_count == 2);
-        // Cannot remove Item 0 (Apps launcher)
-        assert(dock_remove_app(&d, 0) == 0);
-        assert(d.item_count == 2);
+        // Remove dynamic app (Files at index 1)
+        assert(dock_remove_app(&d, 1) == 1);
+        assert(d.item_count == 3);
+        // Cannot remove Trash (index 1) or Apps launcher (index 2)
+        assert(dock_remove_app(&d, 1) == 0);
+        assert(dock_remove_app(&d, 2) == 0);
+        assert(d.item_count == 3);
 
         // Test Auto-Hide toggle and behavior
         // 1. Auto-hide disabled -> cursor moving away does NOT hide dock

@@ -45,6 +45,108 @@ static int dock_get_base_icon_size(const Dock *dock) {
     return 32;
 }
 
+static int is_apps_item(const DockItem *it) {
+    if (!it) return 0;
+    return (strcmp(it->exec_cmd, "__ROFI__") == 0 || strcmp(it->exec_cmd, "__LAUNCHPAD__") == 0);
+}
+
+static int is_trash_item(const DockItem *it) {
+    if (!it) return 0;
+    return (strcmp(it->exec_cmd, "__TRASH__") == 0);
+}
+
+static int is_special_item(const DockItem *it) {
+    return is_apps_item(it) || is_trash_item(it);
+}
+
+static void draw_apps_three_dots_icon(cairo_t *cr, int x, int y, int size) {
+    cairo_save(cr);
+    // Subtle dark glass squircle button frame
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.12);
+    draw_rounded_rectangle(cr, x + 1.0, y + 1.0, size - 2.0, size - 2.0, size * 0.26);
+    cairo_fill(cr);
+
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.28);
+    cairo_set_line_width(cr, 1.0);
+    draw_rounded_rectangle(cr, x + 1.0, y + 1.0, size - 2.0, size - 2.0, size * 0.26);
+    cairo_stroke(cr);
+
+    // Three pure white dots (•••)
+    double cx = x + size / 2.0;
+    double cy = y + size / 2.0;
+    double r = size * 0.088;
+    if (r < 2.2) r = 2.2;
+    double step = size * 0.24;
+
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.98);
+    cairo_arc(cr, cx - step, cy, r, 0, 2.0 * M_PI);
+    cairo_fill(cr);
+    cairo_arc(cr, cx, cy, r, 0, 2.0 * M_PI);
+    cairo_fill(cr);
+    cairo_arc(cr, cx + step, cy, r, 0, 2.0 * M_PI);
+    cairo_fill(cr);
+    cairo_restore(cr);
+}
+
+static void draw_trash_bin_icon(cairo_t *cr, int x, int y, int size) {
+    cairo_save(cr);
+    // Subtle frosted dark metallic squircle frame
+    cairo_set_source_rgba(cr, 0.20, 0.23, 0.29, 0.78);
+    draw_rounded_rectangle(cr, x + 1.0, y + 1.0, size - 2.0, size - 2.0, size * 0.24);
+    cairo_fill(cr);
+
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.22);
+    cairo_set_line_width(cr, 1.0);
+    draw_rounded_rectangle(cr, x + 1.0, y + 1.0, size - 2.0, size - 2.0, size * 0.24);
+    cairo_stroke(cr);
+
+    double cx = x + size / 2.0;
+    double top_y = y + size * 0.27;
+    double bot_y = y + size * 0.79;
+    double top_w = size * 0.46;
+    double bot_w = size * 0.36;
+
+    // Trash lid handle
+    cairo_set_source_rgba(cr, 0.92, 0.95, 1.0, 0.95);
+    cairo_set_line_width(cr, size * 0.055);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    draw_rounded_rectangle(cr, cx - size * 0.11, y + size * 0.17, size * 0.22, size * 0.09, 2.0);
+    cairo_stroke(cr);
+
+    // Lid bar
+    cairo_move_to(cr, cx - top_w * 0.60, top_y);
+    cairo_line_to(cr, cx + top_w * 0.60, top_y);
+    cairo_stroke(cr);
+
+    // Trash bin body (slightly tapered trapezoid)
+    cairo_new_path(cr);
+    cairo_move_to(cr, cx - top_w / 2.0, top_y + size * 0.04);
+    cairo_line_to(cr, cx - bot_w / 2.0, bot_y);
+    cairo_line_to(cr, cx + bot_w / 2.0, bot_y);
+    cairo_line_to(cr, cx + top_w / 2.0, top_y + size * 0.04);
+    cairo_close_path(cr);
+    cairo_set_source_rgba(cr, 0.85, 0.89, 0.96, 0.22);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.94, 0.96, 1.0, 0.92);
+    cairo_stroke(cr);
+
+    // Vertical ribs inside trash can
+    cairo_set_line_width(cr, size * 0.042);
+    double rib_top = top_y + size * 0.13;
+    double rib_bot = bot_y - size * 0.08;
+    cairo_move_to(cr, cx - size * 0.09, rib_top);
+    cairo_line_to(cr, cx - size * 0.07, rib_bot);
+    cairo_move_to(cr, cx, rib_top);
+    cairo_line_to(cr, cx, rib_bot);
+    cairo_move_to(cr, cx + size * 0.09, rib_top);
+    cairo_line_to(cr, cx + size * 0.07, rib_bot);
+    cairo_stroke(cr);
+
+    cairo_restore(cr);
+}
+
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h) {
     if (!dock) return;
     if (dock->size <= 0) dock->size = 48;
@@ -55,8 +157,8 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
     int margin = 8;
     int count = dock->item_count > 0 ? dock->item_count : 1;
     int min_count = dock->minimized_count;
-    int content_len = count * (icon_size + margin) + (min_count > 0 ? 16 + min_count * (icon_size + margin) : 0) + 32;
-    if (content_len < 260) content_len = 260;
+    // Tight fit: no 260px minimum width, just 12px total outer padding (6px per side)
+    int content_len = count * (icon_size + margin) + (min_count > 0 ? 16 + min_count * (icon_size + margin) : 0) + 12;
 
     switch (pos) {
         case DOCK_BOTTOM:
@@ -111,10 +213,10 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_y = start_y + i * (icon_size + margin) + icon_size / 2;
+            int center_y = start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
             double scale = dock_get_magnification_scale(dock, center_y);
-            double half_w = (icon_size * scale) / 2.0 + 4.0;
-            double half_h = (icon_size * scale) / 2.0 + 4.0;
+            double half_w = (icon_size * scale) / 2.0 + 3.0;
+            double half_h = (icon_size * scale) / 2.0 + 3.0;
             if (x >= center_x - half_w && x <= center_x + half_w &&
                 y >= center_y - half_h && y <= center_y + half_h) {
                 return i;
@@ -129,10 +231,10 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_x = start_x + i * (icon_size + margin) + icon_size / 2;
+            int center_x = start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
             double scale = dock_get_magnification_scale(dock, center_x);
-            double half_w = (icon_size * scale) / 2.0 + 4.0;
-            double half_h = (icon_size * scale) / 2.0 + 4.0;
+            double half_w = (icon_size * scale) / 2.0 + 3.0;
+            double half_h = (icon_size * scale) / 2.0 + 3.0;
             if (x >= center_x - half_w && x <= center_x + half_w &&
                 y >= center_y - half_h && y <= center_y + half_h) {
                 return i;
@@ -159,6 +261,17 @@ int dock_add_minimized(Dock *dock, Client *c) {
         dock->minimized[idx].icon_surface = c->icon_surface;
     }
     dock->minimized_count++;
+    {
+        int icon_size = dock_get_base_icon_size(dock);
+        int margin = 8;
+        int count = dock->item_count > 0 ? dock->item_count : 1;
+        int content_len = count * (icon_size + margin) + 16 + dock->minimized_count * (icon_size + margin) + 12;
+        if (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT) {
+            dock->height = content_len;
+        } else {
+            dock->width = content_len;
+        }
+    }
     return 1;
 }
 
@@ -178,6 +291,16 @@ void dock_remove_minimized(Dock *dock, Client *c) {
         }
         dock->minimized_count--;
         memset(&dock->minimized[dock->minimized_count], 0, sizeof(DockMinimizedItem));
+        int icon_size = dock_get_base_icon_size(dock);
+        int margin = 8;
+        int count = dock->item_count > 0 ? dock->item_count : 1;
+        int content_len = count * (icon_size + margin) +
+                          (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0) + 12;
+        if (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT) {
+            dock->height = content_len;
+        } else {
+            dock->width = content_len;
+        }
     }
 }
 
@@ -196,10 +319,10 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->minimized_count; i++) {
-            int center_y = min_start_y + i * (icon_size + margin) + icon_size / 2;
+            int center_y = min_start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
             double scale = dock_get_magnification_scale(dock, center_y);
-            double half_w = (icon_size * scale) / 2.0 + 4.0;
-            double half_h = (icon_size * scale) / 2.0 + 4.0;
+            double half_w = (icon_size * scale) / 2.0 + 3.0;
+            double half_h = (icon_size * scale) / 2.0 + 3.0;
             if (x >= center_x - half_w && x <= center_x + half_w &&
                 y >= center_y - half_h && y <= center_y + half_h) {
                 return dock->minimized[i].client;
@@ -215,16 +338,109 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->minimized_count; i++) {
-            int center_x = min_start_x + i * (icon_size + margin) + icon_size / 2;
+            int center_x = min_start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
             double scale = dock_get_magnification_scale(dock, center_x);
-            double half_w = (icon_size * scale) / 2.0 + 4.0;
-            double half_h = (icon_size * scale) / 2.0 + 4.0;
+            double half_w = (icon_size * scale) / 2.0 + 3.0;
+            double half_h = (icon_size * scale) / 2.0 + 3.0;
             if (x >= center_x - half_w && x <= center_x + half_w &&
                 y >= center_y - half_h && y <= center_y + half_h) {
                 return dock->minimized[i].client;
             }
         }
         return NULL;
+    }
+}
+
+void dock_enforce_special_items(Dock *dock) {
+    if (!dock || dock->item_count <= 1) return;
+
+    DockItem apps_item = {0};
+    int has_apps = 0;
+    DockItem trash_item = {0};
+    int has_trash = 0;
+    DockItem regular[DOCK_MAX_ITEMS];
+    int reg_count = 0;
+
+    for (int i = 0; i < dock->item_count; i++) {
+        if (is_apps_item(&dock->items[i]) && !has_apps) {
+            apps_item = dock->items[i];
+            has_apps = 1;
+        } else if (is_trash_item(&dock->items[i]) && !has_trash) {
+            trash_item = dock->items[i];
+            has_trash = 1;
+        } else {
+            regular[reg_count++] = dock->items[i];
+        }
+    }
+
+    int out = 0;
+    if (dock->apps_at_left) {
+        // Strictly enforce Apps (3-dots) at Left Corner (index 0)
+        if (has_apps) {
+            dock->items[out++] = apps_item;
+        }
+        for (int i = 0; i < reg_count; i++) {
+            dock->items[out++] = regular[i];
+        }
+        if (has_trash) {
+            dock->items[out++] = trash_item;
+        }
+    } else {
+        // Default: Strictly enforce Apps (3-dots) at Right Corner (last index), with Trash right beside it
+        for (int i = 0; i < reg_count; i++) {
+            dock->items[out++] = regular[i];
+        }
+        if (has_trash) {
+            dock->items[out++] = trash_item;
+        }
+        if (has_apps) {
+            dock->items[out++] = apps_item;
+        }
+    }
+    dock->item_count = out;
+}
+
+int dock_reorder_item(Dock *dock, int from_idx, int to_idx) {
+    if (!dock || from_idx < 0 || from_idx >= dock->item_count ||
+        to_idx < 0 || to_idx >= dock->item_count || from_idx == to_idx) {
+        return from_idx;
+    }
+    // Special items (Apps 3-dots and Trash) have fixed corner positions and cannot be displaced
+    if (is_special_item(&dock->items[from_idx]) || is_special_item(&dock->items[to_idx])) {
+        return from_idx;
+    }
+
+    DockItem moving = dock->items[from_idx];
+    if (from_idx < to_idx) {
+        for (int i = from_idx; i < to_idx; i++) {
+            dock->items[i] = dock->items[i + 1];
+        }
+    } else {
+        for (int i = from_idx; i > to_idx; i--) {
+            dock->items[i] = dock->items[i - 1];
+        }
+    }
+    dock->items[to_idx] = moving;
+    dock_enforce_special_items(dock);
+    dock_save_pinned_apps(dock);
+    return to_idx;
+}
+
+void dock_set_apps_corner(Dock *dock, int at_left) {
+    if (!dock) return;
+    dock->apps_at_left = (at_left != 0) ? 1 : 0;
+    dock_enforce_special_items(dock);
+    dock_save_settings(dock);
+}
+
+void dock_empty_trash(void) {
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        execl("/bin/sh", "sh", "-c",
+              "gio trash --empty 2>/dev/null || rm -rf \"$HOME/.local/share/Trash/files/\"* \"$HOME/.local/share/Trash/info/\"* 2>/dev/null",
+              (char *)NULL);
+        _exit(0);
     }
 }
 
@@ -244,12 +460,17 @@ int dock_add_app(Dock *dock, const char *name, const char *exec, const char *ico
     if (!dock->items[idx].icon_surface) {
         dock->items[idx].icon_surface = icon_load_surface("application-x-executable");
     }
+
+    dock_enforce_special_items(dock);
+    for (int i = 0; i < dock->item_count; i++) {
+        if (strcmp(dock->items[i].exec_cmd, exec) == 0) return i;
+    }
     return idx;
 }
 
 int dock_remove_app(Dock *dock, int index) {
     if (!dock || index < 0 || index >= dock->item_count) return 0;
-    if (strcmp(dock->items[index].exec_cmd, "__ROFI__") == 0) return 0; // Don't remove Apps launcher
+    if (is_special_item(&dock->items[index])) return 0; // Never remove Apps launcher or Trash
 
     if (dock->items[index].icon_surface) {
         cairo_surface_finish(dock->items[index].icon_surface);
@@ -280,7 +501,7 @@ void dock_save_pinned_apps(const Dock *dock) {
     if (!f) return;
 
     for (int i = 0; i < dock->item_count; i++) {
-        if (strcmp(dock->items[i].exec_cmd, "__ROFI__") == 0) continue;
+        if (is_special_item(&dock->items[i])) continue;
         fprintf(f, "%s|%s|%s\n", dock->items[i].name, dock->items[i].exec_cmd, dock->items[i].icon_name);
     }
     fclose(f);
@@ -330,6 +551,7 @@ void dock_save_settings(const Dock *dock) {
     fprintf(f, "magnification=%d\n", dock->magnification_enabled);
     fprintf(f, "position=%d\n", (int)dock->pos);
     fprintf(f, "size=%d\n", dock->size);
+    fprintf(f, "apps_corner=%s\n", dock->apps_at_left ? "left" : "right");
     fclose(f);
 }
 
@@ -347,6 +569,7 @@ void dock_load_settings(Dock *dock) {
     while (fgets(line, sizeof(line), f)) {
         line[strcspn(line, "\r\n")] = '\0';
         int val = 0;
+        char str_val[64] = {0};
         if (sscanf(line, "autohide=%d", &val) == 1) {
             dock->autohide_enabled = (val != 0);
             dock->is_hidden = dock->autohide_enabled ? 1 : 0;
@@ -356,9 +579,19 @@ void dock_load_settings(Dock *dock) {
             if (val >= 0 && val <= 3) dock->pos = (DockPosition)val;
         } else if (sscanf(line, "size=%d", &val) == 1) {
             if (val >= 24 && val <= 128) dock->size = val;
+        } else if (sscanf(line, "apps_corner=%63s", str_val) == 1) {
+            // Strictly enforce only left corner or right corner
+            if (strcasecmp(str_val, "left") == 0 || strcmp(str_val, "1") == 0) {
+                dock->apps_at_left = 1;
+            } else {
+                dock->apps_at_left = 0;
+            }
+        } else if (sscanf(line, "apps_at_left=%d", &val) == 1) {
+            dock->apps_at_left = (val != 0) ? 1 : 0;
         }
     }
     fclose(f);
+    dock_enforce_special_items(dock);
 }
 
 void dock_set_autohide(Dock *dock, int enabled, int screen_w, int screen_h, Display *dpy) {
@@ -395,18 +628,25 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->magnification_enabled = 1;
     dock->mouse_pos = -1.0;
     dock->is_hovered = 0;
+    dock->apps_at_left = 0; // Default: 3-dots Apps button at Right Corner
+    dock->press_item = -1;
+    dock->press_x = 0;
+    dock->press_y = 0;
+    dock->is_reordering = 0;
     dock->surface = NULL;
     dock->theme = theme;
     dock->item_count = 0;
     dock->minimized_count = 0;
     dock->pos = pos;
 
-    // Item 0: Apps Launcher (three dots icon)
+    // Built-in items: Trash bin & Apps Launcher (white three dots at right corner by default)
+    dock_add_app(dock, "Trash", "__TRASH__", "user-trash");
     dock_add_app(dock, "Apps", "__ROFI__", "view-app-grid");
 
     // Load user pinned apps and user settings
     dock_load_pinned_apps(dock);
     dock_load_settings(dock);
+    dock_enforce_special_items(dock);
 
     dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
 
@@ -417,7 +657,8 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
         XSetWindowAttributes attrs;
         attrs.override_redirect = True;
         attrs.background_pixel = BlackPixel(dpy, screen);
-        attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask | ButtonPressMask | PointerMotionMask;
+        attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
+                           ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
 
         dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
                                   DefaultDepth(dpy, screen), InputOutput,
@@ -434,8 +675,16 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     if (dock->autohide_enabled && dock->is_hidden) {
         return; // Zero CPU consumption while hidden
     }
-    (void)screen_w;
-    (void)screen_h;
+    if (screen_w > 0 && screen_h > 0 && !dock->is_dragging) {
+        int old_w = dock->width;
+        int old_h = dock->height;
+        int old_x = dock->x;
+        int old_y = dock->y;
+        dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+        if (dock->win && (dock->width != old_w || dock->height != old_h || dock->x != old_x || dock->y != old_y)) {
+            XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+        }
+    }
     int screen = DefaultScreen(dpy);
     Visual *visual = DefaultVisual(dpy, screen);
 
@@ -496,20 +745,28 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_y = start_y + i * (icon_size + margin) + icon_size / 2;
+            int center_y = start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
             double scale = dock_get_magnification_scale(dock, center_y);
             int eff_size = (int)(icon_size * scale);
             int ix = center_x - eff_size / 2;
             int iy = center_y - eff_size / 2;
 
-            // Hover effect
-            if (dock->hover_item == i) {
+            // Hover / Reorder highlight
+            if (dock->is_reordering && dock->press_item == i) {
+                cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.45);
+                draw_rounded_rectangle(cr, ix - 4, iy - 4, eff_size + 8, eff_size + 8, 9.0);
+                cairo_fill(cr);
+            } else if (dock->hover_item == i) {
                 cairo_set_source_rgba(cr, 0.25, 0.27, 0.32, 0.60);
                 draw_rounded_rectangle(cr, ix - 3, iy - 3, eff_size + 6, eff_size + 6, 8.0);
                 cairo_fill(cr);
             }
 
-            if (dock->items[i].icon_surface) {
+            if (is_apps_item(&dock->items[i])) {
+                draw_apps_three_dots_icon(cr, ix, iy, eff_size);
+            } else if (is_trash_item(&dock->items[i])) {
+                draw_trash_bin_icon(cr, ix, iy, eff_size);
+            } else if (dock->items[i].icon_surface) {
                 icon_render(cr, dock->items[i].icon_surface, dock->items[i].name, ix, iy, eff_size);
             } else {
                 cairo_set_source_rgb(cr, colors[i % 4][0], colors[i % 4][1], colors[i % 4][2]);
@@ -545,7 +802,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
             int min_start_y = start_y + launcher_h + 16;
             for (int i = 0; i < dock->minimized_count; i++) {
-                int center_y = min_start_y + i * (icon_size + margin) + icon_size / 2;
+                int center_y = min_start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
                 double scale = dock_get_magnification_scale(dock, center_y);
                 int eff_size = (int)(icon_size * scale);
                 int mx = center_x - eff_size / 2;
@@ -576,19 +833,27 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_x = start_x + i * (icon_size + margin) + icon_size / 2;
+            int center_x = start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
             double scale = dock_get_magnification_scale(dock, center_x);
             int eff_size = (int)(icon_size * scale);
             int ix = center_x - eff_size / 2;
             int iy = center_y - eff_size / 2;
 
-            if (dock->hover_item == i) {
+            if (dock->is_reordering && dock->press_item == i) {
+                cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.45);
+                draw_rounded_rectangle(cr, ix - 4, iy - 4, eff_size + 8, eff_size + 8, 9.0);
+                cairo_fill(cr);
+            } else if (dock->hover_item == i) {
                 cairo_set_source_rgba(cr, 0.25, 0.27, 0.32, 0.60);
                 draw_rounded_rectangle(cr, ix - 3, iy - 3, eff_size + 6, eff_size + 6, 8.0);
                 cairo_fill(cr);
             }
 
-            if (dock->items[i].icon_surface) {
+            if (is_apps_item(&dock->items[i])) {
+                draw_apps_three_dots_icon(cr, ix, iy, eff_size);
+            } else if (is_trash_item(&dock->items[i])) {
+                draw_trash_bin_icon(cr, ix, iy, eff_size);
+            } else if (dock->items[i].icon_surface) {
                 icon_render(cr, dock->items[i].icon_surface, dock->items[i].name, ix, iy, eff_size);
             } else {
                 cairo_set_source_rgb(cr, colors[i % 4][0], colors[i % 4][1], colors[i % 4][2]);
@@ -624,7 +889,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
             int min_start_x = start_x + launcher_w + 16;
             for (int i = 0; i < dock->minimized_count; i++) {
-                int center_x = min_start_x + i * (icon_size + margin) + icon_size / 2;
+                int center_x = min_start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
                 double scale = dock_get_magnification_scale(dock, center_x);
                 int eff_size = (int)(icon_size * scale);
                 int mx = center_x - eff_size / 2;
@@ -687,7 +952,7 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
             XRaiseWindow(dpy, dock->win);
             dock_render(dpy, dock, screen_w, screen_h);
         }
-    } else if (!in_trigger && !dock->is_hidden && !dock->is_dragging) {
+    } else if (!in_trigger && !dock->is_hidden && !dock->is_dragging && dock->press_item < 0) {
         dock->is_hidden = 1;
         dock->hover_item = -1;
         dock->is_hovered = 0;
@@ -722,9 +987,21 @@ void dock_handle_click(Display *dpy, Dock *dock, RofiLauncher *rofi, int x, int 
     int item = dock_get_item_at(dock, x, y);
     if (item < 0 || item >= dock->item_count) return;
 
-    if (strcmp(dock->items[item].exec_cmd, "__ROFI__") == 0 ||
-        strcmp(dock->items[item].exec_cmd, "__LAUNCHPAD__") == 0) {
+    if (is_apps_item(&dock->items[item])) {
         if (rofi) rofi_launcher_toggle(dpy, rofi);
+        return;
+    }
+
+    if (is_trash_item(&dock->items[item])) {
+        pid_t tpid = fork();
+        if (tpid == 0) {
+            setsid();
+            execl("/bin/sh", "sh", "-c",
+                  "mkdir -p \"$HOME/.local/share/Trash/files\" \"$HOME/.local/share/Trash/info\" && "
+                  "(gio open trash:// 2>/dev/null || xdg-open trash:// 2>/dev/null || xdg-open \"$HOME/.local/share/Trash/files\")",
+                  (char *)NULL);
+            _exit(1);
+        }
         return;
     }
 
@@ -821,9 +1098,8 @@ void dock_update_running(Dock *dock, const Client *clients) {
         dock->items[i].is_running = 0;
         const char *item_name = dock->items[i].name;
 
-        // Skip Apps launcher (never marked as running window)
-        if (strcmp(dock->items[i].exec_cmd, "__ROFI__") == 0 ||
-            strcmp(dock->items[i].exec_cmd, "__LAUNCHPAD__") == 0) {
+        // Skip special items (Apps launcher & Trash are never marked as running windows)
+        if (is_special_item(&dock->items[i])) {
             continue;
         }
 
