@@ -265,41 +265,15 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
-    // Frosted glass background
-    double bg_r = dock->theme ? dock->theme->bg_surface.r : 0.12;
-    double bg_g = dock->theme ? dock->theme->bg_surface.g : 0.14;
-    double bg_b = dock->theme ? dock->theme->bg_surface.b : 0.18;
-
-    cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, 0.92);
-    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 16.0);
+    // Solid sleek deep black background
+    cairo_set_source_rgba(cr, 0.04, 0.04, 0.04, 0.98);
+    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 14.0);
     cairo_fill(cr);
 
-    // Subtle frosted gloss gradient
-    cairo_pattern_t *pat = cairo_pattern_create_linear(0, 0, 0, dock->height);
-    cairo_pattern_add_color_stop_rgba(pat, 0.0, 1.0, 1.0, 1.0, 0.12);
-    cairo_pattern_add_color_stop_rgba(pat, 0.5, 1.0, 1.0, 1.0, 0.02);
-    cairo_pattern_add_color_stop_rgba(pat, 1.0, 0.0, 0.0, 0.0, 0.18);
-    cairo_set_source(cr, pat);
-    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 16.0);
-    cairo_fill(cr);
-    cairo_pattern_destroy(pat);
-
-    // Crisp outline
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.18);
+    // Subtle crisp border
+    cairo_set_source_rgba(cr, 0.22, 0.22, 0.22, 0.70);
     cairo_set_line_width(cr, 1.0);
-    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 16.0);
-    cairo_stroke(cr);
-
-    // Specular highlight line
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.28);
-    cairo_set_line_width(cr, 1.0);
-    if (!is_vertical) {
-        cairo_move_to(cr, 18.0, 1.5);
-        cairo_line_to(cr, dock->width - 18.0, 1.5);
-    } else {
-        cairo_move_to(cr, 1.5, 18.0);
-        cairo_line_to(cr, 1.5, dock->height - 18.0);
-    }
+    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 14.0);
     cairo_stroke(cr);
 
     // Render launcher icons
@@ -329,7 +303,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
             // Hover effect
             if (dock->hover_item == i) {
-                cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.35);
+                cairo_set_source_rgba(cr, 0.25, 0.27, 0.32, 0.60);
                 draw_rounded_rectangle(cr, ix - 3, iy - 3, icon_size + 6, icon_size + 6, 8.0);
                 cairo_fill(cr);
             }
@@ -408,7 +382,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
             // Hover effect
             if (dock->hover_item == i) {
-                cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.35);
+                cairo_set_source_rgba(cr, 0.25, 0.27, 0.32, 0.60);
                 draw_rounded_rectangle(cr, ix - 3, iy - 3, icon_size + 6, icon_size + 6, 8.0);
                 cairo_fill(cr);
             }
