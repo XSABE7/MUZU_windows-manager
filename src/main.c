@@ -20,6 +20,7 @@
 #include "client_props.h"
 #include "gtk_theme.h"
 #include "menu.h"
+#include "compositor.h"
 
 static int running = 1;
 static GtkTheme current_theme;
@@ -386,6 +387,9 @@ int main(int argc, char **argv) {
     g_dock = &dock;
     g_rofi = &rofi_launcher;
     g_menu = &context_menu;
+
+    // Launch X11 Compositor (Picom with Dual-Kawase Frosted Glass Blur)
+    compositor_init(dpy);
 
     // Select root window events
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
@@ -1052,6 +1056,7 @@ int main(int argc, char **argv) {
     menu_cleanup(&context_menu);
     dock_cleanup(&dock);
     rofi_launcher_cleanup(&rofi_launcher);
+    compositor_cleanup();
 
     while (XPending(dpy)) {
         XNextEvent(dpy, &ev);
