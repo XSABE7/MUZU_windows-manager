@@ -34,6 +34,9 @@ test_icon_fetcher: tests/test_icon_fetcher.c src/icon_fetcher.c
 test_gtk_theme: tests/test_gtk_theme.c src/gtk_theme.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+test_x11_stress: tests/test_x11_stress.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
 muzuwm: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
@@ -44,4 +47,4 @@ asan: clean all
 clean:
 	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_gtk_theme test_x11_stress muzuwm
 
-.PHONY: all clean asan
+.PHONY: all tests clean asan

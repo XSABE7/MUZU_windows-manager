@@ -101,6 +101,7 @@ void gtk_theme_load_from_file(GtkTheme *theme, const char *filepath) {
 
 void gtk_theme_init(GtkTheme *theme) {
     if (!theme) return;
+    memset(theme, 0, sizeof(*theme));
 
     // Sensible modern defaults
     strncpy(theme->theme_name, "Adwaita-dark", sizeof(theme->theme_name) - 1);

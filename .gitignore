@@ -10,3 +10,5 @@ test_easter_egg
 test_calendar
 test_client_props
 test_icon_fetcher
+test_gtk_theme
+test_x11_stress

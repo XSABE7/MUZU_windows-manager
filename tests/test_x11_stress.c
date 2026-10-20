@@ -42,7 +42,6 @@ int main(int argc, char **argv) {
     // Test Alt+F1 hotkey (trigger launchpad)
     printf("Simulating Alt+F1 Launchpad trigger...\n");
     KeyCode f1_code = XKeysymToKeycode(dpy, XK_F1);
-    KeyCode alt_code = XKeysymToKeycode(dpy, XK_Alt_L);
 
     XKeyEvent ev;
     memset(&ev, 0, sizeof(ev));

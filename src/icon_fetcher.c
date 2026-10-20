@@ -97,26 +97,33 @@ void icon_theme_set(const char *theme_name) {
     add_theme_to_chain(theme_name);
 
     // Look for index.theme in standard bases
+    const char *test_override = getenv("MUZUWM_TEST_ICON_DIR");
     const char *home = getenv("HOME");
-    char test_dir[512];
-    const char *bases[] = {
-        "/tmp/muzuwm_test_icons",
-        home ? "~/.local/share/icons" : NULL,
-        home ? "~/.icons" : NULL,
-        "/usr/share/icons",
-        NULL
-    };
+    const char *bases[8];
+    int bcount = 0;
+    if (test_override && test_override[0]) bases[bcount++] = test_override;
+    if (home) {
+        bases[bcount++] = "~/.local/share/icons";
+        bases[bcount++] = "~/.icons";
+    }
+    bases[bcount++] = "/usr/share/icons";
+    bases[bcount] = NULL;
 
-    for (int i = 0; bases[i] != NULL; i++) {
-        if (bases[i][0] == '~' && home) {
-            snprintf(test_dir, sizeof(test_dir), "%s%s/%s", home, bases[i] + 1, theme_name);
-        } else {
-            snprintf(test_dir, sizeof(test_dir), "%s/%s", bases[i], theme_name);
-        }
+    // Iteratively resolve index.theme for all themes in active_theme_chain
+    for (int idx = 0; idx < active_theme_count && active_theme_count < MAX_THEMES; idx++) {
+        const char *cur_theme = active_theme_chain[idx];
+        char test_dir[512];
+        for (int i = 0; bases[i] != NULL; i++) {
+            if (bases[i][0] == '~' && home) {
+                snprintf(test_dir, sizeof(test_dir), "%.256s%.128s/%.64s", home, bases[i] + 1, cur_theme);
+            } else {
+                snprintf(test_dir, sizeof(test_dir), "%.400s/%.64s", bases[i], cur_theme);
+            }
 
-        if (access(test_dir, R_OK) == 0) {
-            parse_index_theme(test_dir);
-            break;
+            if (access(test_dir, R_OK) == 0) {
+                parse_index_theme(test_dir);
+                break;
+            }
         }
     }
 
@@ -191,7 +198,7 @@ int icon_find_themed_png(const char *icon_name, char *out_path, size_t maxlen) {
         return icon_find_png(icon_name, out_path, maxlen);
     }
 
-    char clean_name[64];
+    char clean_name[128];
     snprintf(clean_name, sizeof(clean_name), "%s", icon_name);
     char *ext = strrchr(clean_name, '.');
     if (ext && (strcmp(ext, ".png") == 0 || strcmp(ext, ".svg") == 0 || strcmp(ext, ".xpm") == 0)) {
@@ -202,19 +209,22 @@ int icon_find_themed_png(const char *icon_name, char *out_path, size_t maxlen) {
         icon_theme_set("hicolor");
     }
 
+    const char *test_override = getenv("MUZUWM_TEST_ICON_DIR");
     const char *home = getenv("HOME");
+    const char *bases[8];
+    int bcount = 0;
+    if (test_override && test_override[0]) bases[bcount++] = test_override;
+    if (home) {
+        bases[bcount++] = "~/.local/share/icons";
+        bases[bcount++] = "~/.icons";
+    }
+    bases[bcount++] = "/usr/share/icons";
+    bases[bcount] = NULL;
+
     char test_path[1024];
 
     for (int t = 0; t < active_theme_count; t++) {
         const char *theme = active_theme_chain[t];
-
-        const char *bases[] = {
-            "/tmp/muzuwm_test_icons",
-            home ? "~/.local/share/icons" : NULL,
-            home ? "~/.icons" : NULL,
-            "/usr/share/icons",
-            NULL
-        };
 
         for (int b = 0; bases[b] != NULL; b++) {
             char base_theme_dir[400];
@@ -227,7 +237,7 @@ int icon_find_themed_png(const char *icon_name, char *out_path, size_t maxlen) {
             if (access(base_theme_dir, R_OK) != 0) continue;
 
             for (int s = 0; app_subdirs[s] != NULL; s++) {
-                snprintf(test_path, sizeof(test_path), "%.400s/%.32s/%.64s.png", base_theme_dir, app_subdirs[s], clean_name);
+                snprintf(test_path, sizeof(test_path), "%.400s/%.32s/%.128s.png", base_theme_dir, app_subdirs[s], clean_name);
                 if (access(test_path, R_OK) == 0) {
                     snprintf(out_path, maxlen, "%s", test_path);
                     return 1;

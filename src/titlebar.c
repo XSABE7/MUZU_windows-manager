@@ -61,8 +61,11 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     cairo_rectangle(cr, 12, 0, (width > 48 ? width - 40 : 10), TITLEBAR_HEIGHT);
     cairo_clip(cr);
     const char *font_fam = (theme && theme->font_family[0]) ? theme->font_family : "sans-serif";
+    double font_sz = (theme && theme->font_size > 0.0) ? theme->font_size : 11.0;
+    if (font_sz < 9.0) font_sz = 9.0;
+    if (font_sz > 14.0) font_sz = 14.0;
     cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-    cairo_set_font_size(cr, 11.0);
+    cairo_set_font_size(cr, font_sz);
     if (theme) {
         cairo_set_source_rgb(cr, theme->fg_titlebar.r, theme->fg_titlebar.g, theme->fg_titlebar.b);
     } else {

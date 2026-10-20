@@ -1,9 +1,11 @@
+#define _GNU_SOURCE
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <cairo/cairo.h>
+#include <fontconfig/fontconfig.h>
 #include "icon_fetcher.h"
 
 int main(void) {
@@ -61,26 +63,59 @@ int main(void) {
         assert(strstr(themed_path, "debian-logo.png") != NULL);
     }
 
-    // Test with mock theme inheritance
-    system("mkdir -p /tmp/muzuwm_test_icons/ChildTheme /tmp/muzuwm_test_icons/ParentTheme/apps/48");
+    // Test with mock theme inheritance and transitive inheritance
+    system("mkdir -p /tmp/muzuwm_test_icons/ChildTheme/apps/48 "
+           "/tmp/muzuwm_test_icons/ParentTheme/apps/48 "
+           "/tmp/muzuwm_test_icons/GrandparentTheme/apps/48");
+    setenv("MUZUWM_TEST_ICON_DIR", "/tmp/muzuwm_test_icons", 1);
+
     FILE *ft = fopen("/tmp/muzuwm_test_icons/ChildTheme/index.theme", "w");
     if (ft) {
         fprintf(ft, "[Icon Theme]\nName=ChildTheme\nInherits=ParentTheme\n");
         fclose(ft);
     }
+    FILE *ft2 = fopen("/tmp/muzuwm_test_icons/ParentTheme/index.theme", "w");
+    if (ft2) {
+        fprintf(ft2, "[Icon Theme]\nName=ParentTheme\nInherits=GrandparentTheme\n");
+        fclose(ft2);
+    }
+
     // Create a 1x1 test png in ParentTheme
     cairo_surface_t *dummy = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 48, 48);
     cairo_surface_write_to_png(dummy, "/tmp/muzuwm_test_icons/ParentTheme/apps/48/custom_tool.png");
+
+    // Create a test png in GrandparentTheme for transitive inheritance
+    cairo_surface_write_to_png(dummy, "/tmp/muzuwm_test_icons/GrandparentTheme/apps/48/grandparent_tool.png");
+
+    // Create a long reverse-DNS icon name (> 64 chars) to test buffer expansion
+    const char *long_name = "org.gnome.Settings.Troubleshooting.Network.DiagnosticService.AppExt";
+    char long_png_path[512];
+    snprintf(long_png_path, sizeof(long_png_path),
+             "/tmp/muzuwm_test_icons/ChildTheme/apps/48/%s.png", long_name);
+    cairo_surface_write_to_png(dummy, long_png_path);
     cairo_surface_destroy(dummy);
 
-    // Add /tmp/muzuwm_test_icons to search and set theme
+    // Set theme to ChildTheme
     icon_theme_set("ChildTheme");
-    int found_inherited = icon_find_themed_png("custom_tool", themed_path, sizeof(themed_path));
-    // Clean up mock directory
-    system("rm -rf /tmp/muzuwm_test_icons");
 
+    int found_inherited = icon_find_themed_png("custom_tool", themed_path, sizeof(themed_path));
     assert(found_inherited == 1);
     assert(strstr(themed_path, "custom_tool.png") != NULL);
+
+    int found_transitive = icon_find_themed_png("grandparent_tool", themed_path, sizeof(themed_path));
+    assert(found_transitive == 1);
+    assert(strstr(themed_path, "grandparent_tool.png") != NULL);
+
+    int found_long = icon_find_themed_png(long_name, themed_path, sizeof(themed_path));
+    assert(found_long == 1);
+    assert(strstr(themed_path, long_name) != NULL);
+
+    // Clean up mock directory and environment
+    system("rm -rf /tmp/muzuwm_test_icons");
+    unsetenv("MUZUWM_TEST_ICON_DIR");
+
+    cairo_debug_reset_static_data();
+    FcFini();
 
     printf("test_icon_fetcher passed!\n");
     return 0;
