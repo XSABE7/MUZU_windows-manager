@@ -98,6 +98,7 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
         c->titlebar_cache_focused = focused;
     }
 
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     if (c->titlebar_cache && cairo_surface_status(c->titlebar_cache) == CAIRO_STATUS_SUCCESS) {
         cairo_set_source_surface(cr, c->titlebar_cache, 0, 0);
         cairo_paint(cr);
@@ -106,6 +107,7 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
         cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
         cairo_paint(cr);
     }
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // Title text (shifted to right of traffic lights, clipped to width)
     cairo_save(cr);

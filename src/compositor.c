@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/prctl.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include "compositor.h"
@@ -136,6 +137,7 @@ void compositor_init(Display *dpy) {
 
     pid_t pid = fork();
     if (pid == 0) {
+        prctl(PR_SET_PDEATHSIG, SIGTERM);
         setsid();
         execlp("picom", "picom", "--config", compositor_get_config_path(), NULL);
         _exit(0);

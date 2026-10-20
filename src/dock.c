@@ -446,6 +446,11 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     }
     cairo_t *cr = cairo_create(dock->surface);
 
+    // Clear surface completely to remove any ghost artifacts or trails
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
     // Liquid Frosted Smoked Glass Squircle Plate (Rounded Rectangle with 14px continuous curvature)

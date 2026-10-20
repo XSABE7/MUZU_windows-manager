@@ -289,7 +289,10 @@ cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, in
 
 void client_set_opacity(Display *dpy, Window win, unsigned int opacity) {
     if (!dpy || win == None) return;
-    Atom net_opacity = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
+    static Atom net_opacity = None;
+    if (net_opacity == None) {
+        net_opacity = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
+    }
     if (opacity >= 0xFFFFFFFF) {
         XDeleteProperty(dpy, win, net_opacity);
     } else {

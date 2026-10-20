@@ -869,9 +869,23 @@ int main(int argc, char **argv) {
 
                 Client *c = client_find_by_any(clients, ev.xcrossing.window);
                 if (c) {
-                    c->is_hovered = 1;
-                    if (c->is_ghost) {
-                        client_set_opacity(dpy, c->win, 0xFFFFFFFF);
+                    // Enforce single-hover exclusivity across all windows
+                    for (Client *o = clients; o; o = o->next) {
+                        if (o != c && o->is_hovered) {
+                            o->is_hovered = 0;
+                            if (o != focused_client && o->last_unfocus_time > 0 &&
+                                (time(NULL) - o->last_unfocus_time >= 20)) {
+                                client_set_opacity(dpy, o->win, 0xA6AAAAAA);
+                                o->is_ghost = 1;
+                            }
+                        }
+                    }
+
+                    if (!c->is_hovered) {
+                        c->is_hovered = 1;
+                        if (c->is_ghost) {
+                            client_set_opacity(dpy, c->win, 0xFFFFFFFF);
+                        }
                     }
                 }
                 break;
@@ -895,16 +909,18 @@ int main(int argc, char **argv) {
                     break;
                 }
 
-                Client *c = client_find_by_any(clients, ev.xcrossing.window);
-                if (c && c != focused_client) {
-                    int rx = ev.xcrossing.x_root;
-                    int ry = ev.xcrossing.y_root;
-                    if (rx < c->x || rx >= c->x + c->width || ry < c->y || ry >= c->y + c->height) {
-                        c->is_hovered = 0;
-                        time_t now = time(NULL);
-                        if (c->last_unfocus_time > 0 && (now - c->last_unfocus_time >= 20)) {
-                            client_set_opacity(dpy, c->win, 0xA6AAAAAA);
-                            c->is_ghost = 1;
+                if (ev.xcrossing.detail != NotifyInferior) {
+                    Client *c = client_find_by_any(clients, ev.xcrossing.window);
+                    if (c && c != focused_client) {
+                        int rx = ev.xcrossing.x_root;
+                        int ry = ev.xcrossing.y_root;
+                        if (rx < c->x || rx >= c->x + c->width || ry < c->y || ry >= c->y + c->height) {
+                            c->is_hovered = 0;
+                            time_t now = time(NULL);
+                            if (c->last_unfocus_time > 0 && (now - c->last_unfocus_time >= 20)) {
+                                client_set_opacity(dpy, c->win, 0xA6AAAAAA);
+                                c->is_ghost = 1;
+                            }
                         }
                     }
                 }
