@@ -59,7 +59,7 @@ Window titlebar_create(Display *dpy, Window client_win, int width) {
 
     XSetWindowAttributes attrs;
     attrs.background_pixel = BlackPixel(dpy, screen);
-    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | Button1MotionMask;
+    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | Button1MotionMask | EnterWindowMask | LeaveWindowMask;
 
     Window frame = XCreateWindow(dpy, root, 0, 0, width, TITLEBAR_HEIGHT, 0,
                                  DefaultDepth(dpy, screen), InputOutput,
@@ -85,16 +85,17 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     }
 
     cairo_t *cr = cairo_create(c->titlebar_surface);
+    int focused = c->is_focused;
 
     // Blit pre-rendered Liquid Glass surface from cache
-    if (!c->titlebar_cache || c->titlebar_cache_w != width || c->titlebar_cache_focused != 1) {
+    if (!c->titlebar_cache || c->titlebar_cache_w != width || c->titlebar_cache_focused != focused) {
         if (c->titlebar_cache) {
             cairo_surface_destroy(c->titlebar_cache);
             c->titlebar_cache = NULL;
         }
-        c->titlebar_cache = titlebar_pre_render(dpy, width, 1, theme);
+        c->titlebar_cache = titlebar_pre_render(dpy, width, focused, theme);
         c->titlebar_cache_w = width;
-        c->titlebar_cache_focused = 1;
+        c->titlebar_cache_focused = focused;
     }
 
     if (c->titlebar_cache && cairo_surface_status(c->titlebar_cache) == CAIRO_STATUS_SUCCESS) {
@@ -116,7 +117,9 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     if (font_sz > 14.0) font_sz = 14.0;
     cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, font_sz);
-    if (theme) {
+    if (!focused) {
+        cairo_set_source_rgba(cr, 0.60, 0.62, 0.65, 0.70);
+    } else if (theme) {
         cairo_set_source_rgb(cr, theme->fg_titlebar.r, theme->fg_titlebar.g, theme->fg_titlebar.b);
     } else {
         cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
@@ -126,29 +129,40 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     cairo_restore(cr);
 
     // macOS Traffic Light Controls (Top-Left)
-    // 1. Red (Close)
-    cairo_set_source_rgb(cr, 1.00, 0.37, 0.34); // #FF5F56
-    cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-    cairo_fill_preserve(cr);
-    cairo_set_source_rgba(cr, 0.80, 0.15, 0.15, 0.8);
-    cairo_set_line_width(cr, 0.6);
-    cairo_stroke(cr);
+    if (!focused) {
+        // Subtle muted dots for unfocused state
+        cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.50);
+        cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+        cairo_fill(cr);
+        cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+        cairo_fill(cr);
+        cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+        cairo_fill(cr);
+    } else {
+        // 1. Red (Close)
+        cairo_set_source_rgb(cr, 1.00, 0.37, 0.34); // #FF5F56
+        cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 0.80, 0.15, 0.15, 0.8);
+        cairo_set_line_width(cr, 0.6);
+        cairo_stroke(cr);
 
-    // 2. Yellow (Minimize)
-    cairo_set_source_rgb(cr, 1.00, 0.74, 0.18); // #FFBD2E
-    cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-    cairo_fill_preserve(cr);
-    cairo_set_source_rgba(cr, 0.75, 0.50, 0.10, 0.8);
-    cairo_set_line_width(cr, 0.6);
-    cairo_stroke(cr);
+        // 2. Yellow (Minimize)
+        cairo_set_source_rgb(cr, 1.00, 0.74, 0.18); // #FFBD2E
+        cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 0.75, 0.50, 0.10, 0.8);
+        cairo_set_line_width(cr, 0.6);
+        cairo_stroke(cr);
 
-    // 3. Green (Maximize)
-    cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
-    cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-    cairo_fill_preserve(cr);
-    cairo_set_source_rgba(cr, 0.10, 0.55, 0.15, 0.8);
-    cairo_set_line_width(cr, 0.6);
-    cairo_stroke(cr);
+        // 3. Green (Maximize)
+        cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
+        cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+        cairo_fill_preserve(cr);
+        cairo_set_source_rgba(cr, 0.10, 0.55, 0.15, 0.8);
+        cairo_set_line_width(cr, 0.6);
+        cairo_stroke(cr);
+    }
 
     cairo_destroy(cr);
     cairo_surface_flush(c->titlebar_surface);

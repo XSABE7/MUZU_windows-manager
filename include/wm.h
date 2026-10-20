@@ -37,6 +37,7 @@ typedef struct Client {
     time_t last_unfocus_time;
     int is_ghost;
     int is_hovered;
+    int is_focused;
     struct Client *next;
 } Client;
 

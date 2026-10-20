@@ -225,10 +225,55 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
     XFlush(dpy);
 }
 
+static Client *focused_client = NULL;
+
+static void set_focused_client(Display *dpy, Client *c) {
+    if (focused_client == c) {
+        if (c && c->win) {
+            XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+        }
+        return;
+    }
+
+    Client *old = focused_client;
+    focused_client = c;
+
+    if (old) {
+        old->is_focused = 0;
+        old->last_unfocus_time = time(NULL);
+        if (old->win != None) {
+            XGrabButton(dpy, AnyButton, AnyModifier, old->win, False,
+                        ButtonPressMask, GrabModeSync, GrabModeAsync, None, None);
+        }
+        if (old->frame != None) {
+            titlebar_draw(dpy, old, &current_theme);
+        }
+    }
+
+    if (c) {
+        c->is_focused = 1;
+        if (c->win != None) {
+            XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
+            if (c->is_ghost) {
+                client_set_opacity(dpy, c->win, 0xFFFFFFFF);
+                c->is_ghost = 0;
+            }
+            XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+        }
+        if (c->frame != None) {
+            titlebar_draw(dpy, c, &current_theme);
+        }
+    }
+}
+
 static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConfig *cfg,
                             Client **drag_client, Window *last_click_win, Dock *dock) {
     Client *c = client_find_by_any(*clients, w);
     if (!c) return;
+
+    if (focused_client == c) {
+        focused_client = NULL;
+    }
 
     if (drag_client && *drag_client == c) {
         *drag_client = NULL;
@@ -239,6 +284,7 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
     }
 
     // Stop receiving events for this client to prevent processing stale events
+    XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
     XSelectInput(dpy, c->win, NoEventMask);
     XRemoveFromSaveSet(dpy, c->win);
 
@@ -260,6 +306,14 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
     }
 
     client_remove(clients, c->win);
+    if (!focused_client && *clients) {
+        for (Client *o = *clients; o; o = o->next) {
+            if (!o->is_minimized) {
+                set_focused_client(dpy, o);
+                break;
+            }
+        }
+    }
     reflow_all(dpy, *clients, cfg);
     if (dock) {
         dock_update_running(dock, *clients);
@@ -432,7 +486,7 @@ int main(int argc, char **argv) {
                         client_get_title(dpy, w, c->title, sizeof(c->title));
                     }
                     XAddToSaveSet(dpy, w);
-                    XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask | FocusChangeMask);
+                    XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask | FocusChangeMask | EnterWindowMask | LeaveWindowMask);
 
                     if (is_dialog) {
                         if (frame != None) {
@@ -455,8 +509,10 @@ int main(int argc, char **argv) {
                     if (!c->icon_surface) {
                         c->icon_surface = client_get_icon(dpy, c->win, c->title, 32);
                     }
+                    set_focused_client(dpy, c);
+                } else {
+                    XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 }
-                XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 dock_update_running(&dock, clients);
                 dock_render(dpy, &dock, screen_w, screen_h);
                 raise_system_overlays(dpy);
@@ -492,7 +548,7 @@ int main(int argc, char **argv) {
                             break;
                         }
                         if ((direction == 8 || direction == 10) && !drag_client) {
-                            XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+                            set_focused_client(dpy, c);
                             Window raise_target = c->frame ? c->frame : c->win;
                             XRaiseWindow(dpy, raise_target);
                             raise_system_overlays(dpy);
@@ -534,7 +590,7 @@ int main(int argc, char **argv) {
                             dock_update_running(&dock, clients);
                             dock_render(dpy, &dock, screen_w, screen_h);
                         }
-                        XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+                        set_focused_client(dpy, c);
                         Window raise_target = c->frame ? c->frame : c->win;
                         XRaiseWindow(dpy, raise_target);
                         raise_system_overlays(dpy);
@@ -645,7 +701,7 @@ int main(int argc, char **argv) {
                             }
                             XRaiseWindow(dpy, target);
                             raise_system_overlays(dpy);
-                            XSetInputFocus(dpy, min_c->win, RevertToPointerRoot, CurrentTime);
+                            set_focused_client(dpy, min_c);
                             dock_remove_minimized(&dock, min_c);
                             reflow_all(dpy, clients, &cfg);
                             dock_update_running(&dock, clients);
@@ -669,30 +725,40 @@ int main(int argc, char **argv) {
                     break;
                 }
 
-                for (Client *curr = clients; curr; curr = curr->next) {
-                    if (curr->frame && ev.xbutton.window == curr->frame) {
-                        XSetInputFocus(dpy, curr->win, RevertToPointerRoot, CurrentTime);
-                        XRaiseWindow(dpy, curr->frame);
+                Client *clicked_c = client_find_by_any(clients, ev.xbutton.window);
+                if (clicked_c) {
+                    if (clicked_c->frame && ev.xbutton.window == clicked_c->frame) {
+                        set_focused_client(dpy, clicked_c);
+                        XRaiseWindow(dpy, clicked_c->frame);
                         raise_system_overlays(dpy);
 
                         if (ev.xbutton.button == Button1) {
-                            TitlebarAction action = titlebar_get_action(ev.xbutton.x, curr->width);
+                            TitlebarAction action = titlebar_get_action(ev.xbutton.x, clicked_c->width);
                             if (action == TITLEBAR_CLICK_CLOSE) {
-                                client_close(dpy, curr->win);
+                                client_close(dpy, clicked_c->win);
                                 break;
                             } else if (action == TITLEBAR_CLICK_MINIMIZE) {
-                                if (dock_add_minimized(&dock, curr)) {
-                                    curr->is_minimized = 1;
-                                    Window target = curr->frame ? curr->frame : curr->win;
+                                if (dock_add_minimized(&dock, clicked_c)) {
+                                    clicked_c->is_minimized = 1;
+                                    Window target = clicked_c->frame ? clicked_c->frame : clicked_c->win;
                                     XUnmapWindow(dpy, target);
+                                    if (focused_client == clicked_c) {
+                                        focused_client = NULL;
+                                        for (Client *o = clients; o; o = o->next) {
+                                            if (!o->is_minimized) {
+                                                set_focused_client(dpy, o);
+                                                break;
+                                            }
+                                        }
+                                    }
                                     reflow_all(dpy, clients, &cfg);
                                     dock_render(dpy, &dock, screen_w, screen_h);
                                 }
                                 break;
                             } else if (action == TITLEBAR_CLICK_MAXIMIZE) {
-                                client_toggle_maximize(dpy, curr, &cfg);
-                                titlebar_draw(dpy, curr, &current_theme);
-                                if (!curr->is_maximized && curr->mode == CLIENT_TILED) {
+                                client_toggle_maximize(dpy, clicked_c, &cfg);
+                                titlebar_draw(dpy, clicked_c, &current_theme);
+                                if (!clicked_c->is_maximized && clicked_c->mode == CLIENT_TILED) {
                                     reflow_all(dpy, clients, &cfg);
                                 }
                                 break;
@@ -702,7 +768,7 @@ int main(int argc, char **argv) {
                         // Check double click on titlebar
                         if (ev.xbutton.time - last_titlebar_click_time <= 250 &&
                             ev.xbutton.window == last_titlebar_click_win) {
-                            handle_titlebar_double_click(dpy, curr, &cfg);
+                            handle_titlebar_double_click(dpy, clicked_c, &cfg);
                             reflow_all(dpy, clients, &cfg);
                             last_titlebar_click_time = 0;
                             last_titlebar_click_win = None;
@@ -713,16 +779,16 @@ int main(int argc, char **argv) {
 
                         // Start dragging with pointer grab
                         if (ev.xbutton.button == Button1) {
-                            drag_client = curr;
+                            drag_client = clicked_c;
                             drag_start_x = ev.xbutton.x_root;
                             drag_start_y = ev.xbutton.y_root;
-                            client_start_x = curr->x;
-                            client_start_y = curr->y;
+                            client_start_x = clicked_c->x;
+                            client_start_y = clicked_c->y;
 
                             // If tiled, detach to floating and reflow remaining tiled windows!
-                            if (curr->mode == CLIENT_TILED) {
-                                curr->mode = CLIENT_FLOATING;
-                                curr->snap_state = SNAP_NONE;
+                            if (clicked_c->mode == CLIENT_TILED) {
+                                clicked_c->mode = CLIENT_FLOATING;
+                                clicked_c->snap_state = SNAP_NONE;
                                 reflow_all(dpy, clients, &cfg);
                             }
 
@@ -731,6 +797,13 @@ int main(int argc, char **argv) {
                                          GrabModeAsync, GrabModeAsync,
                                          None, None, CurrentTime);
                         }
+                        break;
+                    } else if (ev.xbutton.window == clicked_c->win) {
+                        set_focused_client(dpy, clicked_c);
+                        Window raise_target = clicked_c->frame ? clicked_c->frame : clicked_c->win;
+                        XRaiseWindow(dpy, raise_target);
+                        raise_system_overlays(dpy);
+                        XAllowEvents(dpy, ReplayPointer, CurrentTime);
                         break;
                     }
                 }
@@ -787,6 +860,15 @@ int main(int argc, char **argv) {
                         XRaiseWindow(dpy, dock.win);
                         dock_render(dpy, &dock, screen_w, screen_h);
                     }
+                    break;
+                }
+
+                Client *c = client_find_by_any(clients, ev.xcrossing.window);
+                if (c) {
+                    c->is_hovered = 1;
+                    if (c->is_ghost) {
+                        client_set_opacity(dpy, c->win, 0xFFFFFFFF);
+                    }
                 }
                 break;
             }
@@ -805,6 +887,21 @@ int main(int argc, char **argv) {
                         dock.is_hidden = 1;
                         dock_calculate_geometry(&dock, dock.pos, 1, screen_w, screen_h);
                         XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
+                    }
+                    break;
+                }
+
+                Client *c = client_find_by_any(clients, ev.xcrossing.window);
+                if (c && c != focused_client) {
+                    int rx = ev.xcrossing.x_root;
+                    int ry = ev.xcrossing.y_root;
+                    if (rx < c->x || rx >= c->x + c->width || ry < c->y || ry >= c->y + c->height) {
+                        c->is_hovered = 0;
+                        time_t now = time(NULL);
+                        if (c->last_unfocus_time > 0 && (now - c->last_unfocus_time >= 20)) {
+                            client_set_opacity(dpy, c->win, 0xA6AAAAAA);
+                            c->is_ghost = 1;
+                        }
                     }
                 }
                 break;
@@ -927,6 +1024,22 @@ int main(int argc, char **argv) {
             }
         }
     }
+
+        time_t now = time(NULL);
+        static time_t last_inactivity_check = 0;
+        if (now != last_inactivity_check) {
+            last_inactivity_check = now;
+            for (Client *curr = clients; curr; curr = curr->next) {
+                if (curr != focused_client && !curr->is_minimized && !curr->is_hovered) {
+                    if (curr->last_unfocus_time > 0 && (now - curr->last_unfocus_time >= 20)) {
+                        if (!curr->is_ghost) {
+                            client_set_opacity(dpy, curr->win, 0xA6AAAAAA);
+                            curr->is_ghost = 1;
+                        }
+                    }
+                }
+            }
+        }
 
         if (running && !XPending(dpy)) {
             poll(&pfd, 1, 50);

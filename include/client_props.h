@@ -36,4 +36,7 @@ int client_is_csd(Display *dpy, Window win);
 // Retrieve high-fidelity application icon via _NET_WM_ICON, WM_CLASS, or keyword mapping
 cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, int target_size);
 
+// Set or clear window opacity using _NET_WM_WINDOW_OPACITY (0xFFFFFFFF = opaque / property removed)
+void client_set_opacity(Display *dpy, Window win, unsigned int opacity);
+
 #endif // CLIENT_PROPS_H
