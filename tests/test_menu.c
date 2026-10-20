@@ -50,6 +50,11 @@ int main(void) {
     assert(last_action == 101);
     assert(menu.is_visible == 0); // Dismisses on select
 
+    // Test 6: Dock settings menu positioned above bottom dock (dock_y = 1012)
+    int dock_y = 1012;
+    menu_calculate_geometry(&menu, 960, 1040, 1920, dock_y - 2);
+    assert(menu.y + menu.height < dock_y);
+
     menu_cleanup(&menu);
     printf("test_menu passed!\n");
     return 0;

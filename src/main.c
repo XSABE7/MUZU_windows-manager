@@ -691,7 +691,22 @@ int main(int argc, char **argv) {
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Move Dock", DOCK_ACTION_MOVE);
 
-                        menu_show(dpy, &context_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
+                        int menu_x = ev.xbutton.x_root;
+                        int menu_y = ev.xbutton.y_root;
+                        int bound_w = screen_w;
+                        int bound_h = screen_h;
+                        if (dock.pos == DOCK_BOTTOM && dock.y > 200) {
+                            bound_h = dock.y - 2;
+                        } else if (dock.pos == DOCK_TOP) {
+                            menu_y = dock.y + dock.height + 6;
+                        } else if (dock.pos == DOCK_LEFT) {
+                            menu_x = dock.x + dock.width + 6;
+                        } else if (dock.pos == DOCK_RIGHT && dock.x > 250) {
+                            bound_w = dock.x - 2;
+                        }
+
+                        menu_show(dpy, &context_menu, menu_x, menu_y, bound_w, bound_h);
+                        raise_system_overlays(dpy);
                         break;
                     }
                     if (ev.xbutton.button == Button1) {
@@ -815,8 +830,12 @@ int main(int argc, char **argv) {
             }
 
             case MotionNotify: {
-                if (context_menu.is_visible && ev.xmotion.window == context_menu.win) {
-                    menu_handle_motion(dpy, &context_menu, ev.xmotion.x, ev.xmotion.y);
+                if (context_menu.is_visible) {
+                    menu_handle_motion(dpy, &context_menu,
+                                       ev.xmotion.x_root - context_menu.x,
+                                       ev.xmotion.y_root - context_menu.y);
+                    raise_system_overlays(dpy);
+                    break;
                 }
 
                 if (dock.is_dragging) {
@@ -852,6 +871,9 @@ int main(int argc, char **argv) {
                 }
 
                 dock_handle_motion(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
+                if (context_menu.is_visible || rofi_launcher.is_visible) {
+                    raise_system_overlays(dpy);
+                }
                 break;
             }
 
@@ -863,6 +885,7 @@ int main(int argc, char **argv) {
                         XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
                         XRaiseWindow(dpy, dock.win);
                         dock_render(dpy, &dock, screen_w, screen_h);
+                        raise_system_overlays(dpy);
                     }
                     break;
                 }
@@ -901,11 +924,12 @@ int main(int argc, char **argv) {
                             dock_render(dpy, &dock, screen_w, screen_h);
                         }
                     }
-                    if (dock.autohide_enabled && !dock.is_hidden && !dock.is_dragging) {
+                    if (dock.autohide_enabled && !dock.is_hidden && !dock.is_dragging && !context_menu.is_visible) {
                         dock.is_hidden = 1;
                         dock_calculate_geometry(&dock, dock.pos, 1, screen_w, screen_h);
                         XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
                     }
+                    raise_system_overlays(dpy);
                     break;
                 }
 
@@ -1009,8 +1033,10 @@ int main(int argc, char **argv) {
                     menu_render(dpy, &context_menu);
                 } else if (ev.xexpose.window == dock.win) {
                     dock_render(dpy, &dock, screen_w, screen_h);
+                    raise_system_overlays(dpy);
                 } else if (ev.xexpose.window == rofi_launcher.win) {
                     rofi_launcher_render(dpy, &rofi_launcher, screen_w, screen_h);
+                    raise_system_overlays(dpy);
                 } else {
                     for (Client *curr = clients; curr; curr = curr->next) {
                         if (curr->frame && ev.xexpose.window == curr->frame) {
@@ -1038,6 +1064,7 @@ int main(int argc, char **argv) {
                         }
                         dock_update_running(&dock, clients);
                         dock_render(dpy, &dock, screen_w, screen_h);
+                        raise_system_overlays(dpy);
                     }
                 }
                 break;

@@ -251,6 +251,10 @@ void menu_render(Display *dpy, Menu *menu) {
 
     cairo_destroy(cr);
     cairo_surface_flush(menu->surface);
+    if (dpy && menu->win && menu->is_visible) {
+        XRaiseWindow(dpy, menu->win);
+        XFlush(dpy);
+    }
 }
 
 void menu_handle_click(Display *dpy, Menu *menu, unsigned int button, int x, int y) {

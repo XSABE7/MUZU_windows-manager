@@ -262,6 +262,38 @@ void rofi_launcher_select_prev(RofiLauncher *rofi) {
     }
 }
 
+void rofi_launcher_scroll(RofiLauncher *rofi, int direction) {
+    if (!rofi || rofi->match_count <= 0 || direction == 0) return;
+
+    int max_scroll = rofi->match_count - ROFI_VISIBLE_ROWS;
+    if (max_scroll < 0) max_scroll = 0;
+
+    if (direction > 0) {
+        if (rofi->scroll_offset < max_scroll) {
+            rofi->scroll_offset++;
+        }
+        if (rofi->selected_idx < rofi->match_count - 1) {
+            rofi->selected_idx++;
+        }
+    } else {
+        if (rofi->scroll_offset > 0) {
+            rofi->scroll_offset--;
+        }
+        if (rofi->selected_idx > 0) {
+            rofi->selected_idx--;
+        }
+    }
+
+    if (rofi->selected_idx < rofi->scroll_offset) {
+        rofi->selected_idx = rofi->scroll_offset;
+    } else if (rofi->selected_idx >= rofi->scroll_offset + ROFI_VISIBLE_ROWS) {
+        rofi->selected_idx = rofi->scroll_offset + ROFI_VISIBLE_ROWS - 1;
+        if (rofi->selected_idx >= rofi->match_count) {
+            rofi->selected_idx = rofi->match_count - 1;
+        }
+    }
+}
+
 void rofi_launcher_execute_selected(Display *dpy, RofiLauncher *rofi) {
     if (!rofi || rofi->selected_idx < 0 || rofi->selected_idx >= rofi->match_count) return;
 
@@ -498,6 +530,21 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
         cairo_show_text(cr, sub);
     }
 
+    // Subtle scrollbar indicator when list exceeds visible rows
+    if (rofi->match_count > ROFI_VISIBLE_ROWS) {
+        double track_h = (double)(ROFI_VISIBLE_ROWS * ROFI_ROW_HEIGHT) - 8.0;
+        double thumb_h = track_h * ((double)ROFI_VISIBLE_ROWS / (double)rofi->match_count);
+        if (thumb_h < 24.0) thumb_h = 24.0;
+        double max_scroll = (double)(rofi->match_count - ROFI_VISIBLE_ROWS);
+        double scroll_ratio = max_scroll > 0.0 ? ((double)rofi->scroll_offset / max_scroll) : 0.0;
+        if (scroll_ratio < 0.0) scroll_ratio = 0.0;
+        if (scroll_ratio > 1.0) scroll_ratio = 1.0;
+        double thumb_y = list_y + scroll_ratio * (track_h - thumb_h);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.22);
+        draw_rounded_rect(cr, rofi->width - 8.0, thumb_y, 4.0, thumb_h, 2.0);
+        cairo_fill(cr);
+    }
+
     cairo_destroy(cr);
     cairo_surface_flush(rofi->surface);
     if (dpy && rofi->win && rofi->is_visible) {
@@ -614,6 +661,17 @@ void rofi_launcher_handle_key(Display *dpy, RofiLauncher *rofi, XKeyEvent *ev) {
 void rofi_launcher_handle_click(Display *dpy, RofiLauncher *rofi, unsigned int button, int x, int y) {
     if (!rofi) return;
 
+    if (button == Button4) {
+        rofi_launcher_scroll(rofi, -1);
+        if (dpy) rofi_launcher_render(dpy, rofi, 0, 0);
+        return;
+    }
+    if (button == Button5) {
+        rofi_launcher_scroll(rofi, 1);
+        if (dpy) rofi_launcher_render(dpy, rofi, 0, 0);
+        return;
+    }
+
     if (button != Button1) return;
 
     // Check if clicked outside window bounds
@@ -636,6 +694,17 @@ void rofi_launcher_handle_click(Display *dpy, RofiLauncher *rofi, unsigned int b
 
 void rofi_launcher_handle_press(Display *dpy, RofiLauncher *rofi, unsigned int button, int root_x, int root_y) {
     if (!rofi || !rofi->is_visible) return;
+
+    if (button == Button4) {
+        rofi_launcher_scroll(rofi, -1);
+        if (dpy) rofi_launcher_render(dpy, rofi, 0, 0);
+        return;
+    }
+    if (button == Button5) {
+        rofi_launcher_scroll(rofi, 1);
+        if (dpy) rofi_launcher_render(dpy, rofi, 0, 0);
+        return;
+    }
 
     if (button != Button1) return;
 

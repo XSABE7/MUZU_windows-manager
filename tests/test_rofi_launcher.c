@@ -82,6 +82,40 @@ int main(void) {
     // Large motion > 8px triggers drag-to-dock mode
     rofi_launcher_handle_motion(NULL, &rofi, 230, 230);
     assert(rofi.is_dragging_out == 1);
+    rofi.is_pressing = 0;
+    rofi.is_dragging_out = 0;
+
+    // Test 10: Mouse wheel scrolling (Button5 = down, Button4 = up)
+    rofi_launcher_set_query(&rofi, "");
+    rofi.is_visible = 1;
+    assert(rofi.selected_idx == 0);
+    assert(rofi.scroll_offset == 0);
+
+    // Scroll down with Button5 via handle_press
+    rofi_launcher_handle_press(NULL, &rofi, Button5, rofi.x + 100, rofi.y + 100);
+    assert(rofi.is_visible == 1);
+    assert(rofi.selected_idx == 1);
+    assert(rofi.scroll_offset == 1);
+
+    // Scroll up with Button4 via handle_press
+    rofi_launcher_handle_press(NULL, &rofi, Button4, rofi.x + 100, rofi.y + 100);
+    assert(rofi.selected_idx == 0);
+    assert(rofi.scroll_offset == 0);
+
+    // Scrolling up at index 0 clamps at 0 (does not wrap to bottom)
+    rofi_launcher_handle_press(NULL, &rofi, Button4, rofi.x + 100, rofi.y + 100);
+    assert(rofi.selected_idx == 0);
+    assert(rofi.scroll_offset == 0);
+
+    // Scrolling even when cursor is outside rofi window does NOT close rofi
+    rofi_launcher_handle_press(NULL, &rofi, Button5, 0, 0);
+    assert(rofi.is_visible == 1);
+    assert(rofi.selected_idx == 1);
+
+    // Also test rofi_launcher_scroll directly
+    rofi_launcher_scroll(&rofi, -1);
+    assert(rofi.selected_idx == 0);
+    assert(rofi.scroll_offset == 0);
 
     rofi_launcher_cleanup(&rofi);
     printf("test_rofi_launcher passed!\n");

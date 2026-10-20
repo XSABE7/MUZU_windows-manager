@@ -64,6 +64,7 @@ void rofi_launcher_query_append(RofiLauncher *rofi, char c);
 void rofi_launcher_query_backspace(RofiLauncher *rofi);
 void rofi_launcher_select_next(RofiLauncher *rofi);
 void rofi_launcher_select_prev(RofiLauncher *rofi);
+void rofi_launcher_scroll(RofiLauncher *rofi, int direction);
 void rofi_sanitize_exec(const char *raw, char *clean, size_t max_len);
 void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi);
 void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int screen_h);
