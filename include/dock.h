@@ -6,10 +6,13 @@
 #include "gtk_theme.h"
 
 struct Launchpad; // Forward declaration
+struct Client;    // Forward declaration
+typedef struct Client Client;
 
 typedef enum { DOCK_BOTTOM, DOCK_TOP, DOCK_LEFT, DOCK_RIGHT } DockPosition;
 
 #define DOCK_MAX_ITEMS 4
+#define DOCK_MAX_MINIMIZED 16
 
 typedef struct {
     char name[32];
@@ -17,6 +20,12 @@ typedef struct {
     char exec_cmd[128];
     cairo_surface_t *icon_surface;
 } DockItem;
+
+typedef struct {
+    Client *client;
+    char title[64];
+    cairo_surface_t *icon_surface;
+} DockMinimizedItem;
 
 typedef struct {
     Window win;
@@ -27,6 +36,8 @@ typedef struct {
     int hover_item;     // -1 if none, 0..item_count-1
     int item_count;
     DockItem items[DOCK_MAX_ITEMS];
+    int minimized_count;
+    DockMinimizedItem minimized[DOCK_MAX_MINIMIZED];
     int x, y, width, height;
     cairo_surface_t *surface;
     const GtkTheme *theme;
@@ -38,6 +49,9 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h);
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 int dock_get_item_at(const Dock *dock, int x, int y);
+void dock_add_minimized(Dock *dock, Client *c);
+void dock_remove_minimized(Dock *dock, Client *c);
+Client *dock_get_minimized_at(const Dock *dock, int x, int y);
 void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y);
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h);
 void dock_cleanup(Dock *dock);

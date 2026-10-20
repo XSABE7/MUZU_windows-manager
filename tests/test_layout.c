@@ -187,6 +187,70 @@ int main(void) {
     assert(test_client.width == 600 && test_client.height == 400);
     assert(test_client.mode == CLIENT_FLOATING);
 
+    // Test 11: Window Minimization & Dock Integration
+    {
+        Dock min_dock = {0};
+        min_dock.size = 48;
+        min_dock.item_count = 4;
+        dock_calculate_geometry(&min_dock, DOCK_BOTTOM, 0, 1000, 700);
+
+        Client c_min = {0};
+        c_min.win = 888;
+        snprintf(c_min.title, sizeof(c_min.title), "TextEditor");
+
+        dock_add_minimized(&min_dock, &c_min);
+        assert(min_dock.minimized_count == 1);
+        assert(min_dock.minimized[0].client == &c_min);
+
+        // Duplicate add should be ignored
+        dock_add_minimized(&min_dock, &c_min);
+        assert(min_dock.minimized_count == 1);
+
+        // Check hit testing on minimized item
+        int icon_size = 32;
+        int margin = 8;
+        int launcher_w = min_dock.item_count * (icon_size + margin);
+        int total_w = launcher_w + 16 + min_dock.minimized_count * (icon_size + margin);
+        int start_x = (min_dock.width - total_w) / 2;
+        int min_x = start_x + launcher_w + 16;
+        int min_y = (min_dock.height - icon_size) / 2;
+
+        Client *hit_c = dock_get_minimized_at(&min_dock, min_x + 10, min_y + 10);
+        assert(hit_c == &c_min);
+
+        // Outside hit test should return NULL
+        assert(dock_get_minimized_at(&min_dock, 0, 0) == NULL);
+
+        // Minimized window excluded from tiled reflow
+        Client t1 = {0};
+        Client t2 = {0};
+        t1.mode = CLIENT_TILED;
+        t2.mode = CLIENT_TILED;
+        t1.next = &t2;
+        t1.win = 101;
+        t2.win = 102;
+
+        // Both visible -> 50:50
+        layout_calculate(&cfg, &t1, 0);
+        assert(t1.width == cfg.screen_width / 2);
+        assert(t2.width == cfg.screen_width - cfg.screen_width / 2);
+
+        // Minimize t1 -> t2 gets full screen
+        t1.is_minimized = 1;
+        layout_calculate(&cfg, &t1, 0);
+        assert(t2.width == cfg.screen_width);
+        assert(t2.height == cfg.screen_height);
+
+        // Unminimize t1 -> restores 50:50
+        t1.is_minimized = 0;
+        layout_calculate(&cfg, &t1, 0);
+        assert(t1.width == cfg.screen_width / 2);
+
+        dock_remove_minimized(&min_dock, &c_min);
+        assert(min_dock.minimized_count == 0);
+        assert(dock_get_minimized_at(&min_dock, min_x + 10, min_y + 10) == NULL);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

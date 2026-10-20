@@ -34,6 +34,7 @@ static int x_error_handler(Display *dpy, XErrorEvent *e) {
 static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
     layout_calculate(cfg, clients, 0);
     for (Client *curr = clients; curr; curr = curr->next) {
+        if (curr->is_minimized) continue;
         if (curr->mode == CLIENT_TILED) {
             Window target = curr->frame ? curr->frame : curr->win;
             XMoveResizeWindow(dpy, target, curr->x, curr->y, curr->width, curr->height);
@@ -49,7 +50,7 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
 }
 
 static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConfig *cfg,
-                            Client **drag_client, Window *last_click_win) {
+                            Client **drag_client, Window *last_click_win, Dock *dock) {
     Client *c = client_find_by_any(*clients, w);
     if (!c) return;
 
@@ -59,6 +60,11 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
     }
     if (last_click_win && (*last_click_win == c->frame || *last_click_win == c->win)) {
         *last_click_win = None;
+    }
+
+    if (dock) {
+        dock_remove_minimized(dock, c);
+        dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
     }
 
     // Stop receiving events for this client to prevent processing stale events
@@ -293,7 +299,11 @@ int main(void) {
                 if (w == launchpad.win || w == dock.win) {
                     break;
                 }
-                client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win);
+                Client *c = client_find_by_any(clients, w);
+                if (c && c->is_minimized) {
+                    break;
+                }
+                client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
                 break;
             }
 
@@ -302,7 +312,7 @@ int main(void) {
                 if (w == launchpad.win || w == dock.win) {
                     break;
                 }
-                client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win);
+                client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
                 break;
             }
 
@@ -331,7 +341,22 @@ int main(void) {
 
                 if (ev.xbutton.window == dock.win) {
                     if (ev.xbutton.button == Button1) {
-                        dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                        Client *min_c = dock_get_minimized_at(&dock, ev.xbutton.x, ev.xbutton.y);
+                        if (min_c) {
+                            min_c->is_minimized = 0;
+                            Window target = min_c->frame ? min_c->frame : min_c->win;
+                            XMapWindow(dpy, target);
+                            if (min_c->frame && min_c->win) {
+                                XMapWindow(dpy, min_c->win);
+                            }
+                            XRaiseWindow(dpy, target);
+                            XSetInputFocus(dpy, min_c->win, RevertToPointerRoot, CurrentTime);
+                            dock_remove_minimized(&dock, min_c);
+                            reflow_all(dpy, clients, &cfg);
+                            dock_render(dpy, &dock, screen_w, screen_h);
+                        } else {
+                            dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                        }
                     }
                     break;
                 }
@@ -344,6 +369,14 @@ int main(void) {
                         TitlebarAction action = titlebar_get_action(ev.xbutton.x, curr->width);
                         if (action == TITLEBAR_CLICK_CLOSE) {
                             client_close(dpy, curr->win);
+                            break;
+                        } else if (action == TITLEBAR_CLICK_MINIMIZE) {
+                            curr->is_minimized = 1;
+                            Window target = curr->frame ? curr->frame : curr->win;
+                            XUnmapWindow(dpy, target);
+                            dock_add_minimized(&dock, curr);
+                            reflow_all(dpy, clients, &cfg);
+                            dock_render(dpy, &dock, screen_w, screen_h);
                             break;
                         } else if (action == TITLEBAR_CLICK_MAXIMIZE) {
                             client_toggle_maximize(dpy, curr, &cfg);
@@ -469,7 +502,7 @@ int main(void) {
     }
 
     while (clients) {
-        client_teardown(dpy, &clients, clients->win, &cfg, &drag_client, &last_titlebar_click_win);
+        client_teardown(dpy, &clients, clients->win, &cfg, &drag_client, &last_titlebar_click_win, &dock);
     }
     dock_cleanup(&dock);
     launchpad_cleanup(&launchpad);

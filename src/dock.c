@@ -6,6 +6,7 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include "dock.h"
+#include "wm.h"
 #include "icon_fetcher.h"
 #include "launchpad.h"
 
@@ -47,7 +48,8 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     if (!dock || dock->item_count <= 0) return -1;
     int icon_size = 32;
     int margin = 8;
-    int total_w = dock->item_count * (icon_size + margin);
+    int launcher_w = dock->item_count * (icon_size + margin);
+    int total_w = launcher_w + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
     int start_x = (dock->width - total_w) / 2;
     if (start_x < 4) start_x = 4;
     int start_y = (dock->height - icon_size) / 2;
@@ -61,6 +63,68 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
         }
     }
     return -1;
+}
+
+void dock_add_minimized(Dock *dock, Client *c) {
+    if (!dock || !c || dock->minimized_count >= DOCK_MAX_MINIMIZED) return;
+    for (int i = 0; i < dock->minimized_count; i++) {
+        if (dock->minimized[i].client == c) return;
+    }
+    int idx = dock->minimized_count;
+    dock->minimized[idx].client = c;
+    const char *src = c->title[0] ? c->title : "Window";
+    size_t len = strlen(src);
+    if (len >= sizeof(dock->minimized[idx].title)) {
+        len = sizeof(dock->minimized[idx].title) - 1;
+    }
+    memcpy(dock->minimized[idx].title, src, len);
+    dock->minimized[idx].title[len] = '\0';
+    dock->minimized[idx].icon_surface = icon_load_surface(dock->minimized[idx].title);
+    dock->minimized_count++;
+}
+
+void dock_remove_minimized(Dock *dock, Client *c) {
+    if (!dock || !c || dock->minimized_count <= 0) return;
+    int found = -1;
+    for (int i = 0; i < dock->minimized_count; i++) {
+        if (dock->minimized[i].client == c) {
+            found = i;
+            break;
+        }
+    }
+    if (found >= 0) {
+        if (dock->minimized[found].icon_surface) {
+            cairo_surface_finish(dock->minimized[found].icon_surface);
+            cairo_surface_destroy(dock->minimized[found].icon_surface);
+            dock->minimized[found].icon_surface = NULL;
+        }
+        for (int i = found; i < dock->minimized_count - 1; i++) {
+            dock->minimized[i] = dock->minimized[i + 1];
+        }
+        dock->minimized_count--;
+    }
+}
+
+Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
+    if (!dock || dock->minimized_count <= 0) return NULL;
+    int icon_size = 32;
+    int margin = 8;
+    int launcher_w = dock->item_count * (icon_size + margin);
+    int total_w = launcher_w + 16 + dock->minimized_count * (icon_size + margin);
+    int start_x = (dock->width - total_w) / 2;
+    if (start_x < 4) start_x = 4;
+    int min_start_x = start_x + launcher_w + 16;
+    int start_y = (dock->height - icon_size) / 2;
+
+    if (y < start_y - 6 || y > start_y + icon_size + 6) return NULL;
+
+    for (int i = 0; i < dock->minimized_count; i++) {
+        int mx = min_start_x + i * (icon_size + margin);
+        if (x >= mx - 4 && x <= mx + icon_size + 4) {
+            return dock->minimized[i].client;
+        }
+    }
+    return NULL;
 }
 
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme) {
@@ -207,9 +271,45 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         }
     }
 
+    // Separator line and Minimized Windows section
+    if (dock->minimized_count > 0) {
+        int sep_x = start_x + dock->item_count * (icon_size + margin) + 6;
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
+        cairo_set_line_width(cr, 1.5);
+        cairo_move_to(cr, sep_x, (dock->height - 24) / 2);
+        cairo_line_to(cr, sep_x, (dock->height + 24) / 2);
+        cairo_stroke(cr);
+
+        int min_start_x = start_x + dock->item_count * (icon_size + margin) + 16;
+        for (int i = 0; i < dock->minimized_count; i++) {
+            int mx = min_start_x + i * (icon_size + margin);
+            int my = (dock->height - icon_size) / 2;
+
+            if (dock->minimized[i].icon_surface) {
+                icon_render(cr, dock->minimized[i].icon_surface, dock->minimized[i].title, mx, my, icon_size);
+            } else {
+                cairo_set_source_rgba(cr, 0.28, 0.33, 0.42, 0.85);
+                cairo_rectangle(cr, mx, my, icon_size, icon_size);
+                cairo_fill(cr);
+
+                cairo_set_source_rgba(cr, 0.60, 0.65, 0.75, 0.80);
+                cairo_set_line_width(cr, 1.0);
+                cairo_rectangle(cr, mx, my, icon_size, icon_size);
+                cairo_stroke(cr);
+
+                cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+                cairo_set_font_size(cr, 13.0);
+                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                char letter[2] = { dock->minimized[i].title[0] ? dock->minimized[i].title[0] : 'W', '\0' };
+                cairo_move_to(cr, mx + 10, my + 21);
+                cairo_show_text(cr, letter);
+            }
+        }
+    }
+
     cairo_destroy(cr);
     cairo_surface_flush(dock->surface);
-    XFlush(dpy);
+    if (dpy) XFlush(dpy);
 }
 
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h) {
@@ -243,6 +343,21 @@ void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int
 
 void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y) {
     if (!dock) return;
+
+    Client *min_c = dock_get_minimized_at(dock, x, y);
+    if (min_c) {
+        min_c->is_minimized = 0;
+        Window target = min_c->frame ? min_c->frame : min_c->win;
+        XMapWindow(dpy, target);
+        if (min_c->frame && min_c->win) {
+            XMapWindow(dpy, min_c->win);
+        }
+        XRaiseWindow(dpy, target);
+        XSetInputFocus(dpy, min_c->win, RevertToPointerRoot, CurrentTime);
+        dock_remove_minimized(dock, min_c);
+        return;
+    }
+
     int item = dock_get_item_at(dock, x, y);
     if (item < 0 || item >= dock->item_count) return;
 
@@ -278,6 +393,14 @@ void dock_cleanup(Dock *dock) {
         }
     }
     dock->item_count = 0;
+    for (int i = 0; i < dock->minimized_count; i++) {
+        if (dock->minimized[i].icon_surface) {
+            cairo_surface_finish(dock->minimized[i].icon_surface);
+            cairo_surface_destroy(dock->minimized[i].icon_surface);
+            dock->minimized[i].icon_surface = NULL;
+        }
+    }
+    dock->minimized_count = 0;
     if (dock->surface) {
         cairo_surface_finish(dock->surface);
         cairo_surface_destroy(dock->surface);

@@ -63,7 +63,7 @@ Client *client_find_by_any(Client *head, Window win) {
 int client_count_tiled(Client *head) {
     int count = 0;
     for (Client *curr = head; curr; curr = curr->next) {
-        if (curr->mode == CLIENT_TILED) count++;
+        if (curr->mode == CLIENT_TILED && !curr->is_minimized) count++;
     }
     return count;
 }
@@ -73,7 +73,7 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
     Client *tiled[128];
     int idx = 0;
     for (Client *curr = head; curr && idx < 128; curr = curr->next) {
-        if (curr->mode == CLIENT_TILED) {
+        if (curr->mode == CLIENT_TILED && !curr->is_minimized) {
             tiled[idx++] = curr;
         }
     }
