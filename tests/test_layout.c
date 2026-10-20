@@ -443,6 +443,14 @@ int main(void) {
         cairo_surface_destroy(cache);
     }
 
+    // Test 16: Squircle Dock Initialization and Dimensions
+    {
+        Dock test_dock;
+        dock_init(NULL, &test_dock, DOCK_BOTTOM, 1920, 1080, NULL);
+        assert(test_dock.width > 0 && test_dock.height > 0);
+        dock_cleanup(&test_dock);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

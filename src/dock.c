@@ -445,15 +445,25 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
-    // Solid sleek deep black background
-    cairo_set_source_rgba(cr, 0.04, 0.04, 0.04, 0.98);
+    // Liquid Frosted Smoked Glass Squircle Plate (Rounded Rectangle with 14px continuous curvature)
+    cairo_pattern_t *pat = cairo_pattern_create_linear(0, 0, 0, dock->height);
+    cairo_pattern_add_color_stop_rgba(pat, 0.0, 0.10, 0.12, 0.16, 0.82);
+    cairo_pattern_add_color_stop_rgba(pat, 1.0, 0.06, 0.07, 0.10, 0.72);
+    cairo_set_source(cr, pat);
     draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 14.0);
     cairo_fill(cr);
+    cairo_pattern_destroy(pat);
 
-    // Subtle crisp border
-    cairo_set_source_rgba(cr, 0.22, 0.22, 0.22, 0.70);
+    // Outer subtle shadow stroke
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.50);
+    cairo_set_line_width(cr, 1.5);
+    draw_rounded_rectangle(cr, 0.5, 0.5, dock->width - 1.0, dock->height - 1.0, 14.0);
+    cairo_stroke(cr);
+
+    // Inner specular refraction rim
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.16);
     cairo_set_line_width(cr, 1.0);
-    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 14.0);
+    draw_rounded_rectangle(cr, 1.5, 1.5, dock->width - 3.0, dock->height - 3.0, 13.0);
     cairo_stroke(cr);
 
     // Render launcher icons
