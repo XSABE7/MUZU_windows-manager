@@ -6,6 +6,7 @@ echo "       MUZUwm Automated Test & Benchmark         "
 echo "================================================="
 
 echo "1. Running Unit Tests..."
+make -s tests muzuwm
 ./test_layout
 ./test_trigger
 ./test_easter_egg
