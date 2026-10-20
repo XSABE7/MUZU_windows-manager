@@ -21,6 +21,7 @@ typedef struct Client {
     ClientMode saved_mode;
     char title[256];
     cairo_surface_t *titlebar_surface;
+    cairo_surface_t *icon_surface;
     struct Client *next;
 } Client;
 

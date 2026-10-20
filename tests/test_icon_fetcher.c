@@ -110,6 +110,51 @@ int main(void) {
     assert(found_long == 1);
     assert(strstr(themed_path, long_name) != NULL);
 
+    // Test _NET_WM_ICON parser
+    {
+        // Construct mock _NET_WM_ICON with 16x16 and 32x32 icons
+        int n_16 = 2 + 16 * 16;
+        int n_32 = 2 + 32 * 32;
+        int total = n_16 + n_32;
+        unsigned long *net_icon_data = calloc(total, sizeof(unsigned long));
+        assert(net_icon_data != NULL);
+
+        // 16x16 icon header & blue pixels
+        net_icon_data[0] = 16;
+        net_icon_data[1] = 16;
+        for (int i = 2; i < n_16; i++) {
+            net_icon_data[i] = 0xFF0000FF; // ARGB Blue
+        }
+
+        // 32x32 icon header & green pixels
+        net_icon_data[n_16] = 32;
+        net_icon_data[n_16 + 1] = 32;
+        for (int i = n_16 + 2; i < total; i++) {
+            net_icon_data[i] = 0xFF00FF00; // ARGB Green
+        }
+
+        // Request 32x32 icon
+        cairo_surface_t *surf32 = icon_create_from_net_wm_icon(net_icon_data, total, 32);
+        assert(surf32 != NULL);
+        assert(cairo_image_surface_get_width(surf32) == 32);
+        assert(cairo_image_surface_get_height(surf32) == 32);
+        assert(cairo_surface_status(surf32) == CAIRO_STATUS_SUCCESS);
+        cairo_surface_destroy(surf32);
+
+        // Request 16x16 icon
+        cairo_surface_t *surf16 = icon_create_from_net_wm_icon(net_icon_data, total, 16);
+        assert(surf16 != NULL);
+        assert(cairo_image_surface_get_width(surf16) == 16);
+        assert(cairo_image_surface_get_height(surf16) == 16);
+        cairo_surface_destroy(surf16);
+
+        // Invalid data returns NULL safely
+        assert(icon_create_from_net_wm_icon(NULL, 0, 32) == NULL);
+        assert(icon_create_from_net_wm_icon(net_icon_data, 1, 32) == NULL);
+
+        free(net_icon_data);
+    }
+
     // Clean up mock directory and environment
     system("rm -rf /tmp/muzuwm_test_icons");
     unsetenv("MUZUWM_TEST_ICON_DIR");

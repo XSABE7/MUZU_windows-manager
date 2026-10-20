@@ -16,6 +16,9 @@ int icon_find_png(const char *icon_name, char *out_path, size_t maxlen);
 // Load an icon into a Cairo image surface (PNG)
 cairo_surface_t *icon_load_surface(const char *icon_name);
 
+// Create a Cairo ARGB32 image surface from EWMH _NET_WM_ICON property data
+cairo_surface_t *icon_create_from_net_wm_icon(const unsigned long *data, unsigned long nitems, int target_size);
+
 // Render an icon onto a Cairo context at (x, y) with size (size x size)
 void icon_render(cairo_t *cr, cairo_surface_t *icon, const char *fallback_name, int x, int y, int size);
 

@@ -115,7 +115,12 @@ int dock_add_minimized(Dock *dock, Client *c) {
     }
     memcpy(dock->minimized[idx].title, src, len);
     dock->minimized[idx].title[len] = '\0';
-    dock->minimized[idx].icon_surface = icon_load_surface(dock->minimized[idx].title);
+    if (c->icon_surface) {
+        dock->minimized[idx].icon_surface = c->icon_surface;
+    } else {
+        c->icon_surface = icon_load_surface(c->title);
+        dock->minimized[idx].icon_surface = c->icon_surface;
+    }
     dock->minimized_count++;
     return 1;
 }
@@ -130,11 +135,7 @@ void dock_remove_minimized(Dock *dock, Client *c) {
         }
     }
     if (found >= 0) {
-        if (dock->minimized[found].icon_surface) {
-            cairo_surface_finish(dock->minimized[found].icon_surface);
-            cairo_surface_destroy(dock->minimized[found].icon_surface);
-            dock->minimized[found].icon_surface = NULL;
-        }
+        dock->minimized[found].icon_surface = NULL;
         for (int i = found; i < dock->minimized_count - 1; i++) {
             dock->minimized[i] = dock->minimized[i + 1];
         }
@@ -638,11 +639,7 @@ void dock_cleanup(Dock *dock) {
     }
     dock->item_count = 0;
     for (int i = 0; i < dock->minimized_count; i++) {
-        if (dock->minimized[i].icon_surface) {
-            cairo_surface_finish(dock->minimized[i].icon_surface);
-            cairo_surface_destroy(dock->minimized[i].icon_surface);
-            dock->minimized[i].icon_surface = NULL;
-        }
+        dock->minimized[i].icon_surface = NULL;
     }
     dock->minimized_count = 0;
     if (dock->surface) {

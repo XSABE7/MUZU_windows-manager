@@ -4,6 +4,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <stddef.h>
+#include <cairo/cairo.h>
 
 #define DEFAULT_TITLE "MUZUwm Window"
 
@@ -31,5 +32,8 @@ int client_parse_motif_decorations(const unsigned long *hints, unsigned long nit
 
 // Determine if window uses Client-Side Decorations (CSD / Motif decorations = 0 / _GTK_FRAME_EXTENTS)
 int client_is_csd(Display *dpy, Window win);
+
+// Retrieve high-fidelity application icon via _NET_WM_ICON, WM_CLASS, or keyword mapping
+cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, int target_size);
 
 #endif // CLIENT_PROPS_H

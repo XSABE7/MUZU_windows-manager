@@ -25,7 +25,7 @@ test_easter_egg: tests/test_easter_egg.c src/easter_egg.c
 test_calendar: tests/test_calendar.c src/launchpad.c src/easter_egg.c src/icon_fetcher.c src/gtk_theme.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_client_props: tests/test_client_props.c src/client_props.c
+test_client_props: tests/test_client_props.c src/client_props.c src/icon_fetcher.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_icon_fetcher: tests/test_icon_fetcher.c src/icon_fetcher.c

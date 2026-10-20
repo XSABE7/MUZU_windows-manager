@@ -240,8 +240,13 @@ int main(void) {
                 }
                 XMapWindow(dpy, w);
                 Client *c = client_find(clients, w);
-                if (c && c->frame) {
-                    XRaiseWindow(dpy, c->frame);
+                if (c) {
+                    if (c->frame) {
+                        XRaiseWindow(dpy, c->frame);
+                    }
+                    if (!c->icon_surface) {
+                        c->icon_surface = client_get_icon(dpy, c->win, c->title, 32);
+                    }
                 }
                 XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 dock_update_running(&dock, clients);
@@ -531,6 +536,9 @@ int main(void) {
                     Client *c = client_find_by_any(clients, ev.xproperty.window);
                     if (c) {
                         client_get_title(dpy, c->win, c->title, sizeof(c->title));
+                        if (!c->icon_surface) {
+                            c->icon_surface = client_get_icon(dpy, c->win, c->title, 32);
+                        }
                         if (c->frame) {
                             titlebar_draw(dpy, c, &current_theme);
                         }

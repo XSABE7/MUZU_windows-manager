@@ -21,6 +21,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->saved_mode = mode;
     c->title[0] = '\0';
     c->titlebar_surface = NULL;
+    c->icon_surface = NULL;
     c->next = *head;
     *head = c;
 }
@@ -36,6 +37,11 @@ void client_remove(Client **head, Window win) {
                 cairo_surface_finish(to_free->titlebar_surface);
                 cairo_surface_destroy(to_free->titlebar_surface);
                 to_free->titlebar_surface = NULL;
+            }
+            if (to_free->icon_surface) {
+                cairo_surface_finish(to_free->icon_surface);
+                cairo_surface_destroy(to_free->icon_surface);
+                to_free->icon_surface = NULL;
             }
             free(to_free);
             return;

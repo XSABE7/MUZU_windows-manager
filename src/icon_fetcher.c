@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <stdint.h>
 #include <cairo/cairo.h>
 #include "icon_fetcher.h"
 
@@ -32,14 +33,19 @@ static const char *app_subdirs[] = {
     "apps/scalable",
     "apps/64",
     "apps/32",
+    "apps/24",
+    "apps/22",
+    "apps/16",
     "apps/128",
     "apps/256",
-    "apps/16",
     "apps",
     "48x48/apps",
     "scalable/apps",
     "64x64/apps",
     "32x32/apps",
+    "24x24/apps",
+    "22x22/apps",
+    "16x16/apps",
     "128x128/apps",
     "256x256/apps",
     NULL
@@ -128,6 +134,8 @@ void icon_theme_set(const char *theme_name) {
     }
 
     add_theme_to_chain("hicolor");
+    add_theme_to_chain("gnome");
+    add_theme_to_chain("Adwaita");
 }
 
 int icon_find_png(const char *icon_name, char *out_path, size_t maxlen) {
@@ -262,6 +270,54 @@ cairo_surface_t *icon_load_surface(const char *icon_name) {
         return NULL;
     }
 
+    return surf;
+}
+
+cairo_surface_t *icon_create_from_net_wm_icon(const unsigned long *data, unsigned long nitems, int target_size) {
+    if (!data || nitems < 2 || target_size <= 0) return NULL;
+
+    unsigned long best_offset = 0;
+    int best_w = 0;
+    int best_h = 0;
+    int best_diff = 1000000;
+    unsigned long offset = 0;
+
+    while (offset + 2 <= nitems) {
+        unsigned long w = data[offset];
+        unsigned long h = data[offset + 1];
+
+        // Sanity check
+        if (w == 0 || h == 0 || w > 1024 || h > 1024) break;
+        unsigned long icon_len = w * h;
+        if (offset + 2 + icon_len > nitems) break;
+
+        int diff = abs((int)w - target_size) + abs((int)h - target_size);
+        if (diff < best_diff) {
+            best_diff = diff;
+            best_offset = offset;
+            best_w = (int)w;
+            best_h = (int)h;
+        }
+
+        offset += 2 + icon_len;
+    }
+
+    if (best_w <= 0 || best_h <= 0) return NULL;
+
+    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, best_w, best_h);
+    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surf);
+        return NULL;
+    }
+
+    uint32_t *dst = (uint32_t *)cairo_image_surface_get_data(surf);
+    int stride_pixels = cairo_image_surface_get_stride(surf) / 4;
+    for (int y = 0; y < best_h; y++) {
+        for (int x = 0; x < best_w; x++) {
+            dst[y * stride_pixels + x] = (uint32_t)data[best_offset + 2 + y * best_w + x];
+        }
+    }
+    cairo_surface_mark_dirty(surf);
     return surf;
 }
 

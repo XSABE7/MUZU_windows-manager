@@ -2,10 +2,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include "client_props.h"
+#include "icon_fetcher.h"
 
 int client_protocols_contain(const Atom *protocols, int count, Atom target) {
     if (!protocols || count <= 0) return 0;
@@ -228,4 +230,59 @@ int client_is_csd(Display *dpy, Window win) {
     }
 
     return 0;
+}
+
+cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, int target_size) {
+    if (!dpy || win == None) return NULL;
+    if (target_size <= 0) target_size = 32;
+
+    // 1. Try _NET_WM_ICON property
+    Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = NULL;
+
+    if (XGetWindowProperty(dpy, win, net_wm_icon, 0, (~0L), False,
+                           XA_CARDINAL, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &prop) == Success && prop) {
+        if (nitems >= 2 && actual_format == 32) {
+            cairo_surface_t *surf = icon_create_from_net_wm_icon((const unsigned long *)prop, nitems, target_size);
+            XFree(prop);
+            if (surf) return surf;
+        } else {
+            XFree(prop);
+        }
+    }
+
+    // 2. Try WM_CLASS
+    XClassHint ch;
+    if (XGetClassHint(dpy, win, &ch)) {
+        cairo_surface_t *surf = NULL;
+        if (ch.res_name && ch.res_name[0] != '\0') {
+            char name_lower[128];
+            snprintf(name_lower, sizeof(name_lower), "%s", ch.res_name);
+            for (char *p = name_lower; *p; p++) *p = (char)tolower((unsigned char)*p);
+            surf = icon_load_surface(name_lower);
+        }
+        if (!surf && ch.res_class && ch.res_class[0] != '\0') {
+            char class_lower[128];
+            snprintf(class_lower, sizeof(class_lower), "%s", ch.res_class);
+            for (char *p = class_lower; *p; p++) *p = (char)tolower((unsigned char)*p);
+            surf = icon_load_surface(class_lower);
+        }
+        if (ch.res_name) XFree(ch.res_name);
+        if (ch.res_class) XFree(ch.res_class);
+        if (surf) return surf;
+    }
+
+    // 3. Fallback to title keywords
+    if (title && title[0] != '\0') {
+        if (strcasestr(title, "firefox")) return icon_load_surface("firefox");
+        if (strcasestr(title, "chrome") || strcasestr(title, "chromium")) return icon_load_surface("google-chrome");
+        if (strcasestr(title, "nautilus") || strcasestr(title, "files")) return icon_load_surface("system-file-manager");
+        if (strcasestr(title, "terminal") || strcasestr(title, "bash")) return icon_load_surface("utilities-terminal");
+    }
+
+    return NULL;
 }
