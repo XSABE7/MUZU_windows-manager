@@ -330,6 +330,58 @@ int main(void) {
         assert(dock_calculate_nearest_edge(1880, 540, 1920, 1080) == DOCK_RIGHT);
     }
 
+    // Test 14: Window Snap to Left/Right Edge (Single Window & Multi-Window)
+    {
+        Client *snap_head = NULL;
+        client_add(&snap_head, 501, CLIENT_TILED);
+
+        // Single window default (SNAP_NONE) -> Fullscreen auto-maximize
+        layout_calculate(&cfg, snap_head, 1);
+        assert(snap_head->x == 0 && snap_head->y == 0);
+        assert(snap_head->width == 1920 && snap_head->height == 1080);
+
+        // Single window snapped to LEFT edge -> 50% left half
+        snap_head->snap_state = SNAP_LEFT;
+        layout_calculate(&cfg, snap_head, 1);
+        assert(snap_head->x == 0 && snap_head->y == 0);
+        assert(snap_head->width == 960 && snap_head->height == 1080);
+
+        // Single window snapped to RIGHT edge -> 50% right half
+        snap_head->snap_state = SNAP_RIGHT;
+        layout_calculate(&cfg, snap_head, 1);
+        assert(snap_head->x == 960 && snap_head->y == 0);
+        assert(snap_head->width == 960 && snap_head->height == 1080);
+
+        // Single window snapped to TOP edge -> 100% full screen
+        snap_head->snap_state = SNAP_TOP;
+        layout_calculate(&cfg, snap_head, 1);
+        assert(snap_head->x == 0 && snap_head->y == 0);
+        assert(snap_head->width == 1920 && snap_head->height == 1080);
+
+        // Add second window where window 1 is snapped right and window 2 is snapped left
+        client_add(&snap_head, 502, CLIENT_TILED);
+        Client *w_first = client_find(snap_head, 501);
+        Client *w_second = client_find(snap_head, 502);
+        w_first->snap_state = SNAP_RIGHT;
+        w_second->snap_state = SNAP_LEFT;
+
+        layout_calculate(&cfg, snap_head, 2);
+        assert(w_second->x == 0 && w_second->width == 960);
+        assert(w_first->x == 960 && w_first->width == 960);
+
+        // Drag-to-unmaximize behavior
+        w_first->is_maximized = 1;
+        w_first->saved_width = 800;
+        w_first->saved_height = 600;
+        handle_titlebar_drag(NULL, w_first, 200, 100, 1920, 1080);
+        assert(w_first->is_maximized == 0);
+        assert(w_first->width == 800 && w_first->height == 600);
+        assert(w_first->x == 200 && w_first->y == 100);
+
+        client_remove(&snap_head, 501);
+        client_remove(&snap_head, 502);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

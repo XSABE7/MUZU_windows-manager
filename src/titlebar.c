@@ -125,6 +125,7 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
         c->saved_mode = c->mode;
 
         c->mode = CLIENT_FLOATING;
+        c->snap_state = SNAP_TOP;
         c->x = 0;
         c->y = 0;
         c->width = cfg->screen_width;
@@ -146,6 +147,7 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
         c->width = (c->saved_width > 0) ? c->saved_width : 600;
         c->height = (c->saved_height > 0) ? c->saved_height : 400;
         c->mode = c->saved_mode;
+        c->snap_state = SNAP_NONE;
         c->is_maximized = 0;
 
         if (dpy) {
@@ -171,18 +173,39 @@ void titlebar_cleanup(Client *c) {
 
 void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int screen_w, int screen_h) {
     if (!c) return;
-    (void)screen_w;
-    (void)screen_h;
 
     // Detach to floating if currently tiled
     if (c->mode == CLIENT_TILED) {
         c->mode = CLIENT_FLOATING;
+        c->snap_state = SNAP_NONE;
+    }
+
+    if (c->is_maximized) {
+        c->is_maximized = 0;
+        c->snap_state = SNAP_NONE;
+        c->width = (c->saved_width > 0 && c->saved_width < screen_w) ? c->saved_width : (screen_w / 2);
+        c->height = (c->saved_height > 0 && c->saved_height < screen_h) ? c->saved_height : (screen_h * 2 / 3);
+        if (dpy) {
+            Window target = c->frame ? c->frame : c->win;
+            if (target != None) {
+                XResizeWindow(dpy, target, c->width, c->height);
+                if (c->frame) {
+                    int ch = c->height - TITLEBAR_HEIGHT;
+                    if (ch < 10) ch = 10;
+                    XResizeWindow(dpy, c->win, c->width, ch);
+                }
+            }
+        }
     }
 
     c->x = root_x;
     c->y = root_y;
-    Window target = c->frame ? c->frame : c->win;
-    XMoveWindow(dpy, target, c->x, c->y);
+    if (dpy) {
+        Window target = c->frame ? c->frame : c->win;
+        if (target != None) {
+            XMoveWindow(dpy, target, c->x, c->y);
+        }
+    }
 }
 
 void handle_titlebar_double_click(Display *dpy, Client *c, LayoutConfig *cfg) {
@@ -190,8 +213,10 @@ void handle_titlebar_double_click(Display *dpy, Client *c, LayoutConfig *cfg) {
     (void)dpy;
     if (c->mode == CLIENT_FLOATING) {
         c->mode = CLIENT_TILED;
+        c->snap_state = SNAP_NONE;
     } else {
         c->mode = CLIENT_FLOATING;
+        c->snap_state = SNAP_NONE;
         c->x = cfg->screen_width / 4;
         c->y = cfg->screen_height / 4;
         c->width = cfg->screen_width / 2;

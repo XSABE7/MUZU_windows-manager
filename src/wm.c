@@ -11,6 +11,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->width = 100;
     c->height = 100;
     c->mode = mode;
+    c->snap_state = SNAP_NONE;
     c->is_csd = 0;
     c->is_minimized = 0;
     c->is_maximized = 0;
@@ -94,12 +95,33 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
     }
 
     if (tiled_count == 1) {
-        tiled[0]->x = 0;
-        tiled[0]->y = 0;
-        tiled[0]->width = cfg->screen_width;
-        tiled[0]->height = cfg->screen_height;
+        if (tiled[0]->snap_state == SNAP_LEFT) {
+            int half_w = cfg->screen_width / 2;
+            tiled[0]->x = 0;
+            tiled[0]->y = 0;
+            tiled[0]->width = half_w;
+            tiled[0]->height = cfg->screen_height;
+        } else if (tiled[0]->snap_state == SNAP_RIGHT) {
+            int half_w = cfg->screen_width / 2;
+            tiled[0]->x = half_w;
+            tiled[0]->y = 0;
+            tiled[0]->width = cfg->screen_width - half_w;
+            tiled[0]->height = cfg->screen_height;
+        } else {
+            tiled[0]->x = 0;
+            tiled[0]->y = 0;
+            tiled[0]->width = cfg->screen_width;
+            tiled[0]->height = cfg->screen_height;
+        }
     } else if (tiled_count == 2) {
         int half_w = cfg->screen_width / 2;
+        if ((tiled[1]->snap_state == SNAP_LEFT && tiled[0]->snap_state != SNAP_LEFT) ||
+            (tiled[0]->snap_state == SNAP_RIGHT && tiled[1]->snap_state != SNAP_RIGHT)) {
+            Client *tmp = tiled[0];
+            tiled[0] = tiled[1];
+            tiled[1] = tmp;
+        }
+
         tiled[0]->x = 0;
         tiled[0]->y = 0;
         tiled[0]->width = half_w;
@@ -111,6 +133,15 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
         tiled[1]->height = cfg->screen_height;
     } else {
         int half_w = cfg->screen_width / 2;
+        for (int i = 1; i < tiled_count; i++) {
+            if (tiled[i]->snap_state == SNAP_LEFT && tiled[0]->snap_state != SNAP_LEFT) {
+                Client *tmp = tiled[0];
+                tiled[0] = tiled[i];
+                tiled[i] = tmp;
+                break;
+            }
+        }
+
         tiled[0]->x = 0;
         tiled[0]->y = 0;
         tiled[0]->width = half_w;

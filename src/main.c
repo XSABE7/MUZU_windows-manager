@@ -276,6 +276,7 @@ int main(void) {
 
                             if (c->mode == CLIENT_TILED) {
                                 c->mode = CLIENT_FLOATING;
+                                c->snap_state = SNAP_NONE;
                                 reflow_all(dpy, clients, &cfg);
                             }
 
@@ -452,6 +453,7 @@ int main(void) {
                             // If tiled, detach to floating and reflow remaining tiled windows!
                             if (curr->mode == CLIENT_TILED) {
                                 curr->mode = CLIENT_FLOATING;
+                                curr->snap_state = SNAP_NONE;
                                 reflow_all(dpy, clients, &cfg);
                             }
 
@@ -472,7 +474,7 @@ int main(void) {
                     break;
                 }
 
-                if (trigger_check_hot_corner(ev.xmotion.x_root, ev.xmotion.y_root, DEFAULT_HOT_CORNER_SIZE)) {
+                if (!drag_client && trigger_check_hot_corner(ev.xmotion.x_root, ev.xmotion.y_root, DEFAULT_HOT_CORNER_SIZE)) {
                     if (!launchpad.is_visible) {
                         launchpad_toggle(dpy, &launchpad);
                     }
@@ -512,10 +514,34 @@ int main(void) {
                 if (drag_client) {
                     XUngrabPointer(dpy, CurrentTime);
 
-                    // Edge snapping: top maximizes, left/right retiles
-                    if (ev.xbutton.y_root <= 10 || ev.xbutton.x_root <= 10 || ev.xbutton.x_root >= screen_w - 10) {
+                    const int SNAP_THRESHOLD = 16;
+                    if (ev.xbutton.y_root <= SNAP_THRESHOLD) {
+                        // Top edge -> Maximize!
+                        if (!drag_client->is_maximized) {
+                            client_toggle_maximize(dpy, drag_client, &cfg);
+                            if (drag_client->frame) {
+                                titlebar_draw(dpy, drag_client, &current_theme);
+                            }
+                        }
+                    } else if (ev.xbutton.x_root <= SNAP_THRESHOLD) {
+                        // Left edge -> Left half (50%)
+                        if (drag_client->is_maximized) {
+                            drag_client->is_maximized = 0;
+                        }
                         drag_client->mode = CLIENT_TILED;
+                        drag_client->snap_state = SNAP_LEFT;
                         reflow_all(dpy, clients, &cfg);
+                    } else if (ev.xbutton.x_root >= screen_w - SNAP_THRESHOLD) {
+                        // Right edge -> Right half (50%)
+                        if (drag_client->is_maximized) {
+                            drag_client->is_maximized = 0;
+                        }
+                        drag_client->mode = CLIENT_TILED;
+                        drag_client->snap_state = SNAP_RIGHT;
+                        reflow_all(dpy, clients, &cfg);
+                    } else {
+                        // Dropped in free space -> stays floating
+                        drag_client->snap_state = SNAP_NONE;
                     }
                     drag_client = NULL;
                 }

@@ -9,11 +9,19 @@ typedef enum {
     CLIENT_FLOATING
 } ClientMode;
 
+typedef enum {
+    SNAP_NONE = 0,
+    SNAP_LEFT,
+    SNAP_RIGHT,
+    SNAP_TOP
+} SnapState;
+
 typedef struct Client {
     Window win;
     Window frame;
     int x, y, width, height;
     ClientMode mode;
+    SnapState snap_state;
     int is_csd;
     int is_minimized;
     int is_maximized;
