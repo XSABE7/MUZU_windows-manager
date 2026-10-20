@@ -93,7 +93,14 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
     XFlush(dpy);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    const char *cli_wallpaper = NULL;
+    for (int i = 1; i < argc; i++) {
+        if ((strcmp(argv[i], "-w") == 0 || strcmp(argv[i], "--wallpaper") == 0) && i + 1 < argc) {
+            cli_wallpaper = argv[++i];
+        }
+    }
+
     Display *dpy = XOpenDisplay(NULL);
     if (!dpy) {
         fprintf(stderr, "MUZUwm: Cannot open display\n");
@@ -125,7 +132,11 @@ int main(void) {
     gtk_theme_export_env(&current_theme);
 
     // Initialize Wallpaper (Zero-Overhead Root Window Pixmap)
-    wallpaper_init(dpy, screen_w, screen_h);
+    if (cli_wallpaper) {
+        wallpaper_set_root(dpy, screen_w, screen_h, cli_wallpaper);
+    } else {
+        wallpaper_init(dpy, screen_w, screen_h);
+    }
 
     // Initialize UI subsystems
     rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);

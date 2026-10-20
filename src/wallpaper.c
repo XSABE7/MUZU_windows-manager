@@ -9,6 +9,9 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
+
 #include "wallpaper.h"
 
 static void safe_copy(char *dst, const char *src, size_t dst_size) {
@@ -79,12 +82,15 @@ int wallpaper_get_configured_path(char *path_out, size_t max_len) {
         fclose(f);
     }
 
-    // Check fallback MUZUwm wallpaper: ~/.config/muzuwm/wallpaper.png
-    char muzuwm_wall[512];
-    snprintf(muzuwm_wall, sizeof(muzuwm_wall), "%s/.config/muzuwm/wallpaper.png", home);
-    if (access(muzuwm_wall, R_OK) == 0) {
-        safe_copy(path_out, muzuwm_wall, max_len);
-        return 1;
+    // Check fallback MUZUwm wallpaper: ~/.config/muzuwm/wallpaper.png, .jpg, .jpeg
+    const char *exts[] = { ".png", ".jpg", ".jpeg" };
+    for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
+        char muzuwm_wall[512];
+        snprintf(muzuwm_wall, sizeof(muzuwm_wall), "%s/.config/muzuwm/wallpaper%s", home, exts[i]);
+        if (access(muzuwm_wall, R_OK) == 0) {
+            safe_copy(path_out, muzuwm_wall, max_len);
+            return 1;
+        }
     }
 
     return 0;
@@ -114,11 +120,25 @@ int wallpaper_set_root(Display *dpy, int screen_w, int screen_h, const char *ima
 
     int image_rendered = 0;
     if (image_path && image_path[0] != '\0') {
-        cairo_surface_t *img = cairo_image_surface_create_from_png(image_path);
-        if (cairo_surface_status(img) == CAIRO_STATUS_SUCCESS) {
-            int img_w = cairo_image_surface_get_width(img);
-            int img_h = cairo_image_surface_get_height(img);
-            if (img_w > 0 && img_h > 0) {
+        int img_w = 0, img_h = 0, channels = 0;
+        unsigned char *pixels = stbi_load(image_path, &img_w, &img_h, &channels, 4);
+        if (pixels && img_w > 0 && img_h > 0) {
+            cairo_surface_t *img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, img_w, img_h);
+            if (cairo_surface_status(img) == CAIRO_STATUS_SUCCESS) {
+                uint32_t *dst = (uint32_t *)cairo_image_surface_get_data(img);
+                int stride = cairo_image_surface_get_stride(img) / 4;
+                for (int y = 0; y < img_h; y++) {
+                    for (int x = 0; x < img_w; x++) {
+                        int idx = (y * img_w + x) * 4;
+                        uint32_t r = pixels[idx + 0];
+                        uint32_t g = pixels[idx + 1];
+                        uint32_t b = pixels[idx + 2];
+                        uint32_t a = pixels[idx + 3];
+                        dst[y * stride + x] = (a << 24) | (r << 16) | (g << 8) | b;
+                    }
+                }
+                cairo_surface_mark_dirty(img);
+
                 double sx = (double)screen_w / (double)img_w;
                 double sy = (double)screen_h / (double)img_h;
                 double scale = (sx > sy) ? sx : sy; // Aspect fill
@@ -135,8 +155,9 @@ int wallpaper_set_root(Display *dpy, int screen_w, int screen_h, const char *ima
                 cairo_restore(cr);
                 image_rendered = 1;
             }
+            cairo_surface_destroy(img);
+            stbi_image_free(pixels);
         }
-        cairo_surface_destroy(img);
     }
 
     if (!image_rendered) {
