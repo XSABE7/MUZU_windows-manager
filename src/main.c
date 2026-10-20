@@ -768,7 +768,9 @@ int main(int argc, char **argv) {
                             ry >= dock.y && ry <= dock.y + dock.height) {
                             if (app_idx >= 0 && app_idx < rofi_launcher.app_count) {
                                 const RofiApp *app = &rofi_launcher.apps[app_idx];
-                                dock_add_app(&dock, app->name, app->exec, app->icon_name);
+                                char clean_cmd[256];
+                                rofi_sanitize_exec(app->exec, clean_cmd, sizeof(clean_cmd));
+                                dock_add_app(&dock, app->name, clean_cmd, app->icon_name);
                                 dock_save_pinned_apps(&dock);
                                 dock_calculate_geometry(&dock, dock.pos, dock.is_hidden, screen_w, screen_h);
                                 if (dock.win) {

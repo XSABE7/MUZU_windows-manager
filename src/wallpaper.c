@@ -178,6 +178,22 @@ int wallpaper_set_root(Display *dpy, int screen_w, int screen_h, const char *ima
     Atom prop_root = XInternAtom(dpy, "_XROOTPMAP_ID", False);
     Atom prop_esetroot = XInternAtom(dpy, "ESETROOT_PMAP_ID", False);
 
+    // Free previous root pixmap to avoid X server VRAM accumulation on wallpaper reloads
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems = 0, bytes_after = 0;
+    unsigned char *prop_data = NULL;
+    if (XGetWindowProperty(dpy, root, prop_root, 0, 1, False, XA_PIXMAP,
+                           &actual_type, &actual_format, &nitems, &bytes_after, &prop_data) == Success) {
+        if (prop_data && actual_type == XA_PIXMAP && actual_format == 32 && nitems == 1) {
+            Pixmap old_pmap = *(Pixmap *)prop_data;
+            if (old_pmap != None && old_pmap != pmap) {
+                XKillClient(dpy, old_pmap);
+            }
+        }
+        if (prop_data) XFree(prop_data);
+    }
+
     XChangeProperty(dpy, root, prop_root, XA_PIXMAP, 32, PropModeReplace, (unsigned char *)&pmap, 1);
     XChangeProperty(dpy, root, prop_esetroot, XA_PIXMAP, 32, PropModeReplace, (unsigned char *)&pmap, 1);
 

@@ -54,7 +54,7 @@ void menu_init(Display *dpy, Menu *menu, const GtkTheme *theme, MenuCallback cb,
         attrs.override_redirect = True;
         attrs.background_pixel = 0x16161a;
         attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
-                           PointerMotionMask | StructureNotifyMask;
+                           PointerMotionMask | StructureNotifyMask | KeyPressMask;
 
         menu->win = XCreateWindow(dpy, root, 0, 0, menu->width, menu->height, 0,
                                   CopyFromParent, InputOutput, CopyFromParent,
@@ -142,19 +142,8 @@ void menu_calculate_geometry(Menu *menu, int cursor_x, int cursor_y, int screen_
     menu->y = ny;
 }
 
-int menu_get_item_at(const Menu *menu, int x, int y) {
-    if (!menu) return -1;
-
-    // Support both root coordinates and window-relative coordinates
-    int win_x = x;
-    int win_y = y;
-    if (x >= menu->x && x < menu->x + menu->width &&
-        y >= menu->y && y < menu->y + menu->height) {
-        win_x = x - menu->x;
-        win_y = y - menu->y;
-    }
-
-    if (win_x < 0 || win_x >= menu->width || win_y < 0 || win_y >= menu->height) {
+int menu_get_item_at(const Menu *menu, int win_x, int win_y) {
+    if (!menu || win_x < 0 || win_x >= menu->width || win_y < 0 || win_y >= menu->height) {
         return -1;
     }
 
@@ -194,6 +183,7 @@ void menu_show(Display *dpy, Menu *menu, int cursor_x, int cursor_y, int screen_
             cairo_xlib_surface_set_size(menu->surface, menu->width, menu->height);
         }
         XMapRaised(dpy, menu->win);
+        XSetInputFocus(dpy, menu->win, RevertToPointerRoot, CurrentTime);
         menu_render(dpy, menu);
         XFlush(dpy);
     }

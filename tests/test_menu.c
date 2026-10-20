@@ -35,14 +35,14 @@ int main(void) {
     assert(menu.x + menu.width <= 1920);
     assert(menu.y + menu.height <= 1080);
 
-    // Test 4: Hit testing
+    // Test 4: Hit testing (window-relative coordinates)
     menu_calculate_geometry(&menu, 100, 100, 1920, 1080);
-    int hit = menu_get_item_at(&menu, 110, 100 + MENU_PADDING_Y + 10);
+    int hit = menu_get_item_at(&menu, 10, MENU_PADDING_Y + 10);
     assert(hit == 0);
 
     // Separator hit should return -1
-    int sep_y = 100 + MENU_PADDING_Y + 2 * MENU_ROW_HEIGHT + MENU_SEP_HEIGHT / 2;
-    int sep_hit = menu_get_item_at(&menu, 110, sep_y);
+    int sep_y = MENU_PADDING_Y + 2 * MENU_ROW_HEIGHT + MENU_SEP_HEIGHT / 2;
+    int sep_hit = menu_get_item_at(&menu, 10, sep_y);
     assert(sep_hit == -1);
 
     // Test 5: Action dispatch

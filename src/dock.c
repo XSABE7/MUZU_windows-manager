@@ -38,13 +38,20 @@ static void draw_rounded_rectangle(cairo_t *cr, double x, double y, double w, do
     cairo_close_path(cr);
 }
 
+static int dock_get_base_icon_size(const Dock *dock) {
+    if (!dock) return 32;
+    if (dock->size <= 36) return 24;
+    if (dock->size >= 64) return 40;
+    return 32;
+}
+
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h) {
     if (!dock) return;
     if (dock->size <= 0) dock->size = 48;
     dock->pos = pos;
     dock->is_hidden = is_hidden;
 
-    int icon_size = 32;
+    int icon_size = dock_get_base_icon_size(dock);
     int margin = 8;
     int count = dock->item_count > 0 ? dock->item_count : 1;
     int min_count = dock->minimized_count;
@@ -97,7 +104,7 @@ void dock_set_magnification(Dock *dock, int enabled) {
 
 int dock_get_item_at(const Dock *dock, int x, int y) {
     if (!dock || dock->item_count <= 0) return -1;
-    int icon_size = 32;
+    int icon_size = dock_get_base_icon_size(dock);
     int margin = 8;
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
@@ -181,7 +188,7 @@ void dock_remove_minimized(Dock *dock, Client *c) {
 
 Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
     if (!dock || dock->minimized_count <= 0) return NULL;
-    int icon_size = 32;
+    int icon_size = dock_get_base_icon_size(dock);
     int margin = 8;
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
@@ -381,7 +388,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     cairo_stroke(cr);
 
     // Render launcher icons
-    int icon_size = 32;
+    int icon_size = dock_get_base_icon_size(dock);
     int margin = 8;
     double accent_r = dock->theme ? dock->theme->accent_color.r : 0.25;
     double accent_g = dock->theme ? dock->theme->accent_color.g : 0.55;
