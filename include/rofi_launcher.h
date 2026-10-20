@@ -46,6 +46,12 @@ typedef struct RofiLauncher {
     char query[128];
     int query_len;
 
+    // Drag-to-dock state
+    int is_pressing;
+    int is_dragging_out;
+    int drag_start_root_x, drag_start_root_y;
+    int drag_app_idx;
+
     const GtkTheme *theme;
 } RofiLauncher;
 
@@ -63,6 +69,7 @@ void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi);
 void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int screen_h);
 void rofi_launcher_handle_key(Display *dpy, RofiLauncher *rofi, XKeyEvent *ev);
 void rofi_launcher_handle_click(Display *dpy, RofiLauncher *rofi, unsigned int button, int x, int y);
+void rofi_launcher_handle_press(Display *dpy, RofiLauncher *rofi, unsigned int button, int root_x, int root_y);
 void rofi_launcher_handle_motion(Display *dpy, RofiLauncher *rofi, int x, int y);
 void rofi_launcher_execute_selected(Display *dpy, RofiLauncher *rofi);
 

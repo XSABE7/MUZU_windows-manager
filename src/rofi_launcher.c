@@ -535,6 +535,11 @@ void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi) {
         }
     } else {
         rofi->is_visible = 0;
+        if (rofi->is_pressing && dpy) {
+            XUngrabPointer(dpy, CurrentTime);
+        }
+        rofi->is_pressing = 0;
+        rofi->is_dragging_out = 0;
         if (dpy && rofi->win) {
             XUnmapWindow(dpy, rofi->win);
             XFlush(dpy);
@@ -623,9 +628,62 @@ void rofi_launcher_handle_click(Display *dpy, RofiLauncher *rofi, unsigned int b
     }
 }
 
+void rofi_launcher_handle_press(Display *dpy, RofiLauncher *rofi, unsigned int button, int root_x, int root_y) {
+    if (!rofi || !rofi->is_visible) return;
+
+    if (button != Button1) return;
+
+    int win_x = root_x - rofi->x;
+    int win_y = root_y - rofi->y;
+
+    // Check if clicked outside window bounds
+    if (win_x < 0 || win_x >= rofi->width || win_y < 0 || win_y >= rofi->height) {
+        rofi_launcher_toggle(dpy, rofi);
+        return;
+    }
+
+    // Check if clicked an item row
+    double list_y = ROFI_HEADER_HEIGHT + 6.0;
+    if (win_y >= list_y) {
+        int clicked_row = (int)((win_y - list_y) / ROFI_ROW_HEIGHT);
+        int target_idx = rofi->scroll_offset + clicked_row;
+        if (target_idx >= 0 && target_idx < rofi->match_count) {
+            rofi->selected_idx = target_idx;
+            rofi->is_pressing = 1;
+            rofi->is_dragging_out = 0;
+            rofi->drag_start_root_x = root_x;
+            rofi->drag_start_root_y = root_y;
+            rofi->drag_app_idx = rofi->matches[target_idx];
+
+            if (dpy) {
+                int screen = DefaultScreen(dpy);
+                Window root = RootWindow(dpy, screen);
+                XGrabPointer(dpy, root, False,
+                             ButtonReleaseMask | PointerMotionMask,
+                             GrabModeAsync, GrabModeAsync,
+                             None, None, CurrentTime);
+                rofi_launcher_render(dpy, rofi, 0, 0);
+            }
+        }
+    }
+}
+
 void rofi_launcher_handle_motion(Display *dpy, RofiLauncher *rofi, int x, int y) {
     if (!rofi || !rofi->is_visible) return;
-    (void)x;
+
+    if (rofi->is_pressing) {
+        int root_x = rofi->x + x;
+        int root_y = rofi->y + y;
+        int dx = root_x - rofi->drag_start_root_x;
+        int dy = root_y - rofi->drag_start_root_y;
+        if (dx * dx + dy * dy >= 64) {
+            rofi->is_dragging_out = 1;
+        }
+    }
+
+    if (rofi->is_dragging_out) {
+        return;
+    }
 
     double list_y = ROFI_HEADER_HEIGHT + 6.0;
     if (y >= list_y) {

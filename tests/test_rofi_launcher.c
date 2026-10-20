@@ -68,6 +68,21 @@ int main(void) {
     rofi_launcher_handle_click(NULL, &rofi, Button1, -10, -10);
     assert(rofi.is_visible == 0);
 
+    // Test 9: Drag-to-dock detection
+    rofi.is_visible = 1;
+    rofi_launcher_handle_press(NULL, &rofi, Button1, rofi.x + 200, rofi.y + 180);
+    assert(rofi.is_pressing == 1);
+    assert(rofi.is_dragging_out == 0);
+    assert(rofi.drag_app_idx >= 0);
+
+    // Small motion <= 8px does not trigger drag
+    rofi_launcher_handle_motion(NULL, &rofi, 202, 182);
+    assert(rofi.is_dragging_out == 0);
+
+    // Large motion > 8px triggers drag-to-dock mode
+    rofi_launcher_handle_motion(NULL, &rofi, 230, 230);
+    assert(rofi.is_dragging_out == 1);
+
     rofi_launcher_cleanup(&rofi);
     printf("test_rofi_launcher passed!\n");
     return 0;
