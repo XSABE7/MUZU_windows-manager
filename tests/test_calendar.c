@@ -40,6 +40,22 @@ int main(void) {
     launchpad_cleanup(&lp);
     assert(lp.app_count == 0);
 
+    // Test Launchpad safe dismissal and explicit close button
+    Launchpad test_lp = {0};
+    test_lp.is_visible = 1;
+
+    // 1. Click on empty background / margin -> MUST NOT close
+    launchpad_handle_click(NULL, &test_lp, Button1, 10, 10);
+    assert(test_lp.is_visible == 1);
+
+    // 2. Click on calendar area -> MUST NOT close
+    launchpad_handle_click(NULL, &test_lp, Button1, 700, 200);
+    assert(test_lp.is_visible == 1);
+
+    // 3. Click on explicit close button ('✕' at top right: screen_w - 40, 40) -> MUST close
+    launchpad_handle_click(NULL, &test_lp, Button1, 1000 - 40, 40);
+    assert(test_lp.is_visible == 0);
+
     printf("test_calendar passed!\n");
     return 0;
 }

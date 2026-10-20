@@ -348,25 +348,54 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
         cairo_show_text(cr, "🎸 Will She Know (เธอจะรู้บ้างไหม)");
     }
 
+    // Top-right Explicit Close Button ('✕')
+    int close_btn_x = screen_w - 56;
+    int close_btn_y = 24;
+    int close_btn_size = 32;
+
+    cairo_set_source_rgba(cr, 0.22, 0.26, 0.33, 0.85);
+    cairo_arc(cr, close_btn_x + close_btn_size / 2.0, close_btn_y + close_btn_size / 2.0, close_btn_size / 2.0, 0, 2 * 3.14159);
+    cairo_fill(cr);
+
+    cairo_set_source_rgba(cr, 0.45, 0.50, 0.60, 0.90);
+    cairo_set_line_width(cr, 1.5);
+    cairo_arc(cr, close_btn_x + close_btn_size / 2.0, close_btn_y + close_btn_size / 2.0, close_btn_size / 2.0, 0, 2 * 3.14159);
+    cairo_stroke(cr);
+
+    cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
+    cairo_set_line_width(cr, 2.0);
+    cairo_move_to(cr, close_btn_x + 10, close_btn_y + 10);
+    cairo_line_to(cr, close_btn_x + 22, close_btn_y + 22);
+    cairo_move_to(cr, close_btn_x + 22, close_btn_y + 10);
+    cairo_line_to(cr, close_btn_x + 10, close_btn_y + 22);
+    cairo_stroke(cr);
+
     cairo_destroy(cr);
     cairo_surface_flush(lp->surface);
-    XFlush(dpy);
+    if (dpy) XFlush(dpy);
 }
 
 void launchpad_toggle(Display *dpy, Launchpad *lp) {
+    if (!lp) return;
     if (lp->is_visible) {
-        XUngrabKeyboard(dpy, CurrentTime);
-        XUnmapWindow(dpy, lp->win);
+        if (dpy) {
+            XUngrabKeyboard(dpy, CurrentTime);
+            XUnmapWindow(dpy, lp->win);
+        }
         lp->is_visible = 0;
         easter_egg_init(&lp->egg);
     } else {
-        XMapRaised(dpy, lp->win);
-        XGrabKeyboard(dpy, lp->win, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+        if (dpy) {
+            XMapRaised(dpy, lp->win);
+            XGrabKeyboard(dpy, lp->win, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+        }
         lp->is_visible = 1;
         lp->search_query[0] = '\0';
         lp->scroll_y = 0; // Reset scroll position when opening
-        int screen = DefaultScreen(dpy);
-        launchpad_render(dpy, lp, DisplayWidth(dpy, screen), DisplayHeight(dpy, screen));
+        if (dpy) {
+            int screen = DefaultScreen(dpy);
+            launchpad_render(dpy, lp, DisplayWidth(dpy, screen), DisplayHeight(dpy, screen));
+        }
     }
 }
 
@@ -418,19 +447,33 @@ void launchpad_handle_key(Display *dpy, Launchpad *lp, XKeyEvent *ev) {
 }
 
 void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, int x, int y) {
-    if (!lp->is_visible) return;
-    int screen = DefaultScreen(dpy);
-    int screen_w = DisplayWidth(dpy, screen);
-    int screen_h = DisplayHeight(dpy, screen);
+    if (!lp || !lp->is_visible) return;
+    int screen_w = 1000;
+    int screen_h = 700;
+    if (dpy) {
+        int screen = DefaultScreen(dpy);
+        screen_w = DisplayWidth(dpy, screen);
+        screen_h = DisplayHeight(dpy, screen);
+    }
+
+    // Check if clicked top-right explicit close button ('✕')
+    int close_btn_x = screen_w - 56;
+    int close_btn_y = 24;
+    int close_btn_size = 32;
+    if (x >= close_btn_x - 6 && x <= close_btn_x + close_btn_size + 6 &&
+        y >= close_btn_y - 6 && y <= close_btn_y + close_btn_size + 6) {
+        launchpad_toggle(dpy, lp);
+        return;
+    }
 
     // Mouse wheel scrolling: Button4 = Scroll Up, Button5 = Scroll Down
     if (button == Button4) {
         launchpad_scroll(lp, -60, screen_h);
-        launchpad_render(dpy, lp, screen_w, screen_h);
+        if (dpy) launchpad_render(dpy, lp, screen_w, screen_h);
         return;
     } else if (button == Button5) {
         launchpad_scroll(lp, 60, screen_h);
-        launchpad_render(dpy, lp, screen_w, screen_h);
+        if (dpy) launchpad_render(dpy, lp, screen_w, screen_h);
         return;
     }
 
@@ -478,6 +521,5 @@ void launchpad_handle_click(Display *dpy, Launchpad *lp, unsigned int button, in
         }
     }
 
-    // Click outside closes launchpad
-    launchpad_toggle(dpy, lp);
+    // Safe dismissal: Clicks on background, margins, or calendar do NOT close launchpad
 }
