@@ -9,7 +9,7 @@
 ![Platform](https://img.shields.io/badge/Platform-X11%20%2F%20Linux-green.svg)
 ![Memory Footprint](https://img.shields.io/badge/Memory%20RSS-~15--22%20MB-success.svg)
 ![Standards](https://img.shields.io/badge/Standards-EWMH%20%2F%20ICCCM-informational.svg)
-![License](https://img.shields.io/badge/License-MIT-lightgrey.svg)
+![License]((https://img.shields.io/badge/License-GPLv3-blue.svg)
 
 ---
 
