@@ -21,6 +21,7 @@
 #include "gtk_theme.h"
 #include "menu.h"
 #include "compositor.h"
+#include "tint2_panel.h"
 
 static int running = 1;
 static GtkTheme current_theme;
@@ -174,6 +175,50 @@ static void handle_menu_action(int action_id, void *userdata) {
             }
             break;
 
+        case POWER_ACTION_SUSPEND: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                execl("/bin/sh", "sh", "-c", "systemctl suspend || loginctl suspend || pm-suspend", NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case POWER_ACTION_REBOOT: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                execl("/bin/sh", "sh", "-c", "systemctl reboot || loginctl reboot || reboot", NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case POWER_ACTION_POWEROFF: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                execl("/bin/sh", "sh", "-c", "systemctl poweroff || loginctl poweroff || poweroff", NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case POWER_ACTION_LOCK: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                execl("/bin/sh", "sh", "-c", "loginctl lock-session || xdg-screensaver lock || i3lock || slock", NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case POWER_ACTION_LOGOUT:
+            running = 0;
+            break;
+
         default:
             break;
     }
@@ -193,9 +238,13 @@ static int x_error_handler(Display *dpy, XErrorEvent *e) {
 static Dock *g_dock = NULL;
 static RofiLauncher *g_rofi = NULL;
 static Menu *g_menu = NULL;
+static Tint2Panel *g_panel = NULL;
 
 static void raise_system_overlays(Display *dpy) {
     if (!dpy) return;
+    if (g_panel && g_panel->win) {
+        XRaiseWindow(dpy, g_panel->win);
+    }
     if (g_dock && g_dock->win) {
         XRaiseWindow(dpy, g_dock->win);
     }
@@ -210,7 +259,7 @@ static void raise_system_overlays(Display *dpy) {
 static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
     layout_calculate(cfg, clients, 0);
     for (Client *curr = clients; curr; curr = curr->next) {
-        if (curr->is_minimized) continue;
+        if (curr->is_minimized || curr->workspace != cfg->current_workspace) continue;
         if (curr->mode == CLIENT_TILED) {
             Window target = curr->frame ? curr->frame : curr->win;
             XMoveResizeWindow(dpy, target, curr->x, curr->y, curr->width, curr->height);
@@ -265,6 +314,93 @@ static void set_focused_client(Display *dpy, Client *c) {
             titlebar_draw(dpy, c, &current_theme);
         }
     }
+
+    if (g_panel) {
+        if (c && c->title[0] != '\0') {
+            snprintf(g_panel->active_title, sizeof(g_panel->active_title), "%.127s", c->title);
+        } else {
+            g_panel->active_title[0] = '\0';
+        }
+        tint2_panel_render(dpy, g_panel);
+    }
+}
+
+static void update_panel_state(Display *dpy, Client *clients, LayoutConfig *cfg) {
+    if (!g_panel) return;
+    tint2_panel_update_workspaces(g_panel, clients, cfg->current_workspace,
+                                  focused_client ? focused_client->title : "");
+    tint2_panel_render(dpy, g_panel);
+}
+
+static void switch_workspace(Display *dpy, Client *clients, LayoutConfig *cfg, Dock *dock, int target_ws) {
+    if (target_ws < 0 || target_ws >= TINT2_NUM_WORKSPACES) return;
+    if (target_ws == cfg->current_workspace) return;
+
+    cfg->current_workspace = target_ws;
+
+    for (Client *curr = clients; curr; curr = curr->next) {
+        Window target = curr->frame ? curr->frame : curr->win;
+        if (curr->workspace == target_ws) {
+            if (!curr->is_minimized) {
+                XMapWindow(dpy, target);
+                if (curr->frame && curr->win) {
+                    XMapWindow(dpy, curr->win);
+                }
+            }
+        } else {
+            XUnmapWindow(dpy, target);
+        }
+    }
+
+    if (focused_client && (focused_client->workspace != target_ws || focused_client->is_minimized)) {
+        focused_client = NULL;
+    }
+    if (!focused_client) {
+        for (Client *curr = clients; curr; curr = curr->next) {
+            if (curr->workspace == target_ws && !curr->is_minimized) {
+                set_focused_client(dpy, curr);
+                break;
+            }
+        }
+    }
+
+    reflow_all(dpy, clients, cfg);
+    if (dock) {
+        dock_update_running(dock, clients);
+        dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
+    }
+    update_panel_state(dpy, clients, cfg);
+    raise_system_overlays(dpy);
+    XFlush(dpy);
+}
+
+static void move_client_to_workspace(Display *dpy, Client *clients, Client *c, LayoutConfig *cfg, Dock *dock, int target_ws) {
+    if (!c || target_ws < 0 || target_ws >= TINT2_NUM_WORKSPACES) return;
+    if (c->workspace == target_ws) return;
+
+    c->workspace = target_ws;
+    if (target_ws != cfg->current_workspace) {
+        Window target = c->frame ? c->frame : c->win;
+        XUnmapWindow(dpy, target);
+        if (focused_client == c) {
+            focused_client = NULL;
+            for (Client *curr = clients; curr; curr = curr->next) {
+                if (curr->workspace == cfg->current_workspace && !curr->is_minimized) {
+                    set_focused_client(dpy, curr);
+                    break;
+                }
+            }
+        }
+    }
+
+    reflow_all(dpy, clients, cfg);
+    if (dock) {
+        dock_update_running(dock, clients);
+        dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
+    }
+    update_panel_state(dpy, clients, cfg);
+    raise_system_overlays(dpy);
+    XFlush(dpy);
 }
 
 static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConfig *cfg,
@@ -309,7 +445,7 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
     client_remove(clients, c->win);
     if (!focused_client && *clients) {
         for (Client *o = *clients; o; o = o->next) {
-            if (!o->is_minimized) {
+            if (!o->is_minimized && o->workspace == cfg->current_workspace) {
                 set_focused_client(dpy, o);
                 break;
             }
@@ -320,6 +456,7 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
         dock_update_running(dock, *clients);
         dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
     }
+    update_panel_state(dpy, *clients, cfg);
     XFlush(dpy);
 }
 
@@ -350,12 +487,15 @@ int main(int argc, char **argv) {
     LayoutConfig cfg = {
         .screen_width = screen_w,
         .screen_height = screen_h,
-        .master_count = 1
+        .master_count = 1,
+        .top_inset = TINT2_PANEL_HEIGHT,
+        .current_workspace = 0
     };
 
     Client *clients = NULL;
     RofiLauncher rofi_launcher;
     Dock dock = {0};
+    Tint2Panel panel = {0};
 
     // Load GTK theme configuration & export env for GTK applications
     gtk_theme_init(&current_theme);
@@ -369,6 +509,7 @@ int main(int argc, char **argv) {
     }
 
     // Initialize UI subsystems
+    tint2_panel_init(dpy, &panel, screen_w, &current_theme);
     rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
 
@@ -384,6 +525,7 @@ int main(int argc, char **argv) {
     };
     menu_init(dpy, &context_menu, &current_theme, handle_menu_action, &wm_ctx);
 
+    g_panel = &panel;
     g_dock = &dock;
     g_rofi = &rofi_launcher;
     g_menu = &context_menu;
@@ -406,6 +548,18 @@ int main(int argc, char **argv) {
     // Grab Alt+F1 as fallback trigger
     KeyCode alt_f1_kc = XKeysymToKeycode(dpy, XK_F1);
     XGrabKey(dpy, alt_f1_kc, Mod1Mask, root, True, GrabModeAsync, GrabModeAsync);
+
+    // Grab Workspace hotkeys (Alt+1..4 / Super+1..4 to switch, +Shift to move window)
+    KeySym ws_syms[4] = { XK_1, XK_2, XK_3, XK_4 };
+    for (int i = 0; i < 4; i++) {
+        KeyCode kc = XKeysymToKeycode(dpy, ws_syms[i]);
+        if (kc != 0) {
+            XGrabKey(dpy, kc, Mod1Mask, root, True, GrabModeAsync, GrabModeAsync);
+            XGrabKey(dpy, kc, Mod4Mask, root, True, GrabModeAsync, GrabModeAsync);
+            XGrabKey(dpy, kc, Mod1Mask | ShiftMask, root, True, GrabModeAsync, GrabModeAsync);
+            XGrabKey(dpy, kc, Mod4Mask | ShiftMask, root, True, GrabModeAsync, GrabModeAsync);
+        }
+    }
 
     // EWMH supported atoms setup
     Atom net_muzu_reload_wallpaper = XInternAtom(dpy, "_MUZU_RELOAD_WALLPAPER", False);
@@ -449,7 +603,7 @@ int main(int argc, char **argv) {
             switch (ev.type) {
             case MapRequest: {
                 Window w = ev.xmaprequest.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win) {
                     XMapWindow(dpy, w);
                     break;
                 }
@@ -471,10 +625,11 @@ int main(int argc, char **argv) {
                         win_h = wa.height;
                     }
 
-                    int init_x = 0, init_y = 0;
+                    int init_x = 0, init_y = TINT2_PANEL_HEIGHT;
                     if (is_dialog) {
                         client_calculate_dialog_geometry(screen_w, screen_h, win_w, win_h,
                                                          &init_x, &init_y, &win_w, &win_h);
+                        if (init_y < TINT2_PANEL_HEIGHT) init_y = TINT2_PANEL_HEIGHT;
                     }
 
                     Window frame = is_csd ? None : titlebar_create(dpy, w, win_w);
@@ -483,6 +638,7 @@ int main(int argc, char **argv) {
                     if (c) {
                         c->frame = frame;
                         c->is_csd = is_csd;
+                        c->workspace = cfg.current_workspace;
                         c->x = init_x;
                         c->y = init_y;
                         c->width = win_w;
@@ -519,6 +675,7 @@ int main(int argc, char **argv) {
                 }
                 dock_update_running(&dock, clients);
                 dock_render(dpy, &dock, screen_w, screen_h);
+                update_panel_state(dpy, clients, &cfg);
                 raise_system_overlays(dpy);
                 break;
             }
@@ -582,6 +739,9 @@ int main(int argc, char **argv) {
                 } else if (ev.xclient.message_type == net_active_window) {
                     Client *c = client_find_by_any(clients, ev.xclient.window);
                     if (c) {
+                        if (c->workspace != cfg.current_workspace) {
+                            switch_workspace(dpy, clients, &cfg, &dock, c->workspace);
+                        }
                         if (c->is_minimized) {
                             c->is_minimized = 0;
                             Window target = c->frame ? c->frame : c->win;
@@ -593,6 +753,7 @@ int main(int argc, char **argv) {
                             reflow_all(dpy, clients, &cfg);
                             dock_update_running(&dock, clients);
                             dock_render(dpy, &dock, screen_w, screen_h);
+                            update_panel_state(dpy, clients, &cfg);
                         }
                         set_focused_client(dpy, c);
                         Window raise_target = c->frame ? c->frame : c->win;
@@ -605,11 +766,11 @@ int main(int argc, char **argv) {
 
             case UnmapNotify: {
                 Window w = ev.xunmap.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win) {
                     break;
                 }
                 Client *c = client_find_by_any(clients, w);
-                if (c && c->is_minimized) {
+                if (c && (c->is_minimized || c->workspace != cfg.current_workspace)) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
@@ -618,7 +779,7 @@ int main(int argc, char **argv) {
 
             case DestroyNotify: {
                 Window w = ev.xdestroywindow.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
@@ -644,6 +805,16 @@ int main(int argc, char **argv) {
                     rofi_launcher_toggle(dpy, &rofi_launcher);
                 } else if (sym == XK_F1 && (ev.xkey.state & Mod1Mask)) {
                     rofi_launcher_toggle(dpy, &rofi_launcher);
+                } else if ((sym >= XK_1 && sym <= XK_4) &&
+                           (ev.xkey.state & (Mod1Mask | Mod4Mask))) {
+                    int target_ws = (int)(sym - XK_1);
+                    if (ev.xkey.state & ShiftMask) {
+                        if (focused_client) {
+                            move_client_to_workspace(dpy, clients, focused_client, &cfg, &dock, target_ws);
+                        }
+                    } else {
+                        switch_workspace(dpy, clients, &cfg, &dock, target_ws);
+                    }
                 }
                 break;
             }
@@ -661,6 +832,40 @@ int main(int argc, char **argv) {
                 if (rofi_launcher.is_visible) {
                     rofi_launcher_handle_press(dpy, &rofi_launcher, ev.xbutton.button,
                                                ev.xbutton.x_root, ev.xbutton.y_root);
+                    break;
+                }
+
+                if (ev.xbutton.window == panel.win) {
+                    if (ev.xbutton.button == Button4) {
+                        int prev_ws = (cfg.current_workspace - 1 + TINT2_NUM_WORKSPACES) % TINT2_NUM_WORKSPACES;
+                        switch_workspace(dpy, clients, &cfg, &dock, prev_ws);
+                        break;
+                    }
+                    if (ev.xbutton.button == Button5) {
+                        int next_ws = (cfg.current_workspace + 1) % TINT2_NUM_WORKSPACES;
+                        switch_workspace(dpy, clients, &cfg, &dock, next_ws);
+                        break;
+                    }
+                    Tint2PanelAction p_act = tint2_panel_get_action_at(&panel, ev.xbutton.x, ev.xbutton.y);
+                    if (p_act >= TINT2_ACTION_WORKSPACE_1 && p_act <= TINT2_ACTION_WORKSPACE_4) {
+                        int target_ws = (int)(p_act - TINT2_ACTION_WORKSPACE_1);
+                        if (ev.xbutton.button == Button1) {
+                            switch_workspace(dpy, clients, &cfg, &dock, target_ws);
+                        } else if (ev.xbutton.button == Button3 && focused_client) {
+                            move_client_to_workspace(dpy, clients, focused_client, &cfg, &dock, target_ws);
+                        }
+                    } else if (p_act == TINT2_ACTION_POWER && (ev.xbutton.button == Button1 || ev.xbutton.button == Button3)) {
+                        menu_clear(&context_menu);
+                        menu_add_item(&context_menu, "Suspend (พักเครื่อง)", POWER_ACTION_SUSPEND);
+                        menu_add_item(&context_menu, "Restart / Reboot (รีสตาร์ท)", POWER_ACTION_REBOOT);
+                        menu_add_item(&context_menu, "Power Off (ปิดเครื่อง)", POWER_ACTION_POWEROFF);
+                        menu_add_separator(&context_menu);
+                        menu_add_item(&context_menu, "Lock Screen (ล็อกหน้าจอ)", POWER_ACTION_LOCK);
+                        menu_add_item(&context_menu, "Log Out (ออกจากระบบ)", POWER_ACTION_LOGOUT);
+
+                        menu_show(dpy, &context_menu, screen_w - 220, TINT2_PANEL_HEIGHT + 4, screen_w, screen_h);
+                        raise_system_overlays(dpy);
+                    }
                     break;
                 }
 
@@ -713,6 +918,7 @@ int main(int argc, char **argv) {
                         Client *min_c = dock_get_minimized_at(&dock, ev.xbutton.x, ev.xbutton.y);
                         if (min_c) {
                             min_c->is_minimized = 0;
+                            min_c->workspace = cfg.current_workspace;
                             Window target = min_c->frame ? min_c->frame : min_c->win;
                             XMapWindow(dpy, target);
                             if (min_c->frame && min_c->win) {
@@ -725,6 +931,7 @@ int main(int argc, char **argv) {
                             reflow_all(dpy, clients, &cfg);
                             dock_update_running(&dock, clients);
                             dock_render(dpy, &dock, screen_w, screen_h);
+                            update_panel_state(dpy, clients, &cfg);
                         } else {
                             dock_handle_click(dpy, &dock, &rofi_launcher, ev.xbutton.x, ev.xbutton.y);
                         }
@@ -764,7 +971,7 @@ int main(int argc, char **argv) {
                                     if (focused_client == clicked_c) {
                                         focused_client = NULL;
                                         for (Client *o = clients; o; o = o->next) {
-                                            if (!o->is_minimized) {
+                                            if (!o->is_minimized && o->workspace == cfg.current_workspace) {
                                                 set_focused_client(dpy, o);
                                                 break;
                                             }
@@ -772,6 +979,7 @@ int main(int argc, char **argv) {
                                     }
                                     reflow_all(dpy, clients, &cfg);
                                     dock_render(dpy, &dock, screen_w, screen_h);
+                                    update_panel_state(dpy, clients, &cfg);
                                 }
                                 break;
                             } else if (action == TITLEBAR_CLICK_MAXIMIZE) {
@@ -866,6 +1074,10 @@ int main(int argc, char **argv) {
                     handle_titlebar_drag(dpy, drag_client, client_start_x + dx, client_start_y + dy, screen_w, screen_h);
                 }
 
+                if (ev.xmotion.window == panel.win) {
+                    tint2_panel_handle_motion(dpy, &panel, ev.xmotion.x, ev.xmotion.y);
+                }
+
                 if (ev.xmotion.window == dock.win) {
                     dock_handle_hover(dpy, &dock, ev.xmotion.x, ev.xmotion.y, screen_w, screen_h);
                 }
@@ -915,6 +1127,11 @@ int main(int argc, char **argv) {
             }
 
             case LeaveNotify: {
+                if (ev.xcrossing.window == panel.win) {
+                    tint2_panel_handle_motion(dpy, &panel, -1, -1);
+                    break;
+                }
+
                 if (ev.xcrossing.window == dock.win && !rofi_launcher.is_dragging_out) {
                     if (dock.hover_item != -1 || dock.is_hovered) {
                         dock.hover_item = -1;
@@ -995,7 +1212,7 @@ int main(int argc, char **argv) {
                     XUngrabPointer(dpy, CurrentTime);
 
                     const int SNAP_THRESHOLD = 16;
-                    if (ev.xbutton.y_root <= SNAP_THRESHOLD) {
+                    if (ev.xbutton.y_root <= TINT2_PANEL_HEIGHT + SNAP_THRESHOLD) {
                         // Top edge -> Maximize!
                         if (!drag_client->is_maximized) {
                             client_toggle_maximize(dpy, drag_client, &cfg);
@@ -1031,6 +1248,9 @@ int main(int argc, char **argv) {
             case Expose: {
                 if (ev.xexpose.window == context_menu.win) {
                     menu_render(dpy, &context_menu);
+                } else if (ev.xexpose.window == panel.win) {
+                    tint2_panel_render(dpy, &panel);
+                    raise_system_overlays(dpy);
                 } else if (ev.xexpose.window == dock.win) {
                     dock_render(dpy, &dock, screen_w, screen_h);
                     raise_system_overlays(dpy);
@@ -1064,6 +1284,7 @@ int main(int argc, char **argv) {
                         }
                         dock_update_running(&dock, clients);
                         dock_render(dpy, &dock, screen_w, screen_h);
+                        update_panel_state(dpy, clients, &cfg);
                         raise_system_overlays(dpy);
                     }
                 }
@@ -1076,6 +1297,8 @@ int main(int argc, char **argv) {
         static time_t last_inactivity_check = 0;
         if (now != last_inactivity_check) {
             last_inactivity_check = now;
+            tint2_panel_update_time(&panel, now);
+            tint2_panel_render(dpy, &panel);
             for (Client *curr = clients; curr; curr = curr->next) {
                 if (curr != focused_client && !curr->is_minimized && !curr->is_hovered) {
                     if (curr->last_unfocus_time > 0 && (now - curr->last_unfocus_time >= 20)) {
@@ -1098,6 +1321,7 @@ int main(int argc, char **argv) {
     }
     menu_cleanup(&context_menu);
     dock_cleanup(&dock);
+    tint2_panel_cleanup(&panel);
     rofi_launcher_cleanup(&rofi_launcher);
     compositor_cleanup();
 

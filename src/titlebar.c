@@ -193,9 +193,9 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
         c->mode = CLIENT_FLOATING;
         c->snap_state = SNAP_TOP;
         c->x = 0;
-        c->y = 0;
+        c->y = cfg->top_inset;
         c->width = cfg->screen_width;
-        c->height = cfg->screen_height;
+        c->height = cfg->screen_height - cfg->top_inset;
         c->is_maximized = 1;
 
         if (dpy) {

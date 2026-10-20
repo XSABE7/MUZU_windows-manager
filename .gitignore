@@ -16,5 +16,6 @@ test_rofi_launcher
 test_wallpaper
 test_menu
 test_compositor
+test_tint2_panel
 gtk/
 for_imperment/

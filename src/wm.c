@@ -30,6 +30,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->is_ghost = 0;
     c->is_hovered = 0;
     c->is_focused = 0;
+    c->workspace = 0;
     c->next = *head;
     *head = c;
 }
@@ -91,12 +92,17 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
     Client *tiled[128];
     int idx = 0;
     for (Client *curr = head; curr && idx < 128; curr = curr->next) {
-        if (curr->mode == CLIENT_TILED && !curr->is_minimized) {
+        if (curr->mode == CLIENT_TILED && !curr->is_minimized &&
+            curr->workspace == cfg->current_workspace) {
             tiled[idx++] = curr;
         }
     }
     if (idx == 0) return;
     int tiled_count = idx; // Clamp strictly to buffer capacity
+
+    int top_y = cfg->top_inset;
+    int avail_h = cfg->screen_height - top_y;
+    if (avail_h < 34) avail_h = 34;
 
     // Reverse so first added is master
     for (int i = 0; i < idx / 2; i++) {
@@ -109,20 +115,20 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
         if (tiled[0]->snap_state == SNAP_LEFT) {
             int half_w = cfg->screen_width / 2;
             tiled[0]->x = 0;
-            tiled[0]->y = 0;
+            tiled[0]->y = top_y;
             tiled[0]->width = half_w;
-            tiled[0]->height = cfg->screen_height;
+            tiled[0]->height = avail_h;
         } else if (tiled[0]->snap_state == SNAP_RIGHT) {
             int half_w = cfg->screen_width / 2;
             tiled[0]->x = half_w;
-            tiled[0]->y = 0;
+            tiled[0]->y = top_y;
             tiled[0]->width = cfg->screen_width - half_w;
-            tiled[0]->height = cfg->screen_height;
+            tiled[0]->height = avail_h;
         } else {
             tiled[0]->x = 0;
-            tiled[0]->y = 0;
+            tiled[0]->y = top_y;
             tiled[0]->width = cfg->screen_width;
-            tiled[0]->height = cfg->screen_height;
+            tiled[0]->height = avail_h;
         }
     } else if (tiled_count == 2) {
         int half_w = cfg->screen_width / 2;
@@ -134,14 +140,14 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
         }
 
         tiled[0]->x = 0;
-        tiled[0]->y = 0;
+        tiled[0]->y = top_y;
         tiled[0]->width = half_w;
-        tiled[0]->height = cfg->screen_height;
+        tiled[0]->height = avail_h;
 
         tiled[1]->x = half_w;
-        tiled[1]->y = 0;
+        tiled[1]->y = top_y;
         tiled[1]->width = cfg->screen_width - half_w;
-        tiled[1]->height = cfg->screen_height;
+        tiled[1]->height = avail_h;
     } else {
         int half_w = cfg->screen_width / 2;
         for (int i = 1; i < tiled_count; i++) {
@@ -154,18 +160,18 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
         }
 
         tiled[0]->x = 0;
-        tiled[0]->y = 0;
+        tiled[0]->y = top_y;
         tiled[0]->width = half_w;
-        tiled[0]->height = cfg->screen_height;
+        tiled[0]->height = avail_h;
 
         int stack_count = tiled_count - 1;
-        int stack_h = cfg->screen_height / stack_count;
+        int stack_h = avail_h / stack_count;
         if (stack_h < 34) stack_h = 34;
 
         for (int i = 0; i < stack_count; i++) {
             Client *c = tiled[i + 1];
             c->x = half_w;
-            c->y = i * stack_h;
+            c->y = top_y + i * stack_h;
             c->width = cfg->screen_width - half_w;
             if (i == stack_count - 1) {
                 c->height = cfg->screen_height - c->y;

@@ -38,6 +38,7 @@ typedef struct Client {
     int is_ghost;
     int is_hovered;
     int is_focused;
+    int workspace;
     struct Client *next;
 } Client;
 
@@ -45,6 +46,8 @@ typedef struct {
     int screen_width;
     int screen_height;
     int master_count;
+    int top_inset;
+    int current_workspace;
 } LayoutConfig;
 
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count);
