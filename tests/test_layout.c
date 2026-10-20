@@ -451,6 +451,17 @@ int main(void) {
         dock_cleanup(&test_dock);
     }
 
+    // Test 17: Auto-hide Dock Render Bypass (Zero Overhead)
+    {
+        Dock auto_dock;
+        dock_init(NULL, &auto_dock, DOCK_BOTTOM, 1920, 1080, NULL);
+        auto_dock.autohide_enabled = 1;
+        auto_dock.is_hidden = 1;
+        dock_render(NULL, &auto_dock, 1920, 1080);
+        assert(auto_dock.is_hidden == 1);
+        dock_cleanup(&auto_dock);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

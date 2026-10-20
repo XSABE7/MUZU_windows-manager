@@ -431,6 +431,9 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
 
 void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     if (!dpy || !dock) return;
+    if (dock->autohide_enabled && dock->is_hidden) {
+        return; // Zero CPU consumption while hidden
+    }
     (void)screen_w;
     (void)screen_h;
     int screen = DefaultScreen(dpy);
@@ -672,12 +675,15 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
     else if (dock->pos == DOCK_RIGHT && x >= screen_w - dock->size - 10) in_trigger = 1;
 
     if (in_trigger && dock->is_hidden) {
+        dock->is_hidden = 0;
         dock_calculate_geometry(dock, dock->pos, 0, screen_w, screen_h);
         if (dpy && dock->win) {
             XMoveWindow(dpy, dock->win, dock->x, dock->y);
             XRaiseWindow(dpy, dock->win);
+            dock_render(dpy, dock, screen_w, screen_h);
         }
-    } else if (!in_trigger && !dock->is_hidden) {
+    } else if (!in_trigger && !dock->is_hidden && !dock->is_dragging) {
+        dock->is_hidden = 1;
         dock->hover_item = -1;
         dock->is_hovered = 0;
         dock->mouse_pos = -1.0;

@@ -778,13 +778,33 @@ int main(int argc, char **argv) {
                 break;
             }
 
+            case EnterNotify: {
+                if (ev.xcrossing.window == dock.win) {
+                    if (dock.autohide_enabled && dock.is_hidden) {
+                        dock.is_hidden = 0;
+                        dock_calculate_geometry(&dock, dock.pos, 0, screen_w, screen_h);
+                        XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
+                        XRaiseWindow(dpy, dock.win);
+                        dock_render(dpy, &dock, screen_w, screen_h);
+                    }
+                }
+                break;
+            }
+
             case LeaveNotify: {
                 if (ev.xcrossing.window == dock.win && !rofi_launcher.is_dragging_out) {
                     if (dock.hover_item != -1 || dock.is_hovered) {
                         dock.hover_item = -1;
                         dock.is_hovered = 0;
                         dock.mouse_pos = -1.0;
-                        dock_render(dpy, &dock, screen_w, screen_h);
+                        if (!dock.is_hidden) {
+                            dock_render(dpy, &dock, screen_w, screen_h);
+                        }
+                    }
+                    if (dock.autohide_enabled && !dock.is_hidden && !dock.is_dragging) {
+                        dock.is_hidden = 1;
+                        dock_calculate_geometry(&dock, dock.pos, 1, screen_w, screen_h);
+                        XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
                     }
                 }
                 break;
