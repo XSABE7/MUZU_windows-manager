@@ -12,6 +12,7 @@ echo "1. Running Unit Tests..."
 ./test_calendar
 ./test_client_props
 ./test_icon_fetcher
+./test_gtk_theme
 echo "--> All Unit Tests Passed!"
 
 echo ""
