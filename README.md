@@ -1,8 +1,7 @@
 # MUZUwm (Mouse UserZ Window Manager)
 
 ### Modern, Lightweight, Mouse-First Hybrid Tiling &amp; Floating X11 Window Manager
-
-> *"User ใช้ง่าย สบายมือ แต่คน Dev บอกเลยว่า ‘むず’ (Muzu / โคตรยาก)"*  
+  
 > Intuitive, fluid one-handed desktop ergonomics for the user — engineered with pure low-level C11 and Cairo graphics under the hood.
 
 ![Language](https://img.shields.io/badge/Language-C11-blue.svg)
