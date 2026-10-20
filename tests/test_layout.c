@@ -251,6 +251,41 @@ int main(void) {
         assert(dock_get_minimized_at(&min_dock, min_x + 10, min_y + 10) == NULL);
     }
 
+    // Test 12: macOS Glass Dock UI & Position Cycling
+    {
+        Dock d = {0};
+        d.size = 48;
+        d.item_count = 4;
+        dock_init(NULL, &d, DOCK_BOTTOM, 1920, 1080, NULL);
+        assert(d.pos == DOCK_BOTTOM);
+        assert(d.width > d.height); // Horizontal
+
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_LEFT);
+        assert(d.height > d.width); // Vertical
+
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_TOP);
+        assert(d.width > d.height); // Horizontal
+
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_RIGHT);
+        assert(d.height > d.width); // Vertical
+
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_BOTTOM);
+        assert(d.width > d.height); // Horizontal
+
+        // Test running indicator updates
+        Client app1 = {0};
+        snprintf(app1.title, sizeof(app1.title), "Mozilla Firefox Web");
+        dock_update_running(&d, &app1);
+        assert(d.items[0].is_running == 1); // Web running
+        assert(d.items[1].is_running == 0); // Files not running
+
+        dock_cleanup(&d);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

@@ -3,12 +3,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <math.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include "dock.h"
 #include "wm.h"
 #include "icon_fetcher.h"
 #include "launchpad.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+static void draw_rounded_rectangle(cairo_t *cr, double x, double y, double w, double h, double r) {
+    if (r * 2.0 > w) r = w / 2.0;
+    if (r * 2.0 > h) r = h / 2.0;
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2.0, 0);
+    cairo_arc(cr, x + w - r, y + h - r, r, 0, M_PI / 2.0);
+    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2.0, M_PI);
+    cairo_arc(cr, x + r, y + r, r, M_PI, 3.0 * M_PI / 2.0);
+    cairo_close_path(cr);
+}
 
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h) {
     if (!dock) return;
@@ -48,21 +64,41 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     if (!dock || dock->item_count <= 0) return -1;
     int icon_size = 32;
     int margin = 8;
-    int launcher_w = dock->item_count * (icon_size + margin);
-    int total_w = launcher_w + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
-    int start_x = (dock->width - total_w) / 2;
-    if (start_x < 4) start_x = 4;
-    int start_y = (dock->height - icon_size) / 2;
+    int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
-    if (y < start_y - 6 || y > start_y + icon_size + 6) return -1;
+    if (is_vertical) {
+        int launcher_h = dock->item_count * (icon_size + margin);
+        int total_h = launcher_h + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
+        int start_y = (dock->height - total_h) / 2;
+        if (start_y < 4) start_y = 4;
+        int start_x = (dock->width - icon_size) / 2;
 
-    for (int i = 0; i < dock->item_count; i++) {
-        int ix = start_x + i * (icon_size + margin);
-        if (x >= ix - 4 && x <= ix + icon_size + 4) {
-            return i;
+        if (x < start_x - 6 || x > start_x + icon_size + 6) return -1;
+
+        for (int i = 0; i < dock->item_count; i++) {
+            int iy = start_y + i * (icon_size + margin);
+            if (y >= iy - 4 && y <= iy + icon_size + 4) {
+                return i;
+            }
         }
+        return -1;
+    } else {
+        int launcher_w = dock->item_count * (icon_size + margin);
+        int total_w = launcher_w + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
+        int start_x = (dock->width - total_w) / 2;
+        if (start_x < 4) start_x = 4;
+        int start_y = (dock->height - icon_size) / 2;
+
+        if (y < start_y - 6 || y > start_y + icon_size + 6) return -1;
+
+        for (int i = 0; i < dock->item_count; i++) {
+            int ix = start_x + i * (icon_size + margin);
+            if (x >= ix - 4 && x <= ix + icon_size + 4) {
+                return i;
+            }
+        }
+        return -1;
     }
-    return -1;
 }
 
 void dock_add_minimized(Dock *dock, Client *c) {
@@ -109,22 +145,43 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
     if (!dock || dock->minimized_count <= 0) return NULL;
     int icon_size = 32;
     int margin = 8;
-    int launcher_w = dock->item_count * (icon_size + margin);
-    int total_w = launcher_w + 16 + dock->minimized_count * (icon_size + margin);
-    int start_x = (dock->width - total_w) / 2;
-    if (start_x < 4) start_x = 4;
-    int min_start_x = start_x + launcher_w + 16;
-    int start_y = (dock->height - icon_size) / 2;
+    int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
 
-    if (y < start_y - 6 || y > start_y + icon_size + 6) return NULL;
+    if (is_vertical) {
+        int launcher_h = dock->item_count * (icon_size + margin);
+        int total_h = launcher_h + 16 + dock->minimized_count * (icon_size + margin);
+        int start_y = (dock->height - total_h) / 2;
+        if (start_y < 4) start_y = 4;
+        int min_start_y = start_y + launcher_h + 16;
+        int start_x = (dock->width - icon_size) / 2;
 
-    for (int i = 0; i < dock->minimized_count; i++) {
-        int mx = min_start_x + i * (icon_size + margin);
-        if (x >= mx - 4 && x <= mx + icon_size + 4) {
-            return dock->minimized[i].client;
+        if (x < start_x - 6 || x > start_x + icon_size + 6) return NULL;
+
+        for (int i = 0; i < dock->minimized_count; i++) {
+            int my = min_start_y + i * (icon_size + margin);
+            if (y >= my - 4 && y <= my + icon_size + 4) {
+                return dock->minimized[i].client;
+            }
         }
+        return NULL;
+    } else {
+        int launcher_w = dock->item_count * (icon_size + margin);
+        int total_w = launcher_w + 16 + dock->minimized_count * (icon_size + margin);
+        int start_x = (dock->width - total_w) / 2;
+        if (start_x < 4) start_x = 4;
+        int min_start_x = start_x + launcher_w + 16;
+        int start_y = (dock->height - icon_size) / 2;
+
+        if (y < start_y - 6 || y > start_y + icon_size + 6) return NULL;
+
+        for (int i = 0; i < dock->minimized_count; i++) {
+            int mx = min_start_x + i * (icon_size + margin);
+            if (x >= mx - 4 && x <= mx + icon_size + 4) {
+                return dock->minimized[i].client;
+            }
+        }
+        return NULL;
     }
-    return NULL;
 }
 
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme) {
@@ -140,6 +197,7 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     snprintf(dock->items[0].name, sizeof(dock->items[0].name), "Web");
     snprintf(dock->items[0].icon_name, sizeof(dock->items[0].icon_name), "web-browser");
     snprintf(dock->items[0].exec_cmd, sizeof(dock->items[0].exec_cmd), "x-www-browser");
+    dock->items[0].is_running = 0;
     dock->items[0].icon_surface = icon_load_surface("web-browser");
     if (!dock->items[0].icon_surface) dock->items[0].icon_surface = icon_load_surface("firefox");
 
@@ -147,6 +205,7 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     snprintf(dock->items[1].name, sizeof(dock->items[1].name), "Files");
     snprintf(dock->items[1].icon_name, sizeof(dock->items[1].icon_name), "system-file-manager");
     snprintf(dock->items[1].exec_cmd, sizeof(dock->items[1].exec_cmd), "nautilus ~");
+    dock->items[1].is_running = 0;
     dock->items[1].icon_surface = icon_load_surface("system-file-manager");
     if (!dock->items[1].icon_surface) dock->items[1].icon_surface = icon_load_surface("org.gnome.Nautilus");
 
@@ -154,6 +213,7 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     snprintf(dock->items[2].name, sizeof(dock->items[2].name), "Terminal");
     snprintf(dock->items[2].icon_name, sizeof(dock->items[2].icon_name), "utilities-terminal");
     snprintf(dock->items[2].exec_cmd, sizeof(dock->items[2].exec_cmd), "x-terminal-emulator");
+    dock->items[2].is_running = 0;
     dock->items[2].icon_surface = icon_load_surface("utilities-terminal");
     if (!dock->items[2].icon_surface) dock->items[2].icon_surface = icon_load_surface("org.gnome.Terminal");
 
@@ -161,6 +221,7 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     snprintf(dock->items[3].name, sizeof(dock->items[3].name), "Apps");
     snprintf(dock->items[3].icon_name, sizeof(dock->items[3].icon_name), "view-app-grid");
     snprintf(dock->items[3].exec_cmd, sizeof(dock->items[3].exec_cmd), "__LAUNCHPAD__");
+    dock->items[3].is_running = 0;
     dock->items[3].icon_surface = icon_load_surface("view-app-grid");
     if (!dock->items[3].icon_surface) dock->items[3].icon_surface = icon_load_surface("start-here");
 
@@ -199,32 +260,48 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     }
     cairo_t *cr = cairo_create(dock->surface);
 
-    // Container background from GTK Theme
-    if (dock->theme) {
-        cairo_set_source_rgba(cr, dock->theme->bg_surface.r, dock->theme->bg_surface.g, dock->theme->bg_surface.b, 0.94);
-    } else {
-        cairo_set_source_rgba(cr, 0.12, 0.15, 0.20, 0.94);
-    }
-    cairo_rectangle(cr, 0, 0, dock->width, dock->height);
+    int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
+
+    // Frosted glass background
+    double bg_r = dock->theme ? dock->theme->bg_surface.r : 0.12;
+    double bg_g = dock->theme ? dock->theme->bg_surface.g : 0.14;
+    double bg_b = dock->theme ? dock->theme->bg_surface.b : 0.18;
+
+    cairo_set_source_rgba(cr, bg_r, bg_g, bg_b, 0.92);
+    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 16.0);
     cairo_fill(cr);
 
-    // Subtle border
-    if (dock->theme) {
-        cairo_set_source_rgba(cr, dock->theme->border_color.r, dock->theme->border_color.g, dock->theme->border_color.b, 0.80);
+    // Subtle frosted gloss gradient
+    cairo_pattern_t *pat = cairo_pattern_create_linear(0, 0, 0, dock->height);
+    cairo_pattern_add_color_stop_rgba(pat, 0.0, 1.0, 1.0, 1.0, 0.12);
+    cairo_pattern_add_color_stop_rgba(pat, 0.5, 1.0, 1.0, 1.0, 0.02);
+    cairo_pattern_add_color_stop_rgba(pat, 1.0, 0.0, 0.0, 0.0, 0.18);
+    cairo_set_source(cr, pat);
+    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 16.0);
+    cairo_fill(cr);
+    cairo_pattern_destroy(pat);
+
+    // Crisp outline
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.18);
+    cairo_set_line_width(cr, 1.0);
+    draw_rounded_rectangle(cr, 1.0, 1.0, dock->width - 2.0, dock->height - 2.0, 16.0);
+    cairo_stroke(cr);
+
+    // Specular highlight line
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.28);
+    cairo_set_line_width(cr, 1.0);
+    if (!is_vertical) {
+        cairo_move_to(cr, 18.0, 1.5);
+        cairo_line_to(cr, dock->width - 18.0, 1.5);
     } else {
-        cairo_set_source_rgba(cr, 0.30, 0.38, 0.50, 0.80);
+        cairo_move_to(cr, 1.5, 18.0);
+        cairo_line_to(cr, 1.5, dock->height - 18.0);
     }
-    cairo_set_line_width(cr, 1.5);
-    cairo_rectangle(cr, 0, 0, dock->width, dock->height);
     cairo_stroke(cr);
 
     // Render launcher icons
     int icon_size = 32;
     int margin = 8;
-    int total_w = dock->item_count * (icon_size + margin);
-    int start_x = (dock->width - total_w) / 2;
-    if (start_x < 4) start_x = 4;
-
     double accent_r = dock->theme ? dock->theme->accent_color.r : 0.25;
     double accent_g = dock->theme ? dock->theme->accent_color.g : 0.55;
     double accent_b = dock->theme ? dock->theme->accent_color.b : 0.95;
@@ -236,73 +313,161 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         {0.90, 0.60, 0.20}  // Settings/Apps
     };
 
-    for (int i = 0; i < dock->item_count; i++) {
-        int ix = start_x + i * (icon_size + margin);
-        int iy = (dock->height - icon_size) / 2;
+    if (is_vertical) {
+        int launcher_h = dock->item_count * (icon_size + margin);
+        int total_h = launcher_h + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
+        int start_y = (dock->height - total_h) / 2;
+        if (start_y < 4) start_y = 4;
+        int start_x = (dock->width - icon_size) / 2;
 
-        // Hover effect: draw soft glowing rounded rectangle
-        if (dock->hover_item == i) {
-            cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.35);
-            cairo_rectangle(cr, ix - 3, iy - 3, icon_size + 6, icon_size + 6);
-            cairo_fill(cr);
+        for (int i = 0; i < dock->item_count; i++) {
+            int ix = start_x;
+            int iy = start_y + i * (icon_size + margin);
 
-            // Active underline indicator
-            cairo_set_source_rgb(cr, accent_r, accent_g, accent_b);
-            cairo_set_line_width(cr, 2.0);
-            cairo_move_to(cr, ix + 4, iy + icon_size + 3);
-            cairo_line_to(cr, ix + icon_size - 4, iy + icon_size + 3);
-            cairo_stroke(cr);
-        }
+            // Hover effect
+            if (dock->hover_item == i) {
+                cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.35);
+                draw_rounded_rectangle(cr, ix - 3, iy - 3, icon_size + 6, icon_size + 6, 8.0);
+                cairo_fill(cr);
+            }
 
-        if (dock->items[i].icon_surface) {
-            icon_render(cr, dock->items[i].icon_surface, dock->items[i].name, ix, iy, icon_size);
-        } else {
-            // Fallback themed badge
-            cairo_set_source_rgb(cr, colors[i % 4][0], colors[i % 4][1], colors[i % 4][2]);
-            cairo_rectangle(cr, ix, iy, icon_size, icon_size);
-            cairo_fill(cr);
-
-            cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-            cairo_set_font_size(cr, 14.0);
-            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-            cairo_move_to(cr, ix + 10, iy + 22);
-            char letter[2] = { dock->items[i].name[0], '\0' };
-            cairo_show_text(cr, letter);
-        }
-    }
-
-    // Separator line and Minimized Windows section
-    if (dock->minimized_count > 0) {
-        int sep_x = start_x + dock->item_count * (icon_size + margin) + 6;
-        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
-        cairo_set_line_width(cr, 1.5);
-        cairo_move_to(cr, sep_x, (dock->height - 24) / 2);
-        cairo_line_to(cr, sep_x, (dock->height + 24) / 2);
-        cairo_stroke(cr);
-
-        int min_start_x = start_x + dock->item_count * (icon_size + margin) + 16;
-        for (int i = 0; i < dock->minimized_count; i++) {
-            int mx = min_start_x + i * (icon_size + margin);
-            int my = (dock->height - icon_size) / 2;
-
-            if (dock->minimized[i].icon_surface) {
-                icon_render(cr, dock->minimized[i].icon_surface, dock->minimized[i].title, mx, my, icon_size);
+            if (dock->items[i].icon_surface) {
+                icon_render(cr, dock->items[i].icon_surface, dock->items[i].name, ix, iy, icon_size);
             } else {
-                cairo_set_source_rgba(cr, 0.28, 0.33, 0.42, 0.85);
-                cairo_rectangle(cr, mx, my, icon_size, icon_size);
+                cairo_set_source_rgb(cr, colors[i % 4][0], colors[i % 4][1], colors[i % 4][2]);
+                draw_rounded_rectangle(cr, ix, iy, icon_size, icon_size, 6.0);
                 cairo_fill(cr);
 
-                cairo_set_source_rgba(cr, 0.60, 0.65, 0.75, 0.80);
-                cairo_set_line_width(cr, 1.0);
-                cairo_rectangle(cr, mx, my, icon_size, icon_size);
-                cairo_stroke(cr);
+                cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+                cairo_set_font_size(cr, 14.0);
+                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                cairo_move_to(cr, ix + 10, iy + 22);
+                char letter[2] = { dock->items[i].name[0], '\0' };
+                cairo_show_text(cr, letter);
+            }
+
+            // Running indicator dot
+            if (dock->items[i].is_running) {
+                cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.90);
+                double dot_x = (dock->pos == DOCK_LEFT) ? (ix + icon_size + 4) : (ix - 4);
+                double dot_y = iy + icon_size / 2.0;
+                cairo_arc(cr, dot_x, dot_y, 2.0, 0, 2 * M_PI);
+                cairo_fill(cr);
+            }
+        }
+
+        // Separator line and Minimized Windows section (vertical)
+        if (dock->minimized_count > 0) {
+            int sep_y = start_y + launcher_h + 7;
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
+            cairo_set_line_width(cr, 1.5);
+            cairo_move_to(cr, (dock->width - 24) / 2, sep_y);
+            cairo_line_to(cr, (dock->width + 24) / 2, sep_y);
+            cairo_stroke(cr);
+
+            int min_start_y = start_y + launcher_h + 16;
+            for (int i = 0; i < dock->minimized_count; i++) {
+                int mx = start_x;
+                int my = min_start_y + i * (icon_size + margin);
+
+                if (dock->minimized[i].icon_surface) {
+                    icon_render(cr, dock->minimized[i].icon_surface, dock->minimized[i].title, mx, my, icon_size);
+                } else {
+                    cairo_set_source_rgba(cr, 0.28, 0.33, 0.42, 0.85);
+                    draw_rounded_rectangle(cr, mx, my, icon_size, icon_size, 6.0);
+                    cairo_fill(cr);
+
+                    cairo_set_source_rgba(cr, 0.60, 0.65, 0.75, 0.80);
+                    cairo_set_line_width(cr, 1.0);
+                    draw_rounded_rectangle(cr, mx, my, icon_size, icon_size, 6.0);
+                    cairo_stroke(cr);
+
+                    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+                    cairo_set_font_size(cr, 13.0);
+                    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                    char letter[2] = { dock->minimized[i].title[0] ? dock->minimized[i].title[0] : 'W', '\0' };
+                    cairo_move_to(cr, mx + 10, my + 21);
+                    cairo_show_text(cr, letter);
+                }
+            }
+        }
+    } else {
+        // Horizontal dock
+        int launcher_w = dock->item_count * (icon_size + margin);
+        int total_w = launcher_w + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
+        int start_x = (dock->width - total_w) / 2;
+        if (start_x < 4) start_x = 4;
+        int start_y = (dock->height - icon_size) / 2;
+
+        for (int i = 0; i < dock->item_count; i++) {
+            int ix = start_x + i * (icon_size + margin);
+            int iy = start_y;
+
+            // Hover effect
+            if (dock->hover_item == i) {
+                cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.35);
+                draw_rounded_rectangle(cr, ix - 3, iy - 3, icon_size + 6, icon_size + 6, 8.0);
+                cairo_fill(cr);
+            }
+
+            if (dock->items[i].icon_surface) {
+                icon_render(cr, dock->items[i].icon_surface, dock->items[i].name, ix, iy, icon_size);
+            } else {
+                cairo_set_source_rgb(cr, colors[i % 4][0], colors[i % 4][1], colors[i % 4][2]);
+                draw_rounded_rectangle(cr, ix, iy, icon_size, icon_size, 6.0);
+                cairo_fill(cr);
 
                 cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-                cairo_set_font_size(cr, 13.0);
+                cairo_set_font_size(cr, 14.0);
                 cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-                char letter[2] = { dock->minimized[i].title[0] ? dock->minimized[i].title[0] : 'W', '\0' };
-                cairo_move_to(cr, mx + 10, my + 21);
+                cairo_move_to(cr, ix + 10, iy + 22);
+                char letter[2] = { dock->items[i].name[0], '\0' };
                 cairo_show_text(cr, letter);
+            }
+
+            // Running indicator dot
+            if (dock->items[i].is_running) {
+                cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.90);
+                double dot_x = ix + icon_size / 2.0;
+                double dot_y = (dock->pos == DOCK_TOP) ? (iy - 4) : (iy + icon_size + 4);
+                cairo_arc(cr, dot_x, dot_y, 2.0, 0, 2 * M_PI);
+                cairo_fill(cr);
+            }
+        }
+
+        // Separator line and Minimized Windows section (horizontal)
+        if (dock->minimized_count > 0) {
+            int sep_x = start_x + launcher_w + 7;
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
+            cairo_set_line_width(cr, 1.5);
+            cairo_move_to(cr, sep_x, (dock->height - 24) / 2);
+            cairo_line_to(cr, sep_x, (dock->height + 24) / 2);
+            cairo_stroke(cr);
+
+            int min_start_x = start_x + launcher_w + 16;
+            for (int i = 0; i < dock->minimized_count; i++) {
+                int mx = min_start_x + i * (icon_size + margin);
+                int my = start_y;
+
+                if (dock->minimized[i].icon_surface) {
+                    icon_render(cr, dock->minimized[i].icon_surface, dock->minimized[i].title, mx, my, icon_size);
+                } else {
+                    cairo_set_source_rgba(cr, 0.28, 0.33, 0.42, 0.85);
+                    draw_rounded_rectangle(cr, mx, my, icon_size, icon_size, 6.0);
+                    cairo_fill(cr);
+
+                    cairo_set_source_rgba(cr, 0.60, 0.65, 0.75, 0.80);
+                    cairo_set_line_width(cr, 1.0);
+                    draw_rounded_rectangle(cr, mx, my, icon_size, icon_size, 6.0);
+                    cairo_stroke(cr);
+
+                    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+                    cairo_set_font_size(cr, 13.0);
+                    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                    char letter[2] = { dock->minimized[i].title[0] ? dock->minimized[i].title[0] : 'W', '\0' };
+                    cairo_move_to(cr, mx + 10, my + 21);
+                    cairo_show_text(cr, letter);
+                }
             }
         }
     }
@@ -376,11 +541,51 @@ void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, in
 
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h) {
     dock_calculate_geometry(dock, new_pos, dock->is_hidden, screen_w, screen_h);
-    XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+    if (dpy && dock->win) {
+        XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+    }
     if (dock->surface) {
         cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
     }
     dock_render(dpy, dock, screen_w, screen_h);
+}
+
+void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
+    if (!dock) return;
+    DockPosition next_pos;
+    switch (dock->pos) {
+        case DOCK_BOTTOM: next_pos = DOCK_LEFT; break;
+        case DOCK_LEFT:   next_pos = DOCK_TOP; break;
+        case DOCK_TOP:    next_pos = DOCK_RIGHT; break;
+        case DOCK_RIGHT:  next_pos = DOCK_BOTTOM; break;
+        default:          next_pos = DOCK_BOTTOM; break;
+    }
+    dock_set_position(dpy, dock, next_pos, screen_w, screen_h);
+}
+
+void dock_update_running(Dock *dock, const Client *clients) {
+    if (!dock) return;
+    for (int i = 0; i < dock->item_count; i++) {
+        dock->items[i].is_running = 0;
+    }
+    for (const Client *c = clients; c; c = c->next) {
+        for (int i = 0; i < dock->item_count; i++) {
+            if (strcmp(dock->items[i].exec_cmd, "__LAUNCHPAD__") == 0) continue;
+            if (strcasestr(c->title, dock->items[i].name) ||
+                (dock->items[i].icon_name[0] && strcasestr(c->title, dock->items[i].icon_name))) {
+                dock->items[i].is_running = 1;
+            }
+            if (i == 0 && (strcasestr(c->title, "firefox") || strcasestr(c->title, "chromium") || strcasestr(c->title, "chrome") || strcasestr(c->title, "browser"))) {
+                dock->items[0].is_running = 1;
+            }
+            if (i == 1 && (strcasestr(c->title, "nautilus") || strcasestr(c->title, "thunar") || strcasestr(c->title, "file"))) {
+                dock->items[1].is_running = 1;
+            }
+            if (i == 2 && (strcasestr(c->title, "terminal") || strcasestr(c->title, "alacritty") || strcasestr(c->title, "xterm") || strcasestr(c->title, "bash") || strcasestr(c->title, "sh"))) {
+                dock->items[2].is_running = 1;
+            }
+        }
+    }
 }
 
 void dock_cleanup(Dock *dock) {

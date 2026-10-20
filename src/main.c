@@ -62,11 +62,6 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
         *last_click_win = None;
     }
 
-    if (dock) {
-        dock_remove_minimized(dock, c);
-        dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
-    }
-
     // Stop receiving events for this client to prevent processing stale events
     XSelectInput(dpy, c->win, NoEventMask);
     XRemoveFromSaveSet(dpy, c->win);
@@ -86,6 +81,11 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
 
     client_remove(clients, c->win);
     reflow_all(dpy, *clients, cfg);
+    if (dock) {
+        dock_remove_minimized(dock, c);
+        dock_update_running(dock, *clients);
+        dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
+    }
     XFlush(dpy);
 }
 
@@ -241,6 +241,8 @@ int main(void) {
                     XRaiseWindow(dpy, c->frame);
                 }
                 XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
+                dock_update_running(&dock, clients);
+                dock_render(dpy, &dock, screen_w, screen_h);
                 break;
             }
 
@@ -340,6 +342,10 @@ int main(void) {
                 }
 
                 if (ev.xbutton.window == dock.win) {
+                    if (ev.xbutton.button == Button3) {
+                        dock_cycle_position(dpy, &dock, screen_w, screen_h);
+                        break;
+                    }
                     if (ev.xbutton.button == Button1) {
                         Client *min_c = dock_get_minimized_at(&dock, ev.xbutton.x, ev.xbutton.y);
                         if (min_c) {
@@ -353,6 +359,7 @@ int main(void) {
                             XSetInputFocus(dpy, min_c->win, RevertToPointerRoot, CurrentTime);
                             dock_remove_minimized(&dock, min_c);
                             reflow_all(dpy, clients, &cfg);
+                            dock_update_running(&dock, clients);
                             dock_render(dpy, &dock, screen_w, screen_h);
                         } else {
                             dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);

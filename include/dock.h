@@ -18,6 +18,7 @@ typedef struct {
     char name[32];
     char icon_name[64];
     char exec_cmd[128];
+    int is_running;
     cairo_surface_t *icon_surface;
 } DockItem;
 
@@ -54,6 +55,8 @@ void dock_remove_minimized(Dock *dock, Client *c);
 Client *dock_get_minimized_at(const Dock *dock, int x, int y);
 void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y);
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h);
+void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h);
+void dock_update_running(Dock *dock, const Client *clients);
 void dock_cleanup(Dock *dock);
 
 #endif /* MUZU_DOCK_H */
