@@ -8,6 +8,8 @@
 #include <fontconfig/fontconfig.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
+#include <cairo/cairo.h>
+#include <cairo/cairo-xlib.h>
 #include "muzu.h"
 #include "wm.h"
 #include "titlebar.h"
@@ -17,9 +19,169 @@
 #include "dock.h"
 #include "client_props.h"
 #include "gtk_theme.h"
+#include "menu.h"
 
 static int running = 1;
 static GtkTheme current_theme;
+
+typedef struct {
+    Display *dpy;
+    Window root;
+    Dock *dock;
+    RofiLauncher *rofi;
+    int screen_w, screen_h;
+    int right_clicked_dock_item;
+} WmContext;
+
+static void handle_menu_action(int action_id, void *userdata) {
+    WmContext *ctx = (WmContext *)userdata;
+    if (!ctx) return;
+    Display *dpy = ctx->dpy;
+    Dock *dock = ctx->dock;
+    int screen_w = ctx->screen_w;
+    int screen_h = ctx->screen_h;
+
+    switch (action_id) {
+        case DOCK_ACTION_TOGGLE_MAGNIFICATION:
+            dock->magnification_enabled = !dock->magnification_enabled;
+            dock_render(dpy, dock, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_TOGGLE_AUTOHIDE:
+            dock->is_hidden = !dock->is_hidden;
+            dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+            if (dock->win) {
+                XMoveWindow(dpy, dock->win, dock->x, dock->y);
+            }
+            dock_render(dpy, dock, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_POS_BOTTOM:
+            dock_set_position(dpy, dock, DOCK_BOTTOM, screen_w, screen_h);
+            break;
+        case DOCK_ACTION_POS_LEFT:
+            dock_set_position(dpy, dock, DOCK_LEFT, screen_w, screen_h);
+            break;
+        case DOCK_ACTION_POS_TOP:
+            dock_set_position(dpy, dock, DOCK_TOP, screen_w, screen_h);
+            break;
+        case DOCK_ACTION_POS_RIGHT:
+            dock_set_position(dpy, dock, DOCK_RIGHT, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_SIZE_SMALL:
+            dock->size = 36;
+            dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+            if (dock->win) {
+                XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+                cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
+            }
+            dock_render(dpy, dock, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_SIZE_MEDIUM:
+            dock->size = 48;
+            dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+            if (dock->win) {
+                XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+                cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
+            }
+            dock_render(dpy, dock, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_SIZE_LARGE:
+            dock->size = 64;
+            dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+            if (dock->win) {
+                XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+                cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
+            }
+            dock_render(dpy, dock, screen_w, screen_h);
+            break;
+
+        case DOCK_ACTION_MOVE:
+            dock->drag_offset_x = dock->width / 2;
+            dock->drag_offset_y = dock->height / 2;
+            if (XGrabPointer(dpy, ctx->root, False,
+                             ButtonReleaseMask | PointerMotionMask,
+                             GrabModeAsync, GrabModeAsync,
+                             None, None, CurrentTime) == GrabSuccess) {
+                dock->is_dragging = 1;
+            }
+            break;
+
+        case DOCK_ACTION_REMOVE_APP:
+            if (ctx->right_clicked_dock_item > 0 && ctx->right_clicked_dock_item < dock->item_count) {
+                dock_remove_app(dock, ctx->right_clicked_dock_item);
+                dock_calculate_geometry(dock, dock->pos, dock->is_hidden, screen_w, screen_h);
+                if (dock->win) {
+                    XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+                    cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
+                }
+                dock_render(dpy, dock, screen_w, screen_h);
+            }
+            break;
+
+        case DESKTOP_ACTION_WALLPAPER_BROWSE: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                const char *script =
+                    "if which waypaper >/dev/null 2>&1; then\n"
+                    "  waypaper\n"
+                    "elif which zenity >/dev/null 2>&1; then\n"
+                    "  FILE=$(zenity --file-selection --title=\"Select Wallpaper\" --file-filter=\"Images | *.png *.jpg *.jpeg *.bmp *.webp\" 2>/dev/null)\n"
+                    "  if [ -n \"$FILE\" ] && [ -f \"$FILE\" ]; then\n"
+                    "    mkdir -p \"$HOME/.config/muzuwm\"\n"
+                    "    cp -f \"$FILE\" \"$HOME/.config/muzuwm/wallpaper.png\"\n"
+                    "    xprop -root -format _MUZU_RELOAD_WALLPAPER 32c -set _MUZU_RELOAD_WALLPAPER 1 2>/dev/null || true\n"
+                    "  fi\n"
+                    "fi\n";
+                execl("/bin/sh", "sh", "-c", script, NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case DESKTOP_ACTION_WALLPAPER_PATH: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                const char *script =
+                    "if which zenity >/dev/null 2>&1; then\n"
+                    "  FILE=$(zenity --entry --title=\"Set Wallpaper Path\" --text=\"Enter full image path:\" 2>/dev/null)\n"
+                    "  if [ -n \"$FILE\" ] && [ -f \"$FILE\" ]; then\n"
+                    "    mkdir -p \"$HOME/.config/muzuwm\"\n"
+                    "    cp -f \"$FILE\" \"$HOME/.config/muzuwm/wallpaper.png\"\n"
+                    "    xprop -root -format _MUZU_RELOAD_WALLPAPER 32c -set _MUZU_RELOAD_WALLPAPER 1 2>/dev/null || true\n"
+                    "  fi\n"
+                    "fi\n";
+                execl("/bin/sh", "sh", "-c", script, NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case DESKTOP_ACTION_TERMINAL: {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                execl("/bin/sh", "sh", "-c", "x-terminal-emulator || alacritty || gnome-terminal || kitty || xterm", NULL);
+                _exit(0);
+            }
+            break;
+        }
+
+        case DESKTOP_ACTION_APPLICATIONS:
+            if (ctx->rofi) {
+                rofi_launcher_toggle(dpy, ctx->rofi);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
 
 static void sig_handler(int sig) {
     (void)sig;
@@ -142,10 +304,22 @@ int main(int argc, char **argv) {
     rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
 
+    Menu context_menu = {0};
+    WmContext wm_ctx = {
+        .dpy = dpy,
+        .root = root,
+        .dock = &dock,
+        .rofi = &rofi_launcher,
+        .screen_w = screen_w,
+        .screen_h = screen_h,
+        .right_clicked_dock_item = -1
+    };
+    menu_init(dpy, &context_menu, &current_theme, handle_menu_action, &wm_ctx);
+
     // Select root window events
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
                             ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
-                            KeyPressMask | KeyReleaseMask);
+                            KeyPressMask | KeyReleaseMask | PropertyChangeMask);
 
     // Grab Super key (Mod4Mask)
     KeyCode super_kc = XKeysymToKeycode(dpy, XK_Super_L);
@@ -159,6 +333,7 @@ int main(int argc, char **argv) {
     XGrabKey(dpy, alt_f1_kc, Mod1Mask, root, True, GrabModeAsync, GrabModeAsync);
 
     // EWMH supported atoms setup
+    Atom net_muzu_reload_wallpaper = XInternAtom(dpy, "_MUZU_RELOAD_WALLPAPER", False);
     Atom net_wm_moveresize = XInternAtom(dpy, "_NET_WM_MOVERESIZE", False);
     Atom net_supported = XInternAtom(dpy, "_NET_SUPPORTED", False);
     Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
@@ -199,7 +374,7 @@ int main(int argc, char **argv) {
             switch (ev.type) {
             case MapRequest: {
                 Window w = ev.xmaprequest.window;
-                if (w == rofi_launcher.win || w == dock.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win) {
                     XMapWindow(dpy, w);
                     break;
                 }
@@ -335,7 +510,7 @@ int main(int argc, char **argv) {
 
             case UnmapNotify: {
                 Window w = ev.xunmap.window;
-                if (w == rofi_launcher.win || w == dock.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win) {
                     break;
                 }
                 Client *c = client_find_by_any(clients, w);
@@ -348,7 +523,7 @@ int main(int argc, char **argv) {
 
             case DestroyNotify: {
                 Window w = ev.xdestroywindow.window;
-                if (w == rofi_launcher.win || w == dock.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
@@ -356,6 +531,14 @@ int main(int argc, char **argv) {
             }
 
             case KeyPress: {
+                if (context_menu.is_visible) {
+                    KeySym sym = XLookupKeysym(&ev.xkey, 0);
+                    if (sym == XK_Escape) {
+                        menu_hide(dpy, &context_menu);
+                        break;
+                    }
+                }
+
                 if (rofi_launcher.is_visible) {
                     rofi_launcher_handle_key(dpy, &rofi_launcher, &ev.xkey);
                     break;
@@ -371,26 +554,49 @@ int main(int argc, char **argv) {
             }
 
             case ButtonPress: {
+                if (context_menu.is_visible) {
+                    if (ev.xbutton.window == context_menu.win) {
+                        menu_handle_click(dpy, &context_menu, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
+                    } else {
+                        menu_hide(dpy, &context_menu);
+                    }
+                    break;
+                }
+
                 if (rofi_launcher.is_visible) {
-                    rofi_launcher_handle_click(dpy, &rofi_launcher, ev.xbutton.button,
-                                               ev.xbutton.x_root - rofi_launcher.x,
-                                               ev.xbutton.y_root - rofi_launcher.y);
+                    rofi_launcher_handle_press(dpy, &rofi_launcher, ev.xbutton.button,
+                                               ev.xbutton.x_root, ev.xbutton.y_root);
                     break;
                 }
 
                 if (ev.xbutton.window == dock.win) {
                     if (ev.xbutton.button == Button3) {
-                        dock.drag_offset_x = ev.xbutton.x;
-                        dock.drag_offset_y = ev.xbutton.y;
-                        int status = XGrabPointer(dpy, root, False,
-                                                  ButtonReleaseMask | PointerMotionMask,
-                                                  GrabModeAsync, GrabModeAsync,
-                                                  None, None, CurrentTime);
-                        if (status == GrabSuccess) {
-                            dock.is_dragging = 1;
-                        } else {
-                            dock.is_dragging = 0;
+                        int clicked_item = dock_get_item_at(&dock, ev.xbutton.x, ev.xbutton.y);
+                        wm_ctx.right_clicked_dock_item = clicked_item;
+
+                        menu_clear(&context_menu);
+                        if (clicked_item > 0 && clicked_item < dock.item_count) {
+                            char remove_lbl[128];
+                            snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", dock.items[clicked_item].name);
+                            menu_add_item(&context_menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
+                            menu_add_separator(&context_menu);
                         }
+
+                        menu_add_item(&context_menu, dock.magnification_enabled ? "Magnification: On ✓" : "Magnification: Off", DOCK_ACTION_TOGGLE_MAGNIFICATION);
+                        menu_add_item(&context_menu, dock.is_hidden ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
+                        menu_add_separator(&context_menu);
+                        menu_add_item(&context_menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
+                        menu_add_item(&context_menu, "Position: Left", DOCK_ACTION_POS_LEFT);
+                        menu_add_item(&context_menu, "Position: Top", DOCK_ACTION_POS_TOP);
+                        menu_add_item(&context_menu, "Position: Right", DOCK_ACTION_POS_RIGHT);
+                        menu_add_separator(&context_menu);
+                        menu_add_item(&context_menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);
+                        menu_add_item(&context_menu, "Size: Medium (48px)", DOCK_ACTION_SIZE_MEDIUM);
+                        menu_add_item(&context_menu, "Size: Large (64px)", DOCK_ACTION_SIZE_LARGE);
+                        menu_add_separator(&context_menu);
+                        menu_add_item(&context_menu, "Move Dock", DOCK_ACTION_MOVE);
+
+                        menu_show(dpy, &context_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
                         break;
                     }
                     if (ev.xbutton.button == Button1) {
@@ -412,6 +618,18 @@ int main(int argc, char **argv) {
                             dock_handle_click(dpy, &dock, &rofi_launcher, ev.xbutton.x, ev.xbutton.y);
                         }
                     }
+                    break;
+                }
+
+                if (ev.xbutton.window == root && ev.xbutton.button == Button3) {
+                    menu_clear(&context_menu);
+                    menu_add_item(&context_menu, "Choose Wallpaper (File Browser)...", DESKTOP_ACTION_WALLPAPER_BROWSE);
+                    menu_add_item(&context_menu, "Set Wallpaper Path...", DESKTOP_ACTION_WALLPAPER_PATH);
+                    menu_add_separator(&context_menu);
+                    menu_add_item(&context_menu, "Open Terminal", DESKTOP_ACTION_TERMINAL);
+                    menu_add_item(&context_menu, "Applications", DESKTOP_ACTION_APPLICATIONS);
+
+                    menu_show(dpy, &context_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
                     break;
                 }
 
@@ -483,6 +701,10 @@ int main(int argc, char **argv) {
             }
 
             case MotionNotify: {
+                if (context_menu.is_visible && ev.xmotion.window == context_menu.win) {
+                    menu_handle_motion(dpy, &context_menu, ev.xmotion.x, ev.xmotion.y);
+                }
+
                 if (dock.is_dragging) {
                     dock_handle_drag(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
                     break;
@@ -492,6 +714,17 @@ int main(int argc, char **argv) {
                     rofi_launcher_handle_motion(dpy, &rofi_launcher,
                                                 ev.xmotion.x_root - rofi_launcher.x,
                                                 ev.xmotion.y_root - rofi_launcher.y);
+                    if (rofi_launcher.is_dragging_out) {
+                        dock_handle_motion(dpy, &dock, ev.xmotion.x_root, ev.xmotion.y_root, screen_w, screen_h);
+                        if (ev.xmotion.x_root >= dock.x && ev.xmotion.x_root <= dock.x + dock.width &&
+                            ev.xmotion.y_root >= dock.y && ev.xmotion.y_root <= dock.y + dock.height) {
+                            dock_handle_hover(dpy, &dock, ev.xmotion.x_root - dock.x, ev.xmotion.y_root - dock.y, screen_w, screen_h);
+                        } else if (dock.is_hovered) {
+                            dock.is_hovered = 0;
+                            dock.hover_item = -1;
+                            dock_render(dpy, &dock, screen_w, screen_h);
+                        }
+                    }
                 }
 
                 if (drag_client) {
@@ -509,9 +742,11 @@ int main(int argc, char **argv) {
             }
 
             case LeaveNotify: {
-                if (ev.xcrossing.window == dock.win) {
-                    if (dock.hover_item != -1) {
+                if (ev.xcrossing.window == dock.win && !rofi_launcher.is_dragging_out) {
+                    if (dock.hover_item != -1 || dock.is_hovered) {
                         dock.hover_item = -1;
+                        dock.is_hovered = 0;
+                        dock.mouse_pos = -1.0;
                         dock_render(dpy, &dock, screen_w, screen_h);
                     }
                 }
@@ -519,7 +754,38 @@ int main(int argc, char **argv) {
             }
 
             case ButtonRelease: {
-                if (dock.is_dragging && ev.xbutton.button == Button3) {
+                if (rofi_launcher.is_pressing && ev.xbutton.button == Button1) {
+                    XUngrabPointer(dpy, CurrentTime);
+                    int was_dragging = rofi_launcher.is_dragging_out;
+                    int app_idx = rofi_launcher.drag_app_idx;
+                    rofi_launcher.is_pressing = 0;
+                    rofi_launcher.is_dragging_out = 0;
+
+                    if (was_dragging) {
+                        int rx = ev.xbutton.x_root;
+                        int ry = ev.xbutton.y_root;
+                        if (rx >= dock.x && rx <= dock.x + dock.width &&
+                            ry >= dock.y && ry <= dock.y + dock.height) {
+                            if (app_idx >= 0 && app_idx < rofi_launcher.app_count) {
+                                const RofiApp *app = &rofi_launcher.apps[app_idx];
+                                dock_add_app(&dock, app->name, app->exec, app->icon_name);
+                                dock_save_pinned_apps(&dock);
+                                dock_calculate_geometry(&dock, dock.pos, dock.is_hidden, screen_w, screen_h);
+                                if (dock.win) {
+                                    XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
+                                    cairo_xlib_surface_set_size(dock.surface, dock.width, dock.height);
+                                    dock_render(dpy, &dock, screen_w, screen_h);
+                                }
+                                rofi_launcher_toggle(dpy, &rofi_launcher);
+                            }
+                        }
+                    } else {
+                        rofi_launcher_execute_selected(dpy, &rofi_launcher);
+                    }
+                    break;
+                }
+
+                if (dock.is_dragging && (ev.xbutton.button == Button1 || ev.xbutton.button == Button3)) {
                     XUngrabPointer(dpy, CurrentTime);
                     dock_end_drag(dpy, &dock, screen_w, screen_h);
                     break;
@@ -563,7 +829,9 @@ int main(int argc, char **argv) {
             }
 
             case Expose: {
-                if (ev.xexpose.window == dock.win) {
+                if (ev.xexpose.window == context_menu.win) {
+                    menu_render(dpy, &context_menu);
+                } else if (ev.xexpose.window == dock.win) {
                     dock_render(dpy, &dock, screen_w, screen_h);
                 } else if (ev.xexpose.window == rofi_launcher.win) {
                     rofi_launcher_render(dpy, &rofi_launcher, screen_w, screen_h);
@@ -578,6 +846,10 @@ int main(int argc, char **argv) {
             }
 
             case PropertyNotify: {
+                if (ev.xproperty.window == root && ev.xproperty.atom == net_muzu_reload_wallpaper) {
+                    wallpaper_init(dpy, screen_w, screen_h);
+                    break;
+                }
                 if (ev.xproperty.atom == XA_WM_NAME || ev.xproperty.atom == net_wm_name) {
                     Client *c = client_find_by_any(clients, ev.xproperty.window);
                     if (c) {
@@ -605,6 +877,7 @@ int main(int argc, char **argv) {
     while (clients) {
         client_teardown(dpy, &clients, clients->win, &cfg, &drag_client, &last_titlebar_click_win, &dock);
     }
+    menu_cleanup(&context_menu);
     dock_cleanup(&dock);
     rofi_launcher_cleanup(&rofi_launcher);
 

@@ -1,5 +1,7 @@
+#define _GNU_SOURCE
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "wm.h"
 #include "dock.h"
@@ -275,6 +277,10 @@ int main(void) {
 
     // Test 12: macOS Dock UI, Magnification & Dynamic Pinning
     {
+        char test_home[] = "/tmp/test_muzuwm_layout_XXXXXX";
+        mkdtemp(test_home);
+        setenv("HOME", test_home, 1);
+
         Dock d = {0};
         dock_init(NULL, &d, DOCK_BOTTOM, 1920, 1080, NULL);
         assert(d.pos == DOCK_BOTTOM);

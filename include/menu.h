@@ -11,6 +11,29 @@
 #define MENU_SEP_HEIGHT 8
 #define MENU_PADDING_Y 6
 
+typedef enum {
+    MENU_ACTION_NONE = 0,
+
+    // Dock context menu actions
+    DOCK_ACTION_TOGGLE_MAGNIFICATION = 1,
+    DOCK_ACTION_TOGGLE_AUTOHIDE,
+    DOCK_ACTION_POS_BOTTOM,
+    DOCK_ACTION_POS_LEFT,
+    DOCK_ACTION_POS_TOP,
+    DOCK_ACTION_POS_RIGHT,
+    DOCK_ACTION_SIZE_SMALL,
+    DOCK_ACTION_SIZE_MEDIUM,
+    DOCK_ACTION_SIZE_LARGE,
+    DOCK_ACTION_MOVE,
+    DOCK_ACTION_REMOVE_APP,
+
+    // Desktop context menu actions
+    DESKTOP_ACTION_WALLPAPER_BROWSE = 101,
+    DESKTOP_ACTION_WALLPAPER_PATH,
+    DESKTOP_ACTION_TERMINAL,
+    DESKTOP_ACTION_APPLICATIONS
+} MenuActionId;
+
 typedef void (*MenuCallback)(int action_id, void *userdata);
 
 typedef struct {

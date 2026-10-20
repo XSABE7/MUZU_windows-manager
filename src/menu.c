@@ -144,18 +144,27 @@ void menu_calculate_geometry(Menu *menu, int cursor_x, int cursor_y, int screen_
 
 int menu_get_item_at(const Menu *menu, int x, int y) {
     if (!menu) return -1;
-    if (x < menu->x || x >= menu->x + menu->width ||
-        y < menu->y || y >= menu->y + menu->height) {
+
+    // Support both root coordinates and window-relative coordinates
+    int win_x = x;
+    int win_y = y;
+    if (x >= menu->x && x < menu->x + menu->width &&
+        y >= menu->y && y < menu->y + menu->height) {
+        win_x = x - menu->x;
+        win_y = y - menu->y;
+    }
+
+    if (win_x < 0 || win_x >= menu->width || win_y < 0 || win_y >= menu->height) {
         return -1;
     }
 
-    int cur_y = menu->y + MENU_PADDING_Y;
+    int cur_y = MENU_PADDING_Y;
     for (int i = 0; i < menu->item_count; i++) {
         if (menu->items[i].is_separator) {
-            if (y >= cur_y && y < cur_y + MENU_SEP_HEIGHT) return -1;
+            if (win_y >= cur_y && win_y < cur_y + MENU_SEP_HEIGHT) return -1;
             cur_y += MENU_SEP_HEIGHT;
         } else {
-            if (y >= cur_y && y < cur_y + MENU_ROW_HEIGHT) return i;
+            if (win_y >= cur_y && win_y < cur_y + MENU_ROW_HEIGHT) return i;
             cur_y += MENU_ROW_HEIGHT;
         }
     }
