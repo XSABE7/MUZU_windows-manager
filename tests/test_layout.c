@@ -433,6 +433,16 @@ int main(void) {
         client_remove(&snap_head, 502);
     }
 
+    // Test 15: Pre-rendered Liquid Glass Titlebar Surface
+    {
+        cairo_surface_t *cache = titlebar_pre_render(NULL, 640, 1, NULL);
+        assert(cache != NULL);
+        assert(cairo_surface_status(cache) == CAIRO_STATUS_SUCCESS);
+        assert(cairo_image_surface_get_width(cache) == 640);
+        assert(cairo_image_surface_get_height(cache) == TITLEBAR_HEIGHT);
+        cairo_surface_destroy(cache);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

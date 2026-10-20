@@ -3,6 +3,7 @@
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
+#include <time.h>
 
 typedef enum {
     CLIENT_TILED,
@@ -29,7 +30,13 @@ typedef struct Client {
     ClientMode saved_mode;
     char title[256];
     cairo_surface_t *titlebar_surface;
+    cairo_surface_t *titlebar_cache;
+    int titlebar_cache_w;
+    int titlebar_cache_focused;
     cairo_surface_t *icon_surface;
+    time_t last_unfocus_time;
+    int is_ghost;
+    int is_hovered;
     struct Client *next;
 } Client;
 

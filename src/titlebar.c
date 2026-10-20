@@ -4,6 +4,55 @@
 #include <cairo/cairo-xlib.h>
 #include "titlebar.h"
 
+cairo_surface_t *titlebar_pre_render(Display *dpy, int width, int is_focused, const GtkTheme *theme) {
+    (void)dpy;
+    if (width <= 0) width = 100;
+    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, TITLEBAR_HEIGHT);
+    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+        return surf;
+    }
+    cairo_t *cr = cairo_create(surf);
+
+    // Liquid Glass frosted background gradient
+    cairo_pattern_t *pat = cairo_pattern_create_linear(0, 0, 0, TITLEBAR_HEIGHT);
+    if (is_focused) {
+        double r = theme ? theme->bg_titlebar.r : 0.086;
+        double g = theme ? theme->bg_titlebar.g : 0.094;
+        double b = theme ? theme->bg_titlebar.b : 0.117;
+        cairo_pattern_add_color_stop_rgba(pat, 0.0, r * 1.4, g * 1.4, b * 1.4, 0.85);
+        cairo_pattern_add_color_stop_rgba(pat, 1.0, r * 0.8, g * 0.8, b * 0.8, 0.72);
+    } else {
+        cairo_pattern_add_color_stop_rgba(pat, 0.0, 0.07, 0.08, 0.10, 0.60);
+        cairo_pattern_add_color_stop_rgba(pat, 1.0, 0.05, 0.06, 0.08, 0.50);
+    }
+    cairo_set_source(cr, pat);
+    cairo_rectangle(cr, 0, 0, width, TITLEBAR_HEIGHT);
+    cairo_fill(cr);
+    cairo_pattern_destroy(pat);
+
+    // Top highlight refraction rim
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, is_focused ? 0.22 : 0.10);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, 0, 0.5);
+    cairo_line_to(cr, width, 0.5);
+    cairo_stroke(cr);
+
+    // Bottom shadow divider
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.45);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, 0, TITLEBAR_HEIGHT - 0.5);
+    cairo_line_to(cr, width, TITLEBAR_HEIGHT - 0.5);
+    cairo_stroke(cr);
+
+    // Outer subtle border
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.14);
+    cairo_rectangle(cr, 0.5, 0.5, width - 1.0, TITLEBAR_HEIGHT - 1.0);
+    cairo_stroke(cr);
+
+    cairo_destroy(cr);
+    return surf;
+}
+
 Window titlebar_create(Display *dpy, Window client_win, int width) {
     int screen = DefaultScreen(dpy);
     Window root = RootWindow(dpy, screen);
@@ -37,24 +86,25 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
 
     cairo_t *cr = cairo_create(c->titlebar_surface);
 
-    // Background from GTK Theme (or fallback to dark grey)
-    if (theme) {
-        cairo_set_source_rgb(cr, theme->bg_titlebar.r, theme->bg_titlebar.g, theme->bg_titlebar.b);
-    } else {
-        cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
+    // Blit pre-rendered Liquid Glass surface from cache
+    if (!c->titlebar_cache || c->titlebar_cache_w != width || c->titlebar_cache_focused != 1) {
+        if (c->titlebar_cache) {
+            cairo_surface_destroy(c->titlebar_cache);
+            c->titlebar_cache = NULL;
+        }
+        c->titlebar_cache = titlebar_pre_render(dpy, width, 1, theme);
+        c->titlebar_cache_w = width;
+        c->titlebar_cache_focused = 1;
     }
-    cairo_paint(cr);
 
-    // Subtle bottom border
-    if (theme) {
-        cairo_set_source_rgba(cr, theme->border_color.r, theme->border_color.g, theme->border_color.b, 0.6);
+    if (c->titlebar_cache && cairo_surface_status(c->titlebar_cache) == CAIRO_STATUS_SUCCESS) {
+        cairo_set_source_surface(cr, c->titlebar_cache, 0, 0);
+        cairo_paint(cr);
     } else {
-        cairo_set_source_rgba(cr, 0.25, 0.28, 0.35, 0.6);
+        // Fallback if cache creation failed
+        cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
+        cairo_paint(cr);
     }
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, 0, TITLEBAR_HEIGHT - 0.5);
-    cairo_line_to(cr, width, TITLEBAR_HEIGHT - 0.5);
-    cairo_stroke(cr);
 
     // Title text (shifted to right of traffic lights, clipped to width)
     cairo_save(cr);
@@ -168,6 +218,10 @@ void titlebar_cleanup(Client *c) {
         cairo_surface_finish(c->titlebar_surface);
         cairo_surface_destroy(c->titlebar_surface);
         c->titlebar_surface = NULL;
+    }
+    if (c->titlebar_cache) {
+        cairo_surface_destroy(c->titlebar_cache);
+        c->titlebar_cache = NULL;
     }
 }
 

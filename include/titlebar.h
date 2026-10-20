@@ -7,6 +7,7 @@
 
 #define TITLEBAR_HEIGHT 24
 
+cairo_surface_t *titlebar_pre_render(Display *dpy, int width, int is_focused, const GtkTheme *theme);
 Window titlebar_create(Display *dpy, Window client_win, int width);
 void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme);
 typedef enum {
