@@ -22,7 +22,7 @@ Window titlebar_create(Display *dpy, Window client_win, int width) {
     return frame;
 }
 
-void titlebar_draw(Display *dpy, Client *c) {
+void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     if (!dpy || !c || c->frame == None) return;
 
     int screen = DefaultScreen(dpy);
@@ -37,17 +37,37 @@ void titlebar_draw(Display *dpy, Client *c) {
 
     cairo_t *cr = cairo_create(c->titlebar_surface);
 
-    // Background: elegant dark modern grey
-    cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
+    // Background from GTK Theme (or fallback to dark grey)
+    if (theme) {
+        cairo_set_source_rgb(cr, theme->bg_titlebar.r, theme->bg_titlebar.g, theme->bg_titlebar.b);
+    } else {
+        cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
+    }
     cairo_paint(cr);
+
+    // Subtle bottom border
+    if (theme) {
+        cairo_set_source_rgba(cr, theme->border_color.r, theme->border_color.g, theme->border_color.b, 0.6);
+    } else {
+        cairo_set_source_rgba(cr, 0.25, 0.28, 0.35, 0.6);
+    }
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, 0, TITLEBAR_HEIGHT - 0.5);
+    cairo_line_to(cr, width, TITLEBAR_HEIGHT - 0.5);
+    cairo_stroke(cr);
 
     // Title text (clipped to prevent overlapping close button)
     cairo_save(cr);
     cairo_rectangle(cr, 12, 0, (width > 48 ? width - 40 : 10), TITLEBAR_HEIGHT);
     cairo_clip(cr);
-    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    const char *font_fam = (theme && theme->font_family[0]) ? theme->font_family : "sans-serif";
+    cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, 11.0);
-    cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
+    if (theme) {
+        cairo_set_source_rgb(cr, theme->fg_titlebar.r, theme->fg_titlebar.g, theme->fg_titlebar.b);
+    } else {
+        cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
+    }
     cairo_move_to(cr, 12, 16);
     cairo_show_text(cr, c->title[0] ? c->title : "MUZUwm Window");
     cairo_restore(cr);

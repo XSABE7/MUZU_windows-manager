@@ -137,7 +137,7 @@ void launchpad_scan_apps(Launchpad *lp) {
     closedir(dir);
 }
 
-void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
+void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h, const GtkTheme *theme) {
     int screen = DefaultScreen(dpy);
     Window root = RootWindow(dpy, screen);
 
@@ -156,7 +156,12 @@ void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     lp->search_query[0] = '\0';
     lp->current_month_offset = 0;
     lp->scroll_y = 0;
+    lp->theme = theme;
     easter_egg_init(&lp->egg);
+
+    if (theme && theme->icon_theme_name[0]) {
+        icon_theme_set(theme->icon_theme_name);
+    }
 
     launchpad_scan_apps(lp);
 }
@@ -174,9 +179,15 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     }
     cairo_t *cr = cairo_create(lp->surface);
 
-    // Background overlay
-    cairo_set_source_rgba(cr, 0.07, 0.09, 0.13, 0.96);
+    // Background overlay from GTK Theme
+    if (lp->theme) {
+        cairo_set_source_rgba(cr, lp->theme->bg_surface.r, lp->theme->bg_surface.g, lp->theme->bg_surface.b, lp->theme->bg_surface.a);
+    } else {
+        cairo_set_source_rgba(cr, 0.07, 0.09, 0.13, 0.96);
+    }
     cairo_paint(cr);
+
+    const char *font_fam = (lp->theme && lp->theme->font_family[0]) ? lp->theme->font_family : "sans-serif";
 
     // Optimized layout for 800x600, 1366x768, and modern displays
     int is_compact = (screen_w < 1000 || screen_h <= 600);
@@ -188,7 +199,7 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     cairo_rectangle(cr, 40, 32, mid_x - 60, 40);
     cairo_fill(cr);
 
-    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
     cairo_set_font_size(cr, is_compact ? 12.0 : 13.0);
     cairo_set_source_rgb(cr, 0.95, 0.96, 0.98);
     cairo_move_to(cr, 56, 57);
@@ -263,13 +274,13 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     strftime(date_str, sizeof(date_str), "%A, %d %B %Y", tm_info);
 
     // Digital Clock
-    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, 44.0);
     cairo_set_source_rgb(cr, 0.98, 0.99, 1.0);
     cairo_move_to(cr, right_x, 75);
     cairo_show_text(cr, time_str);
 
-    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
     cairo_set_font_size(cr, 13.0);
     cairo_set_source_rgb(cr, 0.65, 0.70, 0.78);
     cairo_move_to(cr, right_x + 2, 102);
@@ -298,7 +309,11 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
         int cell_y = cal_y + 58 + (cell_idx / 7) * 28;
 
         if (day == tm_info->tm_mday) {
-            cairo_set_source_rgb(cr, 0.20, 0.55, 0.95);
+            if (lp->theme) {
+                cairo_set_source_rgb(cr, lp->theme->accent_color.r, lp->theme->accent_color.g, lp->theme->accent_color.b);
+            } else {
+                cairo_set_source_rgb(cr, 0.20, 0.55, 0.95);
+            }
             cairo_arc(cr, cell_x + 8, cell_y - 4, 11, 0, 2 * 3.14159);
             cairo_fill(cr);
             cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);

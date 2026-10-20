@@ -15,8 +15,10 @@
 #include "launchpad.h"
 #include "dock.h"
 #include "client_props.h"
+#include "gtk_theme.h"
 
 static int running = 1;
+static GtkTheme current_theme;
 
 static void sig_handler(int sig) {
     (void)sig;
@@ -39,7 +41,7 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
                 int client_h = curr->height - TITLEBAR_HEIGHT;
                 if (client_h < 10) client_h = 10;
                 XResizeWindow(dpy, curr->win, curr->width, client_h);
-                titlebar_draw(dpy, curr);
+                titlebar_draw(dpy, curr, &current_theme);
             }
         }
     }
@@ -109,9 +111,13 @@ int main(void) {
     Launchpad launchpad;
     Dock dock;
 
+    // Load GTK theme configuration & export env for GTK applications
+    gtk_theme_init(&current_theme);
+    gtk_theme_export_env(&current_theme);
+
     // Initialize UI subsystems
-    launchpad_init(dpy, &launchpad, screen_w, screen_h);
-    dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h);
+    launchpad_init(dpy, &launchpad, screen_w, screen_h, &current_theme);
+    dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
 
     // Select root window events
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
@@ -189,7 +195,7 @@ int main(void) {
                     if (is_dialog) {
                         XMoveResizeWindow(dpy, frame, init_x, init_y, win_w, win_h + TITLEBAR_HEIGHT);
                         XResizeWindow(dpy, w, win_w, win_h);
-                        titlebar_draw(dpy, c);
+                        titlebar_draw(dpy, c, &current_theme);
                     } else {
                         reflow_all(dpy, clients, &cfg);
                     }
@@ -331,7 +337,7 @@ int main(void) {
                 } else {
                     for (Client *curr = clients; curr; curr = curr->next) {
                         if (curr->frame && ev.xexpose.window == curr->frame) {
-                            titlebar_draw(dpy, curr);
+                            titlebar_draw(dpy, curr, &current_theme);
                         }
                     }
                 }
@@ -344,7 +350,7 @@ int main(void) {
                     Client *c = client_find_by_any(clients, ev.xproperty.window);
                     if (c && c->frame) {
                         client_get_title(dpy, c->win, c->title, sizeof(c->title));
-                        titlebar_draw(dpy, c);
+                        titlebar_draw(dpy, c, &current_theme);
                     }
                 }
                 break;

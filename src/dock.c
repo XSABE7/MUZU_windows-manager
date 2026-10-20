@@ -38,11 +38,12 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
     }
 }
 
-void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h) {
+void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme) {
     dock->size = 48;
     dock->is_hidden = 1; // Auto-hidden by default
     dock->hover_state = 0;
     dock->surface = NULL;
+    dock->theme = theme;
     dock_calculate_geometry(dock, pos, dock->is_hidden, screen_w, screen_h);
 
     int screen = DefaultScreen(dpy);
@@ -75,13 +76,21 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     }
     cairo_t *cr = cairo_create(dock->surface);
 
-    // Container background
-    cairo_set_source_rgba(cr, 0.12, 0.15, 0.20, 0.92);
+    // Container background from GTK Theme
+    if (dock->theme) {
+        cairo_set_source_rgba(cr, dock->theme->bg_surface.r, dock->theme->bg_surface.g, dock->theme->bg_surface.b, 0.92);
+    } else {
+        cairo_set_source_rgba(cr, 0.12, 0.15, 0.20, 0.92);
+    }
     cairo_rectangle(cr, 0, 0, dock->width, dock->height);
     cairo_fill(cr);
 
     // Subtle border
-    cairo_set_source_rgba(cr, 0.30, 0.38, 0.50, 0.80);
+    if (dock->theme) {
+        cairo_set_source_rgba(cr, dock->theme->border_color.r, dock->theme->border_color.g, dock->theme->border_color.b, 0.80);
+    } else {
+        cairo_set_source_rgba(cr, 0.30, 0.38, 0.50, 0.80);
+    }
     cairo_set_line_width(cr, 1.5);
     cairo_rectangle(cr, 0, 0, dock->width, dock->height);
     cairo_stroke(cr);
@@ -93,8 +102,12 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     int start_x = (dock->width - (icons * (icon_size + margin))) / 2;
     if (start_x < 4) start_x = 4;
 
+    double accent_r = dock->theme ? dock->theme->accent_color.r : 0.25;
+    double accent_g = dock->theme ? dock->theme->accent_color.g : 0.55;
+    double accent_b = dock->theme ? dock->theme->accent_color.b : 0.95;
+
     double colors[4][3] = {
-        {0.25, 0.55, 0.95}, // Web
+        {accent_r, accent_g, accent_b}, // Web (Theme Accent)
         {0.20, 0.75, 0.50}, // Files
         {0.45, 0.45, 0.90}, // Terminal
         {0.90, 0.60, 0.20}  // Settings
