@@ -42,6 +42,7 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->size = 48;
     dock->is_hidden = 1; // Auto-hidden by default
     dock->hover_state = 0;
+    dock->surface = NULL;
     dock_calculate_geometry(dock, pos, dock->is_hidden, screen_w, screen_h);
 
     int screen = DefaultScreen(dpy);
@@ -67,8 +68,12 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     int screen = DefaultScreen(dpy);
     Visual *visual = DefaultVisual(dpy, screen);
 
-    cairo_surface_t *surface = cairo_xlib_surface_create(dpy, dock->win, visual, dock->width, dock->height);
-    cairo_t *cr = cairo_create(surface);
+    if (!dock->surface) {
+        dock->surface = cairo_xlib_surface_create(dpy, dock->win, visual, dock->width, dock->height);
+    } else {
+        cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
+    }
+    cairo_t *cr = cairo_create(dock->surface);
 
     // Container background
     cairo_set_source_rgba(cr, 0.12, 0.15, 0.20, 0.92);
@@ -102,7 +107,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     }
 
     cairo_destroy(cr);
-    cairo_surface_destroy(surface);
+    cairo_surface_flush(dock->surface);
     XFlush(dpy);
 }
 
@@ -128,5 +133,17 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h) {
     dock_calculate_geometry(dock, new_pos, dock->is_hidden, screen_w, screen_h);
     XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
+    if (dock->surface) {
+        cairo_xlib_surface_set_size(dock->surface, dock->width, dock->height);
+    }
     dock_render(dpy, dock, screen_w, screen_h);
+}
+
+void dock_cleanup(Dock *dock) {
+    if (!dock) return;
+    if (dock->surface) {
+        cairo_surface_finish(dock->surface);
+        cairo_surface_destroy(dock->surface);
+        dock->surface = NULL;
+    }
 }

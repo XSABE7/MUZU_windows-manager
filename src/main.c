@@ -4,6 +4,8 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <poll.h>
+#include <fontconfig/fontconfig.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include "muzu.h"
@@ -37,10 +39,45 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
                 int client_h = curr->height - TITLEBAR_HEIGHT;
                 if (client_h < 10) client_h = 10;
                 XResizeWindow(dpy, curr->win, curr->width, client_h);
-                titlebar_draw(dpy, curr->frame, curr->title[0] ? curr->title : "MUZUwm Window", curr->width);
+                titlebar_draw(dpy, curr);
             }
         }
     }
+    XFlush(dpy);
+}
+
+static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConfig *cfg,
+                            Client **drag_client, Window *last_click_win) {
+    Client *c = client_find_by_any(*clients, w);
+    if (!c) return;
+
+    if (drag_client && *drag_client == c) {
+        *drag_client = NULL;
+        XUngrabPointer(dpy, CurrentTime);
+    }
+    if (last_click_win && (*last_click_win == c->frame || *last_click_win == c->win)) {
+        *last_click_win = None;
+    }
+
+    // Stop receiving events for this client to prevent processing stale events
+    XSelectInput(dpy, c->win, NoEventMask);
+    XRemoveFromSaveSet(dpy, c->win);
+
+    // Free Cairo titlebar surface
+    titlebar_cleanup(c);
+
+    // Safely unparent child window back to root before destroying frame
+    if (c->frame != None) {
+        int screen = DefaultScreen(dpy);
+        Window root = RootWindow(dpy, screen);
+        XUnmapWindow(dpy, c->frame);
+        XReparentWindow(dpy, c->win, root, c->x, c->y);
+        XDestroyWindow(dpy, c->frame);
+        c->frame = None;
+    }
+
+    client_remove(clients, c->win);
+    reflow_all(dpy, *clients, cfg);
     XFlush(dpy);
 }
 
@@ -100,9 +137,17 @@ int main(void) {
     Time last_titlebar_click_time = 0;
     Window last_titlebar_click_win = None;
 
+    struct pollfd pfd = {
+        .fd = ConnectionNumber(dpy),
+        .events = POLLIN,
+        .revents = 0
+    };
+
     XEvent ev;
-    while (running && !XNextEvent(dpy, &ev)) {
-        switch (ev.type) {
+    while (running) {
+        while (running && XPending(dpy)) {
+            XNextEvent(dpy, &ev);
+            switch (ev.type) {
             case MapRequest: {
                 Window w = ev.xmaprequest.window;
                 if (w == launchpad.win || w == dock.win) {
@@ -138,12 +183,13 @@ int main(void) {
                         c->height = win_h + TITLEBAR_HEIGHT;
                         client_get_title(dpy, w, c->title, sizeof(c->title));
                     }
+                    XAddToSaveSet(dpy, w);
                     XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask);
 
                     if (is_dialog) {
                         XMoveResizeWindow(dpy, frame, init_x, init_y, win_w, win_h + TITLEBAR_HEIGHT);
                         XResizeWindow(dpy, w, win_w, win_h);
-                        titlebar_draw(dpy, frame, c && c->title[0] ? c->title : "MUZUwm Window", win_w);
+                        titlebar_draw(dpy, c);
                     } else {
                         reflow_all(dpy, clients, &cfg);
                     }
@@ -158,23 +204,20 @@ int main(void) {
             }
 
             case UnmapNotify: {
-                // Safely hide frame without destroying client
                 Window w = ev.xunmap.window;
-                Client *c = client_find(clients, w);
-                if (c && c->frame) {
-                    XUnmapWindow(dpy, c->frame);
+                if (w == launchpad.win || w == dock.win) {
+                    break;
                 }
+                client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win);
                 break;
             }
 
             case DestroyNotify: {
                 Window w = ev.xdestroywindow.window;
-                Client *c = client_find(clients, w);
-                if (c) {
-                    if (c->frame) XDestroyWindow(dpy, c->frame);
-                    client_remove(&clients, w);
-                    reflow_all(dpy, clients, &cfg);
+                if (w == launchpad.win || w == dock.win) {
+                    break;
                 }
+                client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win);
                 break;
             }
 
@@ -288,7 +331,7 @@ int main(void) {
                 } else {
                     for (Client *curr = clients; curr; curr = curr->next) {
                         if (curr->frame && ev.xexpose.window == curr->frame) {
-                            titlebar_draw(dpy, curr->frame, curr->title[0] ? curr->title : "MUZUwm Window", curr->width);
+                            titlebar_draw(dpy, curr);
                         }
                     }
                 }
@@ -298,10 +341,10 @@ int main(void) {
             case PropertyNotify: {
                 Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
                 if (ev.xproperty.atom == XA_WM_NAME || ev.xproperty.atom == net_wm_name) {
-                    Client *c = client_find(clients, ev.xproperty.window);
+                    Client *c = client_find_by_any(clients, ev.xproperty.window);
                     if (c && c->frame) {
                         client_get_title(dpy, c->win, c->title, sizeof(c->title));
-                        titlebar_draw(dpy, c->frame, c->title[0] ? c->title : "MUZUwm Window", c->width);
+                        titlebar_draw(dpy, c);
                     }
                 }
                 break;
@@ -309,7 +352,25 @@ int main(void) {
         }
     }
 
+        if (running && !XPending(dpy)) {
+            poll(&pfd, 1, 50);
+        }
+    }
+
+    while (clients) {
+        client_teardown(dpy, &clients, clients->win, &cfg, &drag_client, &last_titlebar_click_win);
+    }
+    dock_cleanup(&dock);
     launchpad_cleanup(&launchpad);
+
+    while (XPending(dpy)) {
+        XNextEvent(dpy, &ev);
+    }
+
+    XSync(dpy, True);
     XCloseDisplay(dpy);
+    cairo_debug_reset_static_data();
+    FcFini();
+    fprintf(stderr, "MUZUwm: Clean shutdown complete.\n");
     return 0;
 }

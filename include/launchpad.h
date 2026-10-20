@@ -21,6 +21,7 @@ typedef struct {
     int current_month_offset;
     int scroll_y;
     EasterEggState egg;
+    cairo_surface_t *surface;
 } Launchpad;
 
 int days_in_month(int year, int month);

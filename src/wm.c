@@ -12,6 +12,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->height = 100;
     c->mode = mode;
     c->title[0] = '\0';
+    c->titlebar_surface = NULL;
     c->next = *head;
     *head = c;
 }
@@ -19,9 +20,14 @@ void client_add(Client **head, Window win, ClientMode mode) {
 void client_remove(Client **head, Window win) {
     Client **curr = head;
     while (*curr) {
-        if ((*curr)->win == win) {
+        if ((*curr)->win == win || (*curr)->frame == win) {
             Client *to_free = *curr;
             *curr = (*curr)->next;
+            if (to_free->titlebar_surface) {
+                cairo_surface_finish(to_free->titlebar_surface);
+                cairo_surface_destroy(to_free->titlebar_surface);
+                to_free->titlebar_surface = NULL;
+            }
             free(to_free);
             return;
         }
@@ -32,6 +38,13 @@ void client_remove(Client **head, Window win) {
 Client *client_find(Client *head, Window win) {
     for (Client *curr = head; curr; curr = curr->next) {
         if (curr->win == win) return curr;
+    }
+    return NULL;
+}
+
+Client *client_find_by_any(Client *head, Window win) {
+    for (Client *curr = head; curr; curr = curr->next) {
+        if (curr->win == win || curr->frame == win) return curr;
     }
     return NULL;
 }

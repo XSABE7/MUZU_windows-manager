@@ -1,7 +1,7 @@
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
-CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext)
-LIBS = $(shell pkg-config --libs cairo x11 xext) -lm
+CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext fontconfig)
+LIBS = $(shell pkg-config --libs cairo x11 xext fontconfig) -lm
 
 SRCS = src/wm.c src/titlebar.c src/trigger.c src/launchpad.c src/easter_egg.c src/dock.c src/client_props.c src/icon_fetcher.c src/main.c
 OBJS = $(SRCS:.c=.o)
@@ -37,6 +37,6 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher muzuwm
+	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_x11_stress muzuwm
 
 .PHONY: all clean asan

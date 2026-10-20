@@ -74,6 +74,11 @@ void launchpad_cleanup(Launchpad *lp) {
         }
     }
     lp->app_count = 0;
+    if (lp->surface) {
+        cairo_surface_finish(lp->surface);
+        cairo_surface_destroy(lp->surface);
+        lp->surface = NULL;
+    }
 }
 
 void launchpad_scan_apps(Launchpad *lp) {
@@ -146,6 +151,7 @@ void launchpad_init(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
                             DefaultVisual(dpy, screen),
                             CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
 
+    lp->surface = NULL;
     lp->is_visible = 0;
     lp->search_query[0] = '\0';
     lp->current_month_offset = 0;
@@ -161,8 +167,12 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     int screen = DefaultScreen(dpy);
     Visual *visual = DefaultVisual(dpy, screen);
 
-    cairo_surface_t *surface = cairo_xlib_surface_create(dpy, lp->win, visual, screen_w, screen_h);
-    cairo_t *cr = cairo_create(surface);
+    if (!lp->surface) {
+        lp->surface = cairo_xlib_surface_create(dpy, lp->win, visual, screen_w, screen_h);
+    } else {
+        cairo_xlib_surface_set_size(lp->surface, screen_w, screen_h);
+    }
+    cairo_t *cr = cairo_create(lp->surface);
 
     // Background overlay
     cairo_set_source_rgba(cr, 0.07, 0.09, 0.13, 0.96);
@@ -324,7 +334,7 @@ void launchpad_render(Display *dpy, Launchpad *lp, int screen_w, int screen_h) {
     }
 
     cairo_destroy(cr);
-    cairo_surface_destroy(surface);
+    cairo_surface_flush(lp->surface);
     XFlush(dpy);
 }
 

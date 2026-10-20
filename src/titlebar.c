@@ -22,12 +22,20 @@ Window titlebar_create(Display *dpy, Window client_win, int width) {
     return frame;
 }
 
-void titlebar_draw(Display *dpy, Window frame, const char *title, int width) {
+void titlebar_draw(Display *dpy, Client *c) {
+    if (!dpy || !c || c->frame == None) return;
+
     int screen = DefaultScreen(dpy);
     Visual *visual = DefaultVisual(dpy, screen);
+    int width = c->width > 0 ? c->width : 100;
 
-    cairo_surface_t *surface = cairo_xlib_surface_create(dpy, frame, visual, width, TITLEBAR_HEIGHT);
-    cairo_t *cr = cairo_create(surface);
+    if (!c->titlebar_surface) {
+        c->titlebar_surface = cairo_xlib_surface_create(dpy, c->frame, visual, width, TITLEBAR_HEIGHT);
+    } else {
+        cairo_xlib_surface_set_size(c->titlebar_surface, width, TITLEBAR_HEIGHT);
+    }
+
+    cairo_t *cr = cairo_create(c->titlebar_surface);
 
     // Background: elegant dark modern grey
     cairo_set_source_rgb(cr, 0.12, 0.14, 0.18);
@@ -41,7 +49,7 @@ void titlebar_draw(Display *dpy, Window frame, const char *title, int width) {
     cairo_set_font_size(cr, 11.0);
     cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
     cairo_move_to(cr, 12, 16);
-    cairo_show_text(cr, title ? title : "MUZUwm Window");
+    cairo_show_text(cr, c->title[0] ? c->title : "MUZUwm Window");
     cairo_restore(cr);
 
     // Close button (red dot on top-right)
@@ -50,8 +58,17 @@ void titlebar_draw(Display *dpy, Window frame, const char *title, int width) {
     cairo_fill(cr);
 
     cairo_destroy(cr);
-    cairo_surface_destroy(surface);
+    cairo_surface_flush(c->titlebar_surface);
     XFlush(dpy);
+}
+
+void titlebar_cleanup(Client *c) {
+    if (!c) return;
+    if (c->titlebar_surface) {
+        cairo_surface_finish(c->titlebar_surface);
+        cairo_surface_destroy(c->titlebar_surface);
+        c->titlebar_surface = NULL;
+    }
 }
 
 void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int screen_w, int screen_h) {

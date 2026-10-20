@@ -7,7 +7,8 @@
 #define TITLEBAR_HEIGHT 24
 
 Window titlebar_create(Display *dpy, Window client_win, int width);
-void titlebar_draw(Display *dpy, Window frame, const char *title, int width);
+void titlebar_draw(Display *dpy, Client *c);
+void titlebar_cleanup(Client *c);
 void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int screen_w, int screen_h);
 void handle_titlebar_double_click(Display *dpy, Client *c, LayoutConfig *cfg);
 
