@@ -50,7 +50,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h);
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 int dock_get_item_at(const Dock *dock, int x, int y);
-void dock_add_minimized(Dock *dock, Client *c);
+int dock_add_minimized(Dock *dock, Client *c);
 void dock_remove_minimized(Dock *dock, Client *c);
 Client *dock_get_minimized_at(const Dock *dock, int x, int y);
 void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y);

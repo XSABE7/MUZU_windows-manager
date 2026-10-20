@@ -198,12 +198,33 @@ int main(void) {
         c_min.win = 888;
         snprintf(c_min.title, sizeof(c_min.title), "TextEditor");
 
-        dock_add_minimized(&min_dock, &c_min);
+        assert(dock_add_minimized(&min_dock, &c_min) == 1);
         assert(min_dock.minimized_count == 1);
         assert(min_dock.minimized[0].client == &c_min);
 
-        // Duplicate add should be ignored
-        dock_add_minimized(&min_dock, &c_min);
+        // Duplicate add should return 1 but not increase count
+        assert(dock_add_minimized(&min_dock, &c_min) == 1);
+        assert(min_dock.minimized_count == 1);
+
+        // Capacity test: fill up to DOCK_MAX_MINIMIZED
+        Client dummy_clients[16];
+        for (int i = 1; i < 16; i++) {
+            dummy_clients[i] = (Client){0};
+            dummy_clients[i].win = 900 + i;
+            assert(dock_add_minimized(&min_dock, &dummy_clients[i]) == 1);
+        }
+        assert(min_dock.minimized_count == 16);
+
+        // 17th add should fail and return 0
+        Client overflow_c = {0};
+        overflow_c.win = 999;
+        assert(dock_add_minimized(&min_dock, &overflow_c) == 0);
+        assert(min_dock.minimized_count == 16);
+
+        // Remove dummy clients to restore test state
+        for (int i = 1; i < 16; i++) {
+            dock_remove_minimized(&min_dock, &dummy_clients[i]);
+        }
         assert(min_dock.minimized_count == 1);
 
         // Check hit testing on minimized item
@@ -282,6 +303,14 @@ int main(void) {
         dock_update_running(&d, &app1);
         assert(d.items[0].is_running == 1); // Web running
         assert(d.items[1].is_running == 0); // Files not running
+
+        // False positive prevention test (no bare "sh" or "file" matching)
+        Client app_fake = {0};
+        snprintf(app_fake.title, sizeof(app_fake.title), "Shopping List - Makefile - Crash Report");
+        dock_update_running(&d, &app_fake);
+        assert(d.items[0].is_running == 0);
+        assert(d.items[1].is_running == 0);
+        assert(d.items[2].is_running == 0);
 
         dock_cleanup(&d);
     }

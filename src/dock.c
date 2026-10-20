@@ -101,10 +101,10 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     }
 }
 
-void dock_add_minimized(Dock *dock, Client *c) {
-    if (!dock || !c || dock->minimized_count >= DOCK_MAX_MINIMIZED) return;
+int dock_add_minimized(Dock *dock, Client *c) {
+    if (!dock || !c || dock->minimized_count >= DOCK_MAX_MINIMIZED) return 0;
     for (int i = 0; i < dock->minimized_count; i++) {
-        if (dock->minimized[i].client == c) return;
+        if (dock->minimized[i].client == c) return 1;
     }
     int idx = dock->minimized_count;
     dock->minimized[idx].client = c;
@@ -117,6 +117,7 @@ void dock_add_minimized(Dock *dock, Client *c) {
     dock->minimized[idx].title[len] = '\0';
     dock->minimized[idx].icon_surface = icon_load_surface(dock->minimized[idx].title);
     dock->minimized_count++;
+    return 1;
 }
 
 void dock_remove_minimized(Dock *dock, Client *c) {
@@ -138,6 +139,7 @@ void dock_remove_minimized(Dock *dock, Client *c) {
             dock->minimized[i] = dock->minimized[i + 1];
         }
         dock->minimized_count--;
+        memset(&dock->minimized[dock->minimized_count], 0, sizeof(DockMinimizedItem));
     }
 }
 
@@ -509,20 +511,6 @@ void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int
 void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y) {
     if (!dock) return;
 
-    Client *min_c = dock_get_minimized_at(dock, x, y);
-    if (min_c) {
-        min_c->is_minimized = 0;
-        Window target = min_c->frame ? min_c->frame : min_c->win;
-        XMapWindow(dpy, target);
-        if (min_c->frame && min_c->win) {
-            XMapWindow(dpy, min_c->win);
-        }
-        XRaiseWindow(dpy, target);
-        XSetInputFocus(dpy, min_c->win, RevertToPointerRoot, CurrentTime);
-        dock_remove_minimized(dock, min_c);
-        return;
-    }
-
     int item = dock_get_item_at(dock, x, y);
     if (item < 0 || item >= dock->item_count) return;
 
@@ -578,10 +566,10 @@ void dock_update_running(Dock *dock, const Client *clients) {
             if (i == 0 && (strcasestr(c->title, "firefox") || strcasestr(c->title, "chromium") || strcasestr(c->title, "chrome") || strcasestr(c->title, "browser"))) {
                 dock->items[0].is_running = 1;
             }
-            if (i == 1 && (strcasestr(c->title, "nautilus") || strcasestr(c->title, "thunar") || strcasestr(c->title, "file"))) {
+            if (i == 1 && (strcasestr(c->title, "nautilus") || strcasestr(c->title, "thunar") || strcasestr(c->title, "pcmanfm") || strcasestr(c->title, "dolphin") || strcasestr(c->title, "Files"))) {
                 dock->items[1].is_running = 1;
             }
-            if (i == 2 && (strcasestr(c->title, "terminal") || strcasestr(c->title, "alacritty") || strcasestr(c->title, "xterm") || strcasestr(c->title, "bash") || strcasestr(c->title, "sh"))) {
+            if (i == 2 && (strcasestr(c->title, "terminal") || strcasestr(c->title, "alacritty") || strcasestr(c->title, "kitty") || strcasestr(c->title, "xterm") || strcasestr(c->title, "urxvt") || strcasestr(c->title, "bash") || strcasestr(c->title, "zsh"))) {
                 dock->items[2].is_running = 1;
             }
         }

@@ -79,10 +79,13 @@ static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConf
         c->frame = None;
     }
 
+    if (dock) {
+        dock_remove_minimized(dock, c);
+    }
+
     client_remove(clients, c->win);
     reflow_all(dpy, *clients, cfg);
     if (dock) {
-        dock_remove_minimized(dock, c);
         dock_update_running(dock, *clients);
         dock_render(dpy, dock, cfg->screen_width, cfg->screen_height);
     }
@@ -288,6 +291,18 @@ int main(void) {
                 } else if (ev.xclient.message_type == net_active_window) {
                     Client *c = client_find_by_any(clients, ev.xclient.window);
                     if (c) {
+                        if (c->is_minimized) {
+                            c->is_minimized = 0;
+                            Window target = c->frame ? c->frame : c->win;
+                            XMapWindow(dpy, target);
+                            if (c->frame && c->win) {
+                                XMapWindow(dpy, c->win);
+                            }
+                            dock_remove_minimized(&dock, c);
+                            reflow_all(dpy, clients, &cfg);
+                            dock_update_running(&dock, clients);
+                            dock_render(dpy, &dock, screen_w, screen_h);
+                        }
                         XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
                         Window raise_target = c->frame ? c->frame : c->win;
                         XRaiseWindow(dpy, raise_target);
@@ -373,24 +388,28 @@ int main(void) {
                         XSetInputFocus(dpy, curr->win, RevertToPointerRoot, CurrentTime);
                         XRaiseWindow(dpy, curr->frame);
 
-                        TitlebarAction action = titlebar_get_action(ev.xbutton.x, curr->width);
-                        if (action == TITLEBAR_CLICK_CLOSE) {
-                            client_close(dpy, curr->win);
-                            break;
-                        } else if (action == TITLEBAR_CLICK_MINIMIZE) {
-                            curr->is_minimized = 1;
-                            Window target = curr->frame ? curr->frame : curr->win;
-                            XUnmapWindow(dpy, target);
-                            dock_add_minimized(&dock, curr);
-                            reflow_all(dpy, clients, &cfg);
-                            dock_render(dpy, &dock, screen_w, screen_h);
-                            break;
-                        } else if (action == TITLEBAR_CLICK_MAXIMIZE) {
-                            client_toggle_maximize(dpy, curr, &cfg);
-                            if (!curr->is_maximized && curr->mode == CLIENT_TILED) {
-                                reflow_all(dpy, clients, &cfg);
+                        if (ev.xbutton.button == Button1) {
+                            TitlebarAction action = titlebar_get_action(ev.xbutton.x, curr->width);
+                            if (action == TITLEBAR_CLICK_CLOSE) {
+                                client_close(dpy, curr->win);
+                                break;
+                            } else if (action == TITLEBAR_CLICK_MINIMIZE) {
+                                if (dock_add_minimized(&dock, curr)) {
+                                    curr->is_minimized = 1;
+                                    Window target = curr->frame ? curr->frame : curr->win;
+                                    XUnmapWindow(dpy, target);
+                                    reflow_all(dpy, clients, &cfg);
+                                    dock_render(dpy, &dock, screen_w, screen_h);
+                                }
+                                break;
+                            } else if (action == TITLEBAR_CLICK_MAXIMIZE) {
+                                client_toggle_maximize(dpy, curr, &cfg);
+                                titlebar_draw(dpy, curr, &current_theme);
+                                if (!curr->is_maximized && curr->mode == CLIENT_TILED) {
+                                    reflow_all(dpy, clients, &cfg);
+                                }
+                                break;
                             }
-                            break;
                         }
 
                         // Check double click on titlebar
@@ -493,9 +512,13 @@ int main(void) {
             case PropertyNotify: {
                 if (ev.xproperty.atom == XA_WM_NAME || ev.xproperty.atom == net_wm_name) {
                     Client *c = client_find_by_any(clients, ev.xproperty.window);
-                    if (c && c->frame) {
+                    if (c) {
                         client_get_title(dpy, c->win, c->title, sizeof(c->title));
-                        titlebar_draw(dpy, c, &current_theme);
+                        if (c->frame) {
+                            titlebar_draw(dpy, c, &current_theme);
+                        }
+                        dock_update_running(&dock, clients);
+                        dock_render(dpy, &dock, screen_w, screen_h);
                     }
                 }
                 break;
