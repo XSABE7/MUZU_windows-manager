@@ -96,8 +96,7 @@ static void parse_index_theme(const char *theme_path) {
 void icon_theme_set(const char *theme_name) {
     active_theme_count = 0;
     if (!theme_name || theme_name[0] == '\0') {
-        add_theme_to_chain("hicolor");
-        return;
+        theme_name = "hicolor";
     }
 
     add_theme_to_chain(theme_name);
@@ -314,7 +313,18 @@ cairo_surface_t *icon_create_from_net_wm_icon(const unsigned long *data, unsigne
     int stride_pixels = cairo_image_surface_get_stride(surf) / 4;
     for (int y = 0; y < best_h; y++) {
         for (int x = 0; x < best_w; x++) {
-            dst[y * stride_pixels + x] = (uint32_t)data[best_offset + 2 + y * best_w + x];
+            uint32_t pixel = (uint32_t)data[best_offset + 2 + y * best_w + x];
+            uint32_t a = (pixel >> 24) & 0xff;
+            if (a == 0) {
+                dst[y * stride_pixels + x] = 0;
+            } else if (a == 255) {
+                dst[y * stride_pixels + x] = pixel;
+            } else {
+                uint32_t r = (((pixel >> 16) & 0xff) * a + 127) / 255;
+                uint32_t g = (((pixel >> 8) & 0xff) * a + 127) / 255;
+                uint32_t b = ((pixel & 0xff) * a + 127) / 255;
+                dst[y * stride_pixels + x] = (a << 24) | (r << 16) | (g << 8) | b;
+            }
         }
     }
     cairo_surface_mark_dirty(surf);

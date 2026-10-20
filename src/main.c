@@ -118,7 +118,7 @@ int main(void) {
     Client *clients = NULL;
     TriggerState trigger = {0};
     Launchpad launchpad;
-    Dock dock;
+    Dock dock = {0};
 
     // Load GTK theme configuration & export env for GTK applications
     gtk_theme_init(&current_theme);
@@ -148,12 +148,14 @@ int main(void) {
     Atom net_wm_moveresize = XInternAtom(dpy, "_NET_WM_MOVERESIZE", False);
     Atom net_supported = XInternAtom(dpy, "_NET_SUPPORTED", False);
     Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
     Atom net_active_window = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
     Atom net_close_window = XInternAtom(dpy, "_NET_CLOSE_WINDOW", False);
 
     Atom supported_atoms[] = {
         net_supported,
         net_wm_name,
+        net_wm_icon,
         net_wm_moveresize,
         net_active_window,
         net_close_window
@@ -363,13 +365,17 @@ int main(void) {
 
                 if (ev.xbutton.window == dock.win) {
                     if (ev.xbutton.button == Button3) {
-                        dock.is_dragging = 1;
                         dock.drag_offset_x = ev.xbutton.x;
                         dock.drag_offset_y = ev.xbutton.y;
-                        XGrabPointer(dpy, root, False,
-                                     ButtonReleaseMask | PointerMotionMask,
-                                     GrabModeAsync, GrabModeAsync,
-                                     None, None, CurrentTime);
+                        int status = XGrabPointer(dpy, root, False,
+                                                  ButtonReleaseMask | PointerMotionMask,
+                                                  GrabModeAsync, GrabModeAsync,
+                                                  None, None, CurrentTime);
+                        if (status == GrabSuccess) {
+                            dock.is_dragging = 1;
+                        } else {
+                            dock.is_dragging = 0;
+                        }
                         break;
                     }
                     if (ev.xbutton.button == Button1) {

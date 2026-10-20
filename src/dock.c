@@ -188,13 +188,18 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
 }
 
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme) {
+    if (!dock) return;
     dock->size = 48;
     dock->is_hidden = 1; // Auto-hidden by default
+    dock->is_dragging = 0;
+    dock->drag_offset_x = 0;
+    dock->drag_offset_y = 0;
     dock->hover_state = 0;
     dock->hover_item = -1;
     dock->surface = NULL;
     dock->theme = theme;
     dock->item_count = 4;
+    dock->minimized_count = 0;
 
     // Item 0: Web
     snprintf(dock->items[0].name, sizeof(dock->items[0].name), "Web");
@@ -556,10 +561,10 @@ void dock_handle_drag(Display *dpy, Dock *dock, int root_x, int root_y, int scre
     int nx = root_x - dock->drag_offset_x;
     int ny = root_y - dock->drag_offset_y;
 
-    if (nx < 0) nx = 0;
-    if (ny < 0) ny = 0;
     if (nx + dock->width > screen_w) nx = screen_w - dock->width;
     if (ny + dock->height > screen_h) ny = screen_h - dock->height;
+    if (nx < 0) nx = 0;
+    if (ny < 0) ny = 0;
 
     dock->x = nx;
     dock->y = ny;
