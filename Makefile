@@ -3,7 +3,7 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext fontconfig)
 LIBS = $(shell pkg-config --libs cairo x11 xext fontconfig) -lm
 
-SRCS = src/wm.c src/titlebar.c src/trigger.c src/launchpad.c src/easter_egg.c src/dock.c src/client_props.c src/icon_fetcher.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/trigger.c src/launchpad.c src/easter_egg.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/main.c
 OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
@@ -29,6 +29,9 @@ test_client_props: tests/test_client_props.c src/client_props.c
 test_icon_fetcher: tests/test_icon_fetcher.c src/icon_fetcher.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+test_gtk_theme: tests/test_gtk_theme.c src/gtk_theme.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
 muzuwm: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
@@ -37,6 +40,6 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_x11_stress muzuwm
+	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_gtk_theme test_x11_stress muzuwm
 
 .PHONY: all clean asan
