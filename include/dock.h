@@ -11,13 +11,13 @@ typedef struct Client Client;
 
 typedef enum { DOCK_BOTTOM, DOCK_TOP, DOCK_LEFT, DOCK_RIGHT } DockPosition;
 
-#define DOCK_MAX_ITEMS 4
+#define DOCK_MAX_ITEMS 32
 #define DOCK_MAX_MINIMIZED 16
 
 typedef struct {
-    char name[32];
+    char name[64];
     char icon_name[64];
-    char exec_cmd[128];
+    char exec_cmd[256];
     int is_running;
     cairo_surface_t *icon_surface;
 } DockItem;
@@ -37,6 +37,9 @@ typedef struct {
     int drag_offset_x, drag_offset_y; // Drag anchor offset
     int hover_state;
     int hover_item;     // -1 if none, 0..item_count-1
+    int magnification_enabled; // 1 = macOS magnification wave on, 0 = off
+    double mouse_pos;   // Cursor coordinate along dock axis
+    int is_hovered;     // 1 if cursor is currently within dock bounds
     int item_count;
     DockItem items[DOCK_MAX_ITEMS];
     int minimized_count;
@@ -52,6 +55,12 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h);
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 int dock_get_item_at(const Dock *dock, int x, int y);
+int dock_add_app(Dock *dock, const char *name, const char *exec, const char *icon_name);
+int dock_remove_app(Dock *dock, int index);
+void dock_save_pinned_apps(const Dock *dock);
+void dock_load_pinned_apps(Dock *dock);
+void dock_set_magnification(Dock *dock, int enabled);
+double dock_get_magnification_scale(const Dock *dock, int item_center);
 int dock_add_minimized(Dock *dock, Client *c);
 void dock_remove_minimized(Dock *dock, Client *c);
 Client *dock_get_minimized_at(const Dock *dock, int x, int y);

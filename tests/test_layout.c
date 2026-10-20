@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include "wm.h"
 #include "dock.h"
 #include "titlebar.h"
@@ -272,13 +273,33 @@ int main(void) {
         assert(dock_get_minimized_at(&min_dock, min_x + 10, min_y + 10) == NULL);
     }
 
-    // Test 12: macOS Glass Dock UI & Position Cycling
+    // Test 12: macOS Dock UI, Magnification & Dynamic Pinning
     {
         Dock d = {0};
-        d.size = 48;
-        d.item_count = 4;
         dock_init(NULL, &d, DOCK_BOTTOM, 1920, 1080, NULL);
         assert(d.pos == DOCK_BOTTOM);
+        assert(d.item_count == 1); // Clean default: only Apps (3 dots)
+        assert(strcmp(d.items[0].name, "Apps") == 0);
+
+        // Add dynamic apps
+        int web_idx = dock_add_app(&d, "Web", "x-www-browser", "web-browser");
+        int files_idx = dock_add_app(&d, "Files", "nautilus", "system-file-manager");
+        assert(d.item_count == 3);
+        assert(web_idx == 1);
+        assert(files_idx == 2);
+
+        // Test macOS magnification scale calculation
+        d.magnification_enabled = 1;
+        d.is_hovered = 1;
+        d.mouse_pos = 100.0;
+        // At exact mouse position, scale is peak ~1.45
+        double peak_scale = dock_get_magnification_scale(&d, 100);
+        assert(peak_scale >= 1.44 && peak_scale <= 1.46);
+        // Far away from mouse position, scale is 1.0
+        double flat_scale = dock_get_magnification_scale(&d, 500);
+        assert(flat_scale == 1.0);
+
+        dock_calculate_geometry(&d, DOCK_BOTTOM, 0, 1920, 1080);
         assert(d.width > d.height); // Horizontal
 
         dock_cycle_position(NULL, &d, 1920, 1080);
@@ -301,16 +322,16 @@ int main(void) {
         Client app1 = {0};
         snprintf(app1.title, sizeof(app1.title), "Mozilla Firefox Web");
         dock_update_running(&d, &app1);
-        assert(d.items[0].is_running == 1); // Web running
-        assert(d.items[1].is_running == 0); // Files not running
+        assert(d.items[0].is_running == 0); // Apps launcher never marked running
+        assert(d.items[1].is_running == 1); // Web running
+        assert(d.items[2].is_running == 0); // Files not running
 
-        // False positive prevention test (no bare "sh" or "file" matching)
-        Client app_fake = {0};
-        snprintf(app_fake.title, sizeof(app_fake.title), "Shopping List - Makefile - Crash Report");
-        dock_update_running(&d, &app_fake);
-        assert(d.items[0].is_running == 0);
-        assert(d.items[1].is_running == 0);
-        assert(d.items[2].is_running == 0);
+        // Remove dynamic app
+        assert(dock_remove_app(&d, files_idx) == 1);
+        assert(d.item_count == 2);
+        // Cannot remove Item 0 (Apps launcher)
+        assert(dock_remove_app(&d, 0) == 0);
+        assert(d.item_count == 2);
 
         dock_cleanup(&d);
     }
