@@ -12,6 +12,13 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->height = 100;
     c->mode = mode;
     c->is_csd = 0;
+    c->is_minimized = 0;
+    c->is_maximized = 0;
+    c->saved_x = 0;
+    c->saved_y = 0;
+    c->saved_width = 100;
+    c->saved_height = 100;
+    c->saved_mode = mode;
     c->title[0] = '\0';
     c->titlebar_surface = NULL;
     c->next = *head;

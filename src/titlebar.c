@@ -56,9 +56,9 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     cairo_line_to(cr, width, TITLEBAR_HEIGHT - 0.5);
     cairo_stroke(cr);
 
-    // Title text (clipped to prevent overlapping close button)
+    // Title text (shifted to right of traffic lights, clipped to width)
     cairo_save(cr);
-    cairo_rectangle(cr, 12, 0, (width > 48 ? width - 40 : 10), TITLEBAR_HEIGHT);
+    cairo_rectangle(cr, 62, 0, (width > 80 ? width - 72 : 10), TITLEBAR_HEIGHT);
     cairo_clip(cr);
     const char *font_fam = (theme && theme->font_family[0]) ? theme->font_family : "sans-serif";
     double font_sz = (theme && theme->font_size > 0.0) ? theme->font_size : 11.0;
@@ -71,18 +71,93 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     } else {
         cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
     }
-    cairo_move_to(cr, 12, 16);
+    cairo_move_to(cr, 64, 16);
     cairo_show_text(cr, c->title[0] ? c->title : "MUZUwm Window");
     cairo_restore(cr);
 
-    // Close button (red dot on top-right)
-    cairo_set_source_rgb(cr, 0.94, 0.27, 0.24);
-    cairo_arc(cr, width - 16, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-    cairo_fill(cr);
+    // macOS Traffic Light Controls (Top-Left)
+    // 1. Red (Close)
+    cairo_set_source_rgb(cr, 1.00, 0.37, 0.34); // #FF5F56
+    cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.80, 0.15, 0.15, 0.8);
+    cairo_set_line_width(cr, 0.6);
+    cairo_stroke(cr);
+
+    // 2. Yellow (Minimize)
+    cairo_set_source_rgb(cr, 1.00, 0.74, 0.18); // #FFBD2E
+    cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.75, 0.50, 0.10, 0.8);
+    cairo_set_line_width(cr, 0.6);
+    cairo_stroke(cr);
+
+    // 3. Green (Maximize)
+    cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
+    cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 0.10, 0.55, 0.15, 0.8);
+    cairo_set_line_width(cr, 0.6);
+    cairo_stroke(cr);
 
     cairo_destroy(cr);
     cairo_surface_flush(c->titlebar_surface);
-    XFlush(dpy);
+    if (dpy) XFlush(dpy);
+}
+
+TitlebarAction titlebar_get_action(int click_x, int width) {
+    (void)width;
+    if (click_x < 0) return TITLEBAR_CLICK_NONE;
+    if (click_x < 22) return TITLEBAR_CLICK_CLOSE;
+    if (click_x < 38) return TITLEBAR_CLICK_MINIMIZE;
+    if (click_x < 56) return TITLEBAR_CLICK_MAXIMIZE;
+    return TITLEBAR_CLICK_DRAG;
+}
+
+void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
+    if (!c || !cfg) return;
+
+    if (!c->is_maximized) {
+        c->saved_x = c->x;
+        c->saved_y = c->y;
+        c->saved_width = c->width;
+        c->saved_height = c->height;
+        c->saved_mode = c->mode;
+
+        c->mode = CLIENT_FLOATING;
+        c->x = 0;
+        c->y = 0;
+        c->width = cfg->screen_width;
+        c->height = cfg->screen_height;
+        c->is_maximized = 1;
+
+        if (dpy) {
+            Window target = c->frame ? c->frame : c->win;
+            XMoveResizeWindow(dpy, target, c->x, c->y, c->width, c->height);
+            if (c->frame) {
+                int ch = c->height - TITLEBAR_HEIGHT;
+                if (ch < 10) ch = 10;
+                XResizeWindow(dpy, c->win, c->width, ch);
+            }
+        }
+    } else {
+        c->x = c->saved_x;
+        c->y = c->saved_y;
+        c->width = (c->saved_width > 0) ? c->saved_width : 600;
+        c->height = (c->saved_height > 0) ? c->saved_height : 400;
+        c->mode = c->saved_mode;
+        c->is_maximized = 0;
+
+        if (dpy) {
+            Window target = c->frame ? c->frame : c->win;
+            XMoveResizeWindow(dpy, target, c->x, c->y, c->width, c->height);
+            if (c->frame) {
+                int ch = c->height - TITLEBAR_HEIGHT;
+                if (ch < 10) ch = 10;
+                XResizeWindow(dpy, c->win, c->width, ch);
+            }
+        }
+    }
 }
 
 void titlebar_cleanup(Client *c) {

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "wm.h"
 #include "dock.h"
+#include "titlebar.h"
 
 int main(void) {
     LayoutConfig cfg = { .screen_width = 1920, .screen_height = 1080, .master_count = 1 };
@@ -158,6 +159,33 @@ int main(void) {
 
     client_remove(&csd_list, 999);
     assert(csd_list == NULL);
+
+    // Test 10: macOS Titlebar Traffic Light Controls & Maximize/Restore
+    assert(titlebar_get_action(14, 500) == TITLEBAR_CLICK_CLOSE);     // Red dot (x ~ 14)
+    assert(titlebar_get_action(30, 500) == TITLEBAR_CLICK_MINIMIZE);  // Yellow dot (x ~ 30)
+    assert(titlebar_get_action(46, 500) == TITLEBAR_CLICK_MAXIMIZE);  // Green dot (x ~ 46)
+    assert(titlebar_get_action(100, 500) == TITLEBAR_CLICK_DRAG);     // Titlebar body
+
+    // Test maximize toggle
+    Client test_client = {0};
+    test_client.x = 100;
+    test_client.y = 80;
+    test_client.width = 600;
+    test_client.height = 400;
+    test_client.mode = CLIENT_FLOATING;
+
+    // Toggle maximize -> expands to screen dimensions
+    client_toggle_maximize(NULL, &test_client, &cfg);
+    assert(test_client.is_maximized == 1);
+    assert(test_client.x == 0 && test_client.y == 0);
+    assert(test_client.width == 1920 && test_client.height == 1080);
+
+    // Toggle again -> restores pre-maximize dimensions
+    client_toggle_maximize(NULL, &test_client, &cfg);
+    assert(test_client.is_maximized == 0);
+    assert(test_client.x == 100 && test_client.y == 80);
+    assert(test_client.width == 600 && test_client.height == 400);
+    assert(test_client.mode == CLIENT_FLOATING);
 
     printf("test_layout passed!\n");
     return 0;

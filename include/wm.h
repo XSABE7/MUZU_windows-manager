@@ -15,6 +15,10 @@ typedef struct Client {
     int x, y, width, height;
     ClientMode mode;
     int is_csd;
+    int is_minimized;
+    int is_maximized;
+    int saved_x, saved_y, saved_width, saved_height;
+    ClientMode saved_mode;
     char title[256];
     cairo_surface_t *titlebar_surface;
     struct Client *next;

@@ -341,9 +341,15 @@ int main(void) {
                         XSetInputFocus(dpy, curr->win, RevertToPointerRoot, CurrentTime);
                         XRaiseWindow(dpy, curr->frame);
 
-                        // Close button clicked (red dot on right)
-                        if (ev.xbutton.x >= curr->width - 24) {
+                        TitlebarAction action = titlebar_get_action(ev.xbutton.x, curr->width);
+                        if (action == TITLEBAR_CLICK_CLOSE) {
                             client_close(dpy, curr->win);
+                            break;
+                        } else if (action == TITLEBAR_CLICK_MAXIMIZE) {
+                            client_toggle_maximize(dpy, curr, &cfg);
+                            if (!curr->is_maximized && curr->mode == CLIENT_TILED) {
+                                reflow_all(dpy, clients, &cfg);
+                            }
                             break;
                         }
 
