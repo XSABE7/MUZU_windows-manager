@@ -9,8 +9,8 @@ echo "1. Running Unit Tests..."
 make -s tests muzuwm
 ./test_layout
 ./test_trigger
-./test_easter_egg
-./test_calendar
+./test_rofi_launcher
+./test_wallpaper
 ./test_client_props
 ./test_icon_fetcher
 ./test_gtk_theme

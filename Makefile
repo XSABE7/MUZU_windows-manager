@@ -3,26 +3,26 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext fontconfig)
 LIBS = $(shell pkg-config --libs cairo x11 xext fontconfig) -lm
 
-SRCS = src/wm.c src/titlebar.c src/trigger.c src/launchpad.c src/easter_egg.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/trigger.c src/rofi_launcher.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/wallpaper.c src/main.c
 OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_gtk_theme test_x11_stress
+tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_x11_stress
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/launchpad.c src/easter_egg.c src/titlebar.c
+test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_trigger: tests/test_trigger.c src/trigger.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_easter_egg: tests/test_easter_egg.c src/easter_egg.c
+test_rofi_launcher: tests/test_rofi_launcher.c src/rofi_launcher.c src/icon_fetcher.c src/gtk_theme.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_calendar: tests/test_calendar.c src/launchpad.c src/easter_egg.c src/icon_fetcher.c src/gtk_theme.c
+test_wallpaper: tests/test_wallpaper.c src/wallpaper.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_client_props: tests/test_client_props.c src/client_props.c src/icon_fetcher.c
@@ -45,6 +45,6 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_gtk_theme test_x11_stress muzuwm
+	rm -f src/*.o test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_x11_stress muzuwm
 
 .PHONY: all tests clean asan

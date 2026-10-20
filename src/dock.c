@@ -9,7 +9,7 @@
 #include "dock.h"
 #include "wm.h"
 #include "icon_fetcher.h"
-#include "launchpad.h"
+#include "rofi_launcher.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -225,10 +225,10 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->items[2].icon_surface = icon_load_surface("utilities-terminal");
     if (!dock->items[2].icon_surface) dock->items[2].icon_surface = icon_load_surface("org.gnome.Terminal");
 
-    // Item 3: Apps (Launchpad)
+    // Item 3: Apps (Launcher)
     snprintf(dock->items[3].name, sizeof(dock->items[3].name), "Apps");
     snprintf(dock->items[3].icon_name, sizeof(dock->items[3].icon_name), "view-app-grid");
-    snprintf(dock->items[3].exec_cmd, sizeof(dock->items[3].exec_cmd), "__LAUNCHPAD__");
+    snprintf(dock->items[3].exec_cmd, sizeof(dock->items[3].exec_cmd), "__ROFI__");
     dock->items[3].is_running = 0;
     dock->items[3].icon_surface = icon_load_surface("view-app-grid");
     if (!dock->items[3].icon_surface) dock->items[3].icon_surface = icon_load_surface("start-here");
@@ -488,14 +488,15 @@ void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int
     }
 }
 
-void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y) {
+void dock_handle_click(Display *dpy, Dock *dock, RofiLauncher *rofi, int x, int y) {
     if (!dock) return;
 
     int item = dock_get_item_at(dock, x, y);
     if (item < 0 || item >= dock->item_count) return;
 
-    if (strcmp(dock->items[item].exec_cmd, "__LAUNCHPAD__") == 0) {
-        if (lp) launchpad_toggle(dpy, (Launchpad *)lp);
+    if (strcmp(dock->items[item].exec_cmd, "__ROFI__") == 0 ||
+        strcmp(dock->items[item].exec_cmd, "__LAUNCHPAD__") == 0) {
+        if (rofi) rofi_launcher_toggle(dpy, (RofiLauncher *)rofi);
         return;
     }
 

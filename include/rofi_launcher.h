@@ -21,7 +21,7 @@ typedef struct {
     cairo_surface_t *icon_surface;
 } RofiApp;
 
-typedef struct {
+typedef struct RofiLauncher {
     Window win;
     cairo_surface_t *surface;
     int is_visible;

@@ -12,7 +12,8 @@
 #include "wm.h"
 #include "titlebar.h"
 #include "trigger.h"
-#include "launchpad.h"
+#include "rofi_launcher.h"
+#include "wallpaper.h"
 #include "dock.h"
 #include "client_props.h"
 #include "gtk_theme.h"
@@ -116,16 +117,18 @@ int main(void) {
     };
 
     Client *clients = NULL;
-    TriggerState trigger = {0};
-    Launchpad launchpad;
+    RofiLauncher rofi_launcher;
     Dock dock = {0};
 
     // Load GTK theme configuration & export env for GTK applications
     gtk_theme_init(&current_theme);
     gtk_theme_export_env(&current_theme);
 
+    // Initialize Wallpaper (Zero-Overhead Root Window Pixmap)
+    wallpaper_init(dpy, screen_w, screen_h);
+
     // Initialize UI subsystems
-    launchpad_init(dpy, &launchpad, screen_w, screen_h, &current_theme);
+    rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
 
     // Select root window events
@@ -185,7 +188,7 @@ int main(void) {
             switch (ev.type) {
             case MapRequest: {
                 Window w = ev.xmaprequest.window;
-                if (w == launchpad.win || w == dock.win) {
+                if (w == rofi_launcher.win || w == dock.win) {
                     XMapWindow(dpy, w);
                     break;
                 }
@@ -321,7 +324,7 @@ int main(void) {
 
             case UnmapNotify: {
                 Window w = ev.xunmap.window;
-                if (w == launchpad.win || w == dock.win) {
+                if (w == rofi_launcher.win || w == dock.win) {
                     break;
                 }
                 Client *c = client_find_by_any(clients, w);
@@ -334,7 +337,7 @@ int main(void) {
 
             case DestroyNotify: {
                 Window w = ev.xdestroywindow.window;
-                if (w == launchpad.win || w == dock.win) {
+                if (w == rofi_launcher.win || w == dock.win) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
@@ -342,25 +345,25 @@ int main(void) {
             }
 
             case KeyPress: {
-                if (launchpad.is_visible) {
-                    launchpad_handle_key(dpy, &launchpad, &ev.xkey);
+                if (rofi_launcher.is_visible) {
+                    rofi_launcher_handle_key(dpy, &rofi_launcher, &ev.xkey);
                     break;
                 }
 
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
                 if (sym == XK_Super_L || sym == XK_Super_R) {
-                    if (trigger_check_super(&trigger, ev.xkey.time)) {
-                        launchpad_toggle(dpy, &launchpad);
-                    }
+                    rofi_launcher_toggle(dpy, &rofi_launcher);
                 } else if (sym == XK_F1 && (ev.xkey.state & Mod1Mask)) {
-                    launchpad_toggle(dpy, &launchpad);
+                    rofi_launcher_toggle(dpy, &rofi_launcher);
                 }
                 break;
             }
 
             case ButtonPress: {
-                if (launchpad.is_visible) {
-                    launchpad_handle_click(dpy, &launchpad, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
+                if (rofi_launcher.is_visible) {
+                    rofi_launcher_handle_click(dpy, &rofi_launcher, ev.xbutton.button,
+                                               ev.xbutton.x_root - rofi_launcher.x,
+                                               ev.xbutton.y_root - rofi_launcher.y);
                     break;
                 }
 
@@ -395,7 +398,7 @@ int main(void) {
                             dock_update_running(&dock, clients);
                             dock_render(dpy, &dock, screen_w, screen_h);
                         } else {
-                            dock_handle_click(dpy, &dock, &launchpad, ev.xbutton.x, ev.xbutton.y);
+                            dock_handle_click(dpy, &dock, &rofi_launcher, ev.xbutton.x, ev.xbutton.y);
                         }
                     }
                     break;
@@ -474,10 +477,10 @@ int main(void) {
                     break;
                 }
 
-                if (!drag_client && trigger_check_hot_corner(ev.xmotion.x_root, ev.xmotion.y_root, DEFAULT_HOT_CORNER_SIZE)) {
-                    if (!launchpad.is_visible) {
-                        launchpad_toggle(dpy, &launchpad);
-                    }
+                if (rofi_launcher.is_visible) {
+                    rofi_launcher_handle_motion(dpy, &rofi_launcher,
+                                                ev.xmotion.x_root - rofi_launcher.x,
+                                                ev.xmotion.y_root - rofi_launcher.y);
                 }
 
                 if (drag_client) {
@@ -551,8 +554,8 @@ int main(void) {
             case Expose: {
                 if (ev.xexpose.window == dock.win) {
                     dock_render(dpy, &dock, screen_w, screen_h);
-                } else if (ev.xexpose.window == launchpad.win) {
-                    launchpad_render(dpy, &launchpad, screen_w, screen_h);
+                } else if (ev.xexpose.window == rofi_launcher.win) {
+                    rofi_launcher_render(dpy, &rofi_launcher, screen_w, screen_h);
                 } else {
                     for (Client *curr = clients; curr; curr = curr->next) {
                         if (curr->frame && ev.xexpose.window == curr->frame) {
@@ -592,7 +595,7 @@ int main(void) {
         client_teardown(dpy, &clients, clients->win, &cfg, &drag_client, &last_titlebar_click_win, &dock);
     }
     dock_cleanup(&dock);
-    launchpad_cleanup(&launchpad);
+    rofi_launcher_cleanup(&rofi_launcher);
 
     while (XPending(dpy)) {
         XNextEvent(dpy, &ev);

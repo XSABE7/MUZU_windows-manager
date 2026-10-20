@@ -5,8 +5,8 @@
 #include <cairo/cairo.h>
 #include "gtk_theme.h"
 
-struct Launchpad; // Forward declaration
-struct Client;    // Forward declaration
+typedef struct RofiLauncher RofiLauncher;
+struct Client;       // Forward declaration
 typedef struct Client Client;
 
 typedef enum { DOCK_BOTTOM, DOCK_TOP, DOCK_LEFT, DOCK_RIGHT } DockPosition;
@@ -55,7 +55,7 @@ int dock_get_item_at(const Dock *dock, int x, int y);
 int dock_add_minimized(Dock *dock, Client *c);
 void dock_remove_minimized(Dock *dock, Client *c);
 Client *dock_get_minimized_at(const Dock *dock, int x, int y);
-void dock_handle_click(Display *dpy, Dock *dock, struct Launchpad *lp, int x, int y);
+void dock_handle_click(Display *dpy, Dock *dock, RofiLauncher *rofi, int x, int y);
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h);
 void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h);
 DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_w, int screen_h);
