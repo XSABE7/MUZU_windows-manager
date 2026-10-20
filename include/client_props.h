@@ -26,4 +26,10 @@ void client_get_title(Display *dpy, Window win, char *out_buf, size_t maxlen);
 // Determine if window is transient or dialog (_NET_WM_WINDOW_TYPE)
 int client_is_dialog(Display *dpy, Window win);
 
+// Parse Motif WM hints decorations flag (returns 0 if decorations explicitly disabled, 1 otherwise)
+int client_parse_motif_decorations(const unsigned long *hints, unsigned long nitems);
+
+// Determine if window uses Client-Side Decorations (CSD / Motif decorations = 0 / _GTK_FRAME_EXTENTS)
+int client_is_csd(Display *dpy, Window win);
+
 #endif // CLIENT_PROPS_H

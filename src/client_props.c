@@ -174,3 +174,58 @@ int client_is_dialog(Display *dpy, Window win) {
 
     return 0;
 }
+
+int client_parse_motif_decorations(const unsigned long *hints, unsigned long nitems) {
+    if (!hints || nitems < 3) return 1; // Default to decorated
+
+    unsigned long flags = hints[0];
+    unsigned long decorations = hints[2];
+
+    // MWM_HINTS_DECORATIONS = (1L << 1)
+    if (flags & (1L << 1)) {
+        return (decorations != 0) ? 1 : 0;
+    }
+    return 1;
+}
+
+int client_is_csd(Display *dpy, Window win) {
+    if (!dpy || win == None) return 0;
+
+    // 1. Check _MOTIF_WM_HINTS
+    Atom motif_hints = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = NULL;
+
+    if (XGetWindowProperty(dpy, win, motif_hints, 0, (~0L), False,
+                           AnyPropertyType, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &prop) == Success && prop) {
+        if (nitems >= 3 && actual_format == 32) {
+            unsigned long *hints = (unsigned long *)prop;
+            int decor = client_parse_motif_decorations(hints, nitems);
+            XFree(prop);
+            if (decor == 0) return 1; // CSD
+        } else {
+            XFree(prop);
+        }
+    }
+
+    // 2. Check _GTK_FRAME_EXTENTS
+    Atom gtk_frame_extents = XInternAtom(dpy, "_GTK_FRAME_EXTENTS", False);
+    prop = NULL;
+    if (XGetWindowProperty(dpy, win, gtk_frame_extents, 0, 4, False,
+                           XA_CARDINAL, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &prop) == Success && prop) {
+        if (nitems == 4 && actual_format == 32) {
+            unsigned long *extents = (unsigned long *)prop;
+            if (extents[0] > 0 || extents[1] > 0 || extents[2] > 0 || extents[3] > 0) {
+                XFree(prop);
+                return 1;
+            }
+        }
+        XFree(prop);
+    }
+
+    return 0;
+}

@@ -135,6 +135,24 @@ int main(void) {
     KeyCode alt_f1_kc = XKeysymToKeycode(dpy, XK_F1);
     XGrabKey(dpy, alt_f1_kc, Mod1Mask, root, True, GrabModeAsync, GrabModeAsync);
 
+    // EWMH supported atoms setup
+    Atom net_wm_moveresize = XInternAtom(dpy, "_NET_WM_MOVERESIZE", False);
+    Atom net_supported = XInternAtom(dpy, "_NET_SUPPORTED", False);
+    Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom net_active_window = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+    Atom net_close_window = XInternAtom(dpy, "_NET_CLOSE_WINDOW", False);
+
+    Atom supported_atoms[] = {
+        net_supported,
+        net_wm_name,
+        net_wm_moveresize,
+        net_active_window,
+        net_close_window
+    };
+    XChangeProperty(dpy, root, net_supported, XA_ATOM, 32,
+                    PropModeReplace, (unsigned char *)supported_atoms,
+                    sizeof(supported_atoms) / sizeof(Atom));
+
     Client *drag_client = NULL;
     int drag_start_x = 0;
     int drag_start_y = 0;
@@ -161,13 +179,19 @@ int main(void) {
                     break;
                 }
 
+                XWindowAttributes wa;
+                if (XGetWindowAttributes(dpy, w, &wa) && wa.override_redirect) {
+                    XMapWindow(dpy, w);
+                    break;
+                }
+
                 if (!client_find(clients, w)) {
                     int is_dialog = client_is_dialog(dpy, w);
+                    int is_csd = client_is_csd(dpy, w);
                     ClientMode mode = is_dialog ? CLIENT_FLOATING : CLIENT_TILED;
 
                     int win_w = 600, win_h = 400;
-                    XWindowAttributes wa;
-                    if (XGetWindowAttributes(dpy, w, &wa) && wa.width > 0 && wa.height > 0) {
+                    if (wa.width > 0 && wa.height > 0) {
                         win_w = wa.width;
                         win_h = wa.height;
                     }
@@ -178,24 +202,29 @@ int main(void) {
                                                          &init_x, &init_y, &win_w, &win_h);
                     }
 
-                    Window frame = titlebar_create(dpy, w, win_w);
+                    Window frame = is_csd ? None : titlebar_create(dpy, w, win_w);
                     client_add(&clients, w, mode);
                     Client *c = client_find(clients, w);
                     if (c) {
                         c->frame = frame;
+                        c->is_csd = is_csd;
                         c->x = init_x;
                         c->y = init_y;
                         c->width = win_w;
-                        c->height = win_h + TITLEBAR_HEIGHT;
+                        c->height = is_csd ? win_h : (win_h + TITLEBAR_HEIGHT);
                         client_get_title(dpy, w, c->title, sizeof(c->title));
                     }
                     XAddToSaveSet(dpy, w);
-                    XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask);
+                    XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask | FocusChangeMask);
 
                     if (is_dialog) {
-                        XMoveResizeWindow(dpy, frame, init_x, init_y, win_w, win_h + TITLEBAR_HEIGHT);
-                        XResizeWindow(dpy, w, win_w, win_h);
-                        titlebar_draw(dpy, c, &current_theme);
+                        if (frame != None) {
+                            XMoveResizeWindow(dpy, frame, init_x, init_y, win_w, win_h + TITLEBAR_HEIGHT);
+                            XResizeWindow(dpy, w, win_w, win_h);
+                            titlebar_draw(dpy, c, &current_theme);
+                        } else {
+                            XMoveResizeWindow(dpy, w, init_x, init_y, win_w, win_h);
+                        }
                     } else {
                         reflow_all(dpy, clients, &cfg);
                     }
@@ -206,6 +235,41 @@ int main(void) {
                     XRaiseWindow(dpy, c->frame);
                 }
                 XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
+                break;
+            }
+
+            case ClientMessage: {
+                if (ev.xclient.message_type == net_wm_moveresize) {
+                    Window target_win = ev.xclient.window;
+                    Client *c = client_find_by_any(clients, target_win);
+                    if (c) {
+                        // Direction 8 = _NET_WM_MOVERESIZE_MOVE
+                        long direction = ev.xclient.data.l[2];
+                        if (direction == 8 || direction == 9) {
+                            XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+                            Window raise_target = c->frame ? c->frame : c->win;
+                            XRaiseWindow(dpy, raise_target);
+
+                            if (c->mode == CLIENT_TILED) {
+                                c->mode = CLIENT_FLOATING;
+                                reflow_all(dpy, clients, &cfg);
+                            }
+
+                            drag_client = c;
+                            drag_start_x = ev.xclient.data.l[0];
+                            drag_start_y = ev.xclient.data.l[1];
+                            client_start_x = c->x;
+                            client_start_y = c->y;
+
+                            XGrabPointer(dpy, root, False,
+                                         ButtonReleaseMask | PointerMotionMask,
+                                         GrabModeAsync, GrabModeAsync,
+                                         None, None, CurrentTime);
+                        }
+                    }
+                } else if (ev.xclient.message_type == net_close_window) {
+                    client_close(dpy, ev.xclient.window);
+                }
                 break;
             }
 

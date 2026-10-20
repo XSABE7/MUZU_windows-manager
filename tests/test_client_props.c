@@ -64,6 +64,25 @@ int main(void) {
     assert(h == 480 - 60);
     assert(x == 20 && y == 30);
 
+    // Test 4: GTK CSD / Motif hints parsing
+    assert(client_is_csd(NULL, None) == 0);
+
+    // Case A: MWM hints with decorations = 0 (GNOME Files / Nautilus CSD)
+    unsigned long csd_hints[] = { 0x3, 0x1, 0x0, 0x0, 0x0 }; // flags=0x3, func=0x1, decor=0x0
+    assert(client_parse_motif_decorations(csd_hints, 5) == 0); // 0 decorations -> CSD
+
+    // Case B: MWM hints with decorations = 1 (Standard decorations enabled)
+    unsigned long decor_hints[] = { 0x3, 0x1, 0x1, 0x0, 0x0 };
+    assert(client_parse_motif_decorations(decor_hints, 5) == 1); // Has decorations
+
+    // Case C: MWM hints with MWM_HINTS_DECORATIONS flag unset
+    unsigned long no_flag_hints[] = { 0x1, 0x1, 0x0, 0x0, 0x0 };
+    assert(client_parse_motif_decorations(no_flag_hints, 5) == 1); // Default to decorated
+
+    // Case D: Invalid/truncated hints
+    assert(client_parse_motif_decorations(NULL, 0) == 1);
+    assert(client_parse_motif_decorations(csd_hints, 2) == 1);
+
     printf("test_client_props passed!\n");
     return 0;
 }
