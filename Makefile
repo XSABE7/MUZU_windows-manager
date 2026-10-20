@@ -8,7 +8,7 @@ OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_gtk_theme
+tests: test_layout test_trigger test_easter_egg test_calendar test_client_props test_icon_fetcher test_gtk_theme test_x11_stress
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
