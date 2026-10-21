@@ -137,6 +137,49 @@ static void compositor_ensure_config(void) {
     fclose(f);
 }
 
+int compositor_find_picom(char *out_bin, size_t out_len) {
+    if (!out_bin || out_len == 0) return 0;
+
+    const char *home = getenv("HOME");
+    if (home) {
+        char user_picom[1024];
+        snprintf(user_picom, sizeof(user_picom), "%s/.local/bin/picom", home);
+        if (access(user_picom, X_OK) == 0) {
+            snprintf(out_bin, out_len, "%s", user_picom);
+            return 1;
+        }
+    }
+
+    if (access("/usr/bin/picom", X_OK) == 0) {
+        snprintf(out_bin, out_len, "/usr/bin/picom");
+        return 1;
+    }
+
+    if (access("/usr/local/bin/picom", X_OK) == 0) {
+        snprintf(out_bin, out_len, "/usr/local/bin/picom");
+        return 1;
+    }
+
+    const char *path_env = getenv("PATH");
+    if (path_env) {
+        char path_buf[1024];
+        strncpy(path_buf, path_env, sizeof(path_buf) - 1);
+        path_buf[sizeof(path_buf) - 1] = '\0';
+        char *token = strtok(path_buf, ":");
+        while (token) {
+            char test_path[1024];
+            snprintf(test_path, sizeof(test_path), "%s/picom", token);
+            if (access(test_path, X_OK) == 0) {
+                snprintf(out_bin, out_len, "%s", test_path);
+                return 1;
+            }
+            token = strtok(NULL, ":");
+        }
+    }
+
+    return 0;
+}
+
 void compositor_init(Display *dpy) {
     compositor_ensure_config();
     if (!dpy) return;
@@ -150,31 +193,9 @@ void compositor_init(Display *dpy) {
         return; // Compositor already running
     }
 
-    // Check if picom binary is available in PATH or standard paths
-    int picom_available = 0;
-    if (access("/usr/bin/picom", X_OK) == 0 ||
-        access("/usr/local/bin/picom", X_OK) == 0) {
-        picom_available = 1;
-    } else {
-        const char *path_env = getenv("PATH");
-        if (path_env) {
-            char path_buf[1024];
-            strncpy(path_buf, path_env, sizeof(path_buf) - 1);
-            path_buf[sizeof(path_buf) - 1] = '\0';
-            char *token = strtok(path_buf, ":");
-            while (token) {
-                char test_path[1024];
-                snprintf(test_path, sizeof(test_path), "%s/picom", token);
-                if (access(test_path, X_OK) == 0) {
-                    picom_available = 1;
-                    break;
-                }
-                token = strtok(NULL, ":");
-            }
-        }
-    }
-
-    if (!picom_available) {
+    // Check if picom binary is available in ~/.local/bin, PATH, or standard paths
+    char picom_bin[1024];
+    if (!compositor_find_picom(picom_bin, sizeof(picom_bin))) {
         return;
     }
 
@@ -182,7 +203,7 @@ void compositor_init(Display *dpy) {
     if (pid == 0) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         setsid();
-        execlp("picom", "picom", "--config", compositor_get_config_path(), NULL);
+        execl(picom_bin, "picom", "--config", compositor_get_config_path(), NULL);
         _exit(0);
     } else if (pid > 0) {
         picom_pid = pid;

@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +7,25 @@
 #include "compositor.h"
 
 int main(void) {
+    // Test picom detection in ~/.local/bin
+    char found_bin[1024];
+    system("mkdir -p /tmp/muzuwm_test_home/.local/bin");
+    system("touch /tmp/muzuwm_test_home/.local/bin/picom && chmod +x /tmp/muzuwm_test_home/.local/bin/picom");
+
+    const char *orig_home = getenv("HOME");
+    setenv("HOME", "/tmp/muzuwm_test_home", 1);
+    const char *orig_path = getenv("PATH");
+    setenv("PATH", "/usr/bin:/bin", 1); // exclude ~/.local/bin from PATH
+
+    int found = compositor_find_picom(found_bin, sizeof(found_bin));
+    assert(found == 1);
+    assert(strstr(found_bin, "/tmp/muzuwm_test_home/.local/bin/picom") != NULL);
+
+    // Restore environment
+    if (orig_home) setenv("HOME", orig_home, 1);
+    if (orig_path) setenv("PATH", orig_path, 1);
+    system("rm -rf /tmp/muzuwm_test_home");
+
     const char *cfg_path = compositor_get_config_path();
     assert(cfg_path != NULL);
     assert(strstr(cfg_path, "picom.conf") != NULL);
