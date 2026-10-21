@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=MUZUwm
+Comment=Mouse UserZ Window Manager (Hybrid Floating & Tiling)
+Exec=/usr/local/bin/muzuwm
+TryExec=/usr/local/bin/muzuwm
+Icon=preferences-system-windows
+Type=Application
+DesktopNames=MUZUwm
+Keywords=wm;tiling;floating;windowmanager;window;manager;

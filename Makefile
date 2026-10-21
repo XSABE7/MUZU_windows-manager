@@ -1,3 +1,8 @@
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+DATADIR ?= /usr/share
+XSESSIONSDIR ?= $(DATADIR)/xsessions
+
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext xcursor fontconfig gdk-pixbuf-2.0)
@@ -61,4 +66,14 @@ asan: clean all
 clean:
 	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
 
-.PHONY: all tests clean asan
+install: muzuwm
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 755 muzuwm $(DESTDIR)$(BINDIR)/muzuwm
+	install -d $(DESTDIR)$(XSESSIONSDIR)
+	install -m 644 muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/muzuwm
+	rm -f $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
+
+.PHONY: all tests clean asan install uninstall
