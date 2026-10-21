@@ -186,6 +186,7 @@ int main(void) {
     test_client.width = 600;
     test_client.height = 400;
     test_client.mode = CLIENT_FLOATING;
+    test_client.can_fullscreen = 1;
 
     // Toggle maximize -> expands to screen dimensions
     client_toggle_maximize(NULL, &test_client, &cfg);
@@ -199,6 +200,20 @@ int main(void) {
     assert(test_client.x == 100 && test_client.y == 80);
     assert(test_client.width == 600 && test_client.height == 400);
     assert(test_client.mode == CLIENT_FLOATING);
+
+    // Non-fullscreen client must ignore maximize and double-click tiling
+    Client fixed_client = {0};
+    fixed_client.x = 150;
+    fixed_client.y = 120;
+    fixed_client.width = 400;
+    fixed_client.height = 300;
+    fixed_client.mode = CLIENT_FLOATING;
+    fixed_client.can_fullscreen = 0;
+    client_toggle_maximize(NULL, &fixed_client, &cfg);
+    assert(fixed_client.is_maximized == 0);
+    assert(fixed_client.width == 400 && fixed_client.height == 300);
+    handle_titlebar_double_click(NULL, &fixed_client, &cfg);
+    assert(fixed_client.mode == CLIENT_FLOATING);
 
     // Test 11: Window Minimization & Dock Integration
     {

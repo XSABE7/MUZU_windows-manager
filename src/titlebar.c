@@ -189,6 +189,7 @@ TitlebarAction titlebar_get_action(int click_x, int width) {
 
 void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
     if (!c || !cfg) return;
+    if (!c->is_maximized && !c->can_fullscreen) return;
 
     if (!c->is_maximized) {
         c->saved_x = c->x;
@@ -215,6 +216,17 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
             }
         }
     } else {
+        int max_h = cfg->screen_height - cfg->top_inset;
+        int bad_saved = (c->saved_width <= 0 || c->saved_width >= cfg->screen_width ||
+                         c->saved_height <= 0 || c->saved_height >= max_h);
+        if (bad_saved) {
+            // Window started auto-maximized: restore to a centered floating size
+            c->saved_width = cfg->screen_width * 3 / 5;
+            c->saved_height = cfg->screen_height * 3 / 5;
+            c->saved_x = (cfg->screen_width - c->saved_width) / 2;
+            c->saved_y = cfg->top_inset + (max_h - c->saved_height) / 2;
+            c->saved_mode = CLIENT_FLOATING;
+        }
         c->x = c->saved_x;
         c->y = c->saved_y;
         c->width = (c->saved_width > 0) ? c->saved_width : 600;
@@ -286,7 +298,7 @@ void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int s
 }
 
 void handle_titlebar_double_click(Display *dpy, Client *c, LayoutConfig *cfg) {
-    if (!c) return;
+    if (!c || !c->can_fullscreen) return;
     (void)dpy;
     if (c->mode == CLIENT_FLOATING) {
         c->mode = CLIENT_TILED;

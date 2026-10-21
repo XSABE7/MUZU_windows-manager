@@ -33,6 +33,13 @@ int client_parse_motif_decorations(const unsigned long *hints, unsigned long nit
 // Determine if window uses Client-Side Decorations (CSD / Motif decorations = 0 / _GTK_FRAME_EXTENTS)
 int client_is_csd(Display *dpy, Window win);
 
+// Pure policy: returns 0 if a window cannot meaningfully go fullscreen/tile
+// (dialogs, fixed-size windows, or windows whose max size is below 800x600), 1 otherwise
+int client_size_hints_allow_fullscreen(long flags, int min_w, int min_h, int max_w, int max_h, int is_dialog);
+
+// Query WM_NORMAL_HINTS and dialog state; returns 1 when dpy is NULL or win is None
+int client_supports_fullscreen(Display *dpy, Window win);
+
 // Retrieve high-fidelity application icon via _NET_WM_ICON, WM_CLASS, or keyword mapping
 cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, int target_size);
 

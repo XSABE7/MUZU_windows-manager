@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xutil.h>
 #include "client_props.h"
 
 int main(void) {
@@ -113,6 +114,14 @@ int main(void) {
         XDestroyWindow(test_dpy, test_win);
         XCloseDisplay(test_dpy);
     }
+
+    // Test 6: Fullscreen / resize capability detection from WM_NORMAL_HINTS and dialog state
+    assert(client_size_hints_allow_fullscreen(PMinSize, 200, 150, 0, 0, 0) == 1);
+    assert(client_size_hints_allow_fullscreen(0, 0, 0, 0, 0, 1) == 0);
+    assert(client_size_hints_allow_fullscreen(PMinSize | PMaxSize, 400, 300, 400, 300, 0) == 0);
+    assert(client_size_hints_allow_fullscreen(PMaxSize, 100, 100, 500, 400, 0) == 0);
+    assert(client_size_hints_allow_fullscreen(PMinSize | PMaxSize, 200, 150, 1920, 1080, 0) == 1);
+    assert(client_supports_fullscreen(NULL, None) == 1);
 
     printf("test_client_props passed!\n");
     return 0;

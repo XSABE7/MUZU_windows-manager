@@ -30,6 +30,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->is_ghost = 0;
     c->is_hovered = 0;
     c->is_focused = 0;
+    c->can_fullscreen = 1;
     c->workspace = 0;
     c->next = *head;
     *head = c;

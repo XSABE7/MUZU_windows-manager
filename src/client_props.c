@@ -232,6 +232,27 @@ int client_is_csd(Display *dpy, Window win) {
     return 0;
 }
 
+int client_size_hints_allow_fullscreen(long flags, int min_w, int min_h, int max_w, int max_h, int is_dialog) {
+    if (is_dialog) return 0;
+    int has_max = (flags & PMaxSize) && max_w > 0 && max_h > 0;
+    if (has_max && (flags & PMinSize) && min_w == max_w && min_h == max_h) return 0;
+    if (has_max && (max_w < 800 || max_h < 600)) return 0;
+    return 1;
+}
+
+int client_supports_fullscreen(Display *dpy, Window win) {
+    if (!dpy || win == None) return 1;
+    int is_dialog = client_is_dialog(dpy, win);
+    XSizeHints hints;
+    long supplied = 0;
+    memset(&hints, 0, sizeof(hints));
+    if (!XGetWMNormalHints(dpy, win, &hints, &supplied)) {
+        return client_size_hints_allow_fullscreen(0, 0, 0, 0, 0, is_dialog);
+    }
+    return client_size_hints_allow_fullscreen(hints.flags, hints.min_width, hints.min_height,
+                                              hints.max_width, hints.max_height, is_dialog);
+}
+
 cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, int target_size) {
     if (!dpy || win == None) return NULL;
     if (target_size <= 0) target_size = 32;

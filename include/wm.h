@@ -38,6 +38,7 @@ typedef struct Client {
     int is_ghost;
     int is_hovered;
     int is_focused;
+    int can_fullscreen;
     int workspace;
     struct Client *next;
 } Client;
