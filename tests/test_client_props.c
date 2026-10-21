@@ -123,6 +123,24 @@ int main(void) {
     assert(client_size_hints_allow_fullscreen(PMinSize | PMaxSize, 200, 150, 1920, 1080, 0) == 1);
     assert(client_supports_fullscreen(NULL, None) == 1);
 
+    // Test 7: Initial geometry resolution preserves multi-window docked positions (e.g. Audacious)
+    int rx = 0, ry = 0, rw = 0, rh = 0;
+    // Audacious main player at (376, 142) size 425x100 (CSD)
+    client_resolve_initial_geometry(1280, 700, 28, 0, 376, 142, 425, 100, 1, &rx, &ry, &rw, &rh);
+    assert(rx == 376 && ry == 142 && rw == 425 && rh == 100);
+    // Audacious playlist editor docked below at (526, 242) size 275x319 (CSD)
+    int px = 0, py = 0, pw = 0, ph = 0;
+    client_resolve_initial_geometry(1280, 700, 28, 0, 526, 242, 275, 319, 1, &px, &py, &pw, &ph);
+    assert(px == 526 && py == 242 && pw == 275 && ph == 319);
+    // Verify main player (y: 142..242) and playlist editor (y: 242..561) do not overlap vertically
+    assert(ry + rh <= py);
+
+    // Unpositioned window (0, 0) centers on workarea and preserves compact height (e.g. 325x112 dialog)
+    client_resolve_initial_geometry(1280, 700, 28, 0, 0, 0, 325, 112, 0, &rx, &ry, &rw, &rh);
+    assert(rw == 325 && rh == 112);
+    assert(rx == (1280 - 325) / 2);
+    assert(ry >= 28);
+
     printf("test_client_props passed!\n");
     return 0;
 }

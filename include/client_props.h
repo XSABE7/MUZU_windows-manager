@@ -18,6 +18,14 @@ void client_sanitize_title(char *out_buf, size_t maxlen, const char *raw_title);
 void client_calculate_dialog_geometry(int screen_w, int screen_h, int win_w, int win_h,
                                      int *out_x, int *out_y, int *out_w, int *out_h);
 
+// Resolve initial floating geometry: preserves client-specified coordinates (e.g. Audacious docked windows)
+// and centers unpositioned (0, 0) windows while respecting compact window heights.
+void client_resolve_initial_geometry(int screen_w, int screen_h,
+                                     int top_inset, int bottom_inset,
+                                     int req_x, int req_y, int req_w, int req_h,
+                                     int is_csd,
+                                     int *out_x, int *out_y, int *out_w, int *out_h);
+
 // Graceful window close via ICCCM WM_DELETE_WINDOW protocol with XKillClient fallback
 void client_close(Display *dpy, Window win);
 

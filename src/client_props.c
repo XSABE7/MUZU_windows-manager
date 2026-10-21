@@ -65,6 +65,38 @@ void client_calculate_dialog_geometry(int screen_w, int screen_h, int win_w, int
     if (out_h) *out_h = h;
 }
 
+void client_resolve_initial_geometry(int screen_w, int screen_h,
+                                     int top_inset, int bottom_inset,
+                                     int req_x, int req_y, int req_w, int req_h,
+                                     int is_csd,
+                                     int *out_x, int *out_y, int *out_w, int *out_h) {
+    int w = (req_w > 0) ? req_w : 600;
+    int h = (req_h > 0) ? req_h : 400;
+    int titlebar_h = is_csd ? 0 : 24;
+    int avail_h = screen_h - top_inset - bottom_inset - titlebar_h;
+
+    if (w > screen_w - 20) w = screen_w - 20;
+    if (avail_h > 50 && h > avail_h) h = avail_h;
+    if (w < 10) w = 10;
+    if (h < 10) h = 10;
+
+    int x, y;
+    if ((req_x > 0 || req_y > 0) && req_x < screen_w - 20 && req_y < screen_h - 20) {
+        x = req_x;
+        y = (req_y < top_inset) ? top_inset : req_y;
+    } else {
+        x = (screen_w - w) / 2;
+        y = top_inset + (avail_h - h) / 2;
+        if (x < 0) x = 0;
+        if (y < top_inset) y = top_inset;
+    }
+
+    if (out_x) *out_x = x;
+    if (out_y) *out_y = y;
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
+}
+
 void client_close(Display *dpy, Window win) {
     if (!dpy || win == None) return;
 

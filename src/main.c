@@ -462,6 +462,13 @@ static void set_focused_client(Display *dpy, Client *c) {
         }
     }
 
+    if (dpy) {
+        Atom net_active = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+        Window active_w = (c && c->win != None) ? c->win : None;
+        XChangeProperty(dpy, DefaultRootWindow(dpy), net_active, XA_WINDOW, 32,
+                        PropModeReplace, (unsigned char *)&active_w, 1);
+    }
+
     if (g_panel) {
         if (c && c->title[0] != '\0') {
             snprintf(g_panel->active_title, sizeof(g_panel->active_title), "%.127s", c->title);
@@ -815,13 +822,24 @@ int main(int argc, char **argv) {
     Atom net_muzu_reload_wallpaper = XInternAtom(dpy, "_MUZU_RELOAD_WALLPAPER", False);
     Atom net_wm_moveresize = XInternAtom(dpy, "_NET_WM_MOVERESIZE", False);
     Atom net_supported = XInternAtom(dpy, "_NET_SUPPORTED", False);
+    Atom net_supporting_wm_check = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False);
     Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
     Atom net_wm_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
     Atom net_active_window = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
     Atom net_close_window = XInternAtom(dpy, "_NET_CLOSE_WINDOW", False);
 
+    Window wm_check_win = XCreateSimpleWindow(dpy, root, -100, -100, 1, 1, 0, 0, 0);
+    XChangeProperty(dpy, wm_check_win, net_supporting_wm_check, XA_WINDOW, 32,
+                    PropModeReplace, (unsigned char *)&wm_check_win, 1);
+    XChangeProperty(dpy, wm_check_win, net_wm_name, utf8_string, 8,
+                    PropModeReplace, (const unsigned char *)"MUZUwm", 6);
+    XChangeProperty(dpy, root, net_supporting_wm_check, XA_WINDOW, 32,
+                    PropModeReplace, (unsigned char *)&wm_check_win, 1);
+
     Atom supported_atoms[] = {
         net_supported,
+        net_supporting_wm_check,
         net_wm_name,
         net_wm_icon,
         net_wm_moveresize,
@@ -865,31 +883,15 @@ int main(int argc, char **argv) {
                 }
 
                 if (!client_find(clients, w)) {
-                    int is_dialog = client_is_dialog(dpy, w);
                     int is_csd = client_is_csd(dpy, w);
                     int can_fs = client_supports_fullscreen(dpy, w);
 
-                    int win_w = 600, win_h = 400;
-                    if (wa.width > 0 && wa.height > 0) {
-                        win_w = wa.width;
-                        win_h = wa.height;
-                    }
-
-                    // Every new window floats centered on the desktop at its natural size
-                    int init_x = 0, init_y = TINT2_PANEL_HEIGHT;
-                    if (is_dialog) {
-                        client_calculate_dialog_geometry(screen_w, screen_h, win_w, win_h,
-                                                         &init_x, &init_y, &win_w, &win_h);
-                    } else {
-                        int avail_h = screen_h - cfg.top_inset - cfg.bottom_inset - TITLEBAR_HEIGHT;
-                        if (win_w > screen_w - 40) win_w = screen_w - 40;
-                        if (win_h > avail_h - 20) win_h = avail_h - 20;
-                        if (win_w < 50) win_w = 50;
-                        if (win_h < 50) win_h = 50;
-                        init_x = (screen_w - win_w) / 2;
-                        init_y = cfg.top_inset + (avail_h - win_h) / 2;
-                    }
-                    if (init_y < cfg.top_inset) init_y = cfg.top_inset;
+                    int init_x = 0, init_y = TINT2_PANEL_HEIGHT, win_w = 600, win_h = 400;
+                    client_resolve_initial_geometry(screen_w, screen_h,
+                                                    cfg.top_inset, cfg.bottom_inset,
+                                                    wa.x, wa.y, wa.width, wa.height,
+                                                    is_csd,
+                                                    &init_x, &init_y, &win_w, &win_h);
 
                     Window frame = is_csd ? None : titlebar_create(dpy, w, win_w);
                     client_add(&clients, w, CLIENT_FLOATING);
@@ -952,9 +954,9 @@ int main(int argc, char **argv) {
                     if (c->mode == CLIENT_FLOATING && !c->is_maximized) {
                         if (cre->value_mask & CWX) c->x = cre->x;
                         if (cre->value_mask & CWY) c->y = cre->y;
-                        if (cre->value_mask & CWWidth) c->width = cre->width > 50 ? cre->width : 50;
+                        if (cre->value_mask & CWWidth) c->width = cre->width > 10 ? cre->width : 10;
                         if (cre->value_mask & CWHeight) {
-                            int req_h = cre->height > 50 ? cre->height : 50;
+                            int req_h = cre->height > 10 ? cre->height : 10;
                             c->height = c->frame ? (req_h + TITLEBAR_HEIGHT) : req_h;
                         }
                         if (c->frame) {
@@ -965,6 +967,9 @@ int main(int argc, char **argv) {
                             titlebar_draw(dpy, c, &current_theme);
                         } else {
                             XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
+                            if ((cre->value_mask & CWStackMode) && cre->detail == Above) {
+                                XRaiseWindow(dpy, c->win);
+                            }
                         }
                     } else {
                         // Tiled or maximized: enforce WM geometry and send synthetic ConfigureNotify
