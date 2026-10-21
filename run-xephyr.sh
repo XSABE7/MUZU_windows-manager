@@ -28,9 +28,9 @@ WM_PID=$!
 sleep 0.5
 
 echo "Spawning test terminal windows..."
-DISPLAY=:2 xterm &
+DISPLAY=:2 xterm -fa "Monospace" -fs 10 &
 sleep 0.5
-DISPLAY=:2 xterm &
+DISPLAY=:2 xterm -fa "Monospace" -fs 10 &
 
 echo ""
 echo "========================================================"
