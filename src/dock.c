@@ -7,10 +7,12 @@
 #include <math.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
+#include <X11/Xatom.h>
 #include "dock.h"
 #include "wm.h"
 #include "icon_fetcher.h"
 #include "rofi_launcher.h"
+#include "client_props.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -238,6 +240,7 @@ static void draw_prominent_divider(cairo_t *cr, double pos, int is_vertical, int
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h) {
     if (!dock) return;
     if (dock->size <= 0) dock->size = 48;
+    if (pos == DOCK_TOP) pos = DOCK_BOTTOM;
     dock->pos = pos;
     dock->is_hidden = is_hidden;
 
@@ -252,19 +255,12 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
 
     switch (pos) {
         case DOCK_BOTTOM:
+        case DOCK_TOP:
             dock->width = content_len < (int)(screen_w * 0.85) ? content_len : (int)(screen_w * 0.85);
             dock->height = dock->size;
             dock->x = (screen_w - dock->width) / 2;
             dock->y = is_hidden ? screen_h - 4 : screen_h - dock->height - 6;
             break;
-        case DOCK_TOP: {
-            dock->width = content_len < (int)(screen_w * 0.85) ? content_len : (int)(screen_w * 0.85);
-            dock->height = dock->size;
-            dock->x = (screen_w - dock->width) / 2;
-            int top_clearance = dock->top_offset > 0 ? dock->top_offset : 58;
-            dock->y = is_hidden ? -dock->height + 4 : top_clearance;
-            break;
-        }
         case DOCK_LEFT:
             dock->width = dock->size;
             dock->height = content_len < (int)(screen_h * 0.85) ? content_len : (int)(screen_h * 0.85);
@@ -669,7 +665,7 @@ void dock_load_settings(Dock *dock) {
         } else if (sscanf(line, "magnification=%d", &val) == 1) {
             dock->magnification_enabled = (val != 0);
         } else if (sscanf(line, "position=%d", &val) == 1) {
-            if (val >= 0 && val <= 3) dock->pos = (DockPosition)val;
+            if (val >= 0 && val <= 3) dock->pos = (val == DOCK_TOP) ? DOCK_BOTTOM : (DockPosition)val;
         } else if (sscanf(line, "size=%d", &val) == 1) {
             if (val >= 24 && val <= 128) dock->size = val;
         } else if (sscanf(line, "apps_corner=%63s", str_val) == 1) {
@@ -762,6 +758,18 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
                                   DefaultDepth(dpy, screen), InputOutput,
                                   DefaultVisual(dpy, screen),
                                   CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+
+        Atom net_wm_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+        Atom net_wm_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+        XChangeProperty(dpy, dock->win, net_wm_type, XA_ATOM, 32, PropModeReplace,
+                        (unsigned char *)&net_wm_dock, 1);
+
+        Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+        XChangeProperty(dpy, dock->win, net_wm_name, XInternAtom(dpy, "UTF8_STRING", False), 8,
+                        PropModeReplace, (unsigned char *)"MUZUwm Dock", 11);
+        XStoreName(dpy, dock->win, "MUZUwm Dock");
+
+        client_set_opacity(dpy, dock->win, 0xF0AAAAAA);
 
         XSetWindowAttributes tattrs;
         tattrs.override_redirect = True;
@@ -1248,11 +1256,6 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
 
     int in_trigger = 0;
     if (dock->pos == DOCK_BOTTOM && y >= screen_h - dock->size - 10) in_trigger = 1;
-    else if (dock->pos == DOCK_TOP) {
-        int top_y = dock->top_offset > 0 ? dock->top_offset : 58;
-        int trigger_max = dock->is_hidden ? (top_y + 10) : (dock->y + dock->height + 10);
-        if (y <= trigger_max) in_trigger = 1;
-    }
     else if (dock->pos == DOCK_LEFT && x <= dock->size + 10) in_trigger = 1;
     else if (dock->pos == DOCK_RIGHT && x >= screen_w - dock->size - 10) in_trigger = 1;
 
@@ -1362,8 +1365,7 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     DockPosition next_pos;
     switch (dock->pos) {
         case DOCK_BOTTOM: next_pos = DOCK_LEFT; break;
-        case DOCK_LEFT:   next_pos = DOCK_TOP; break;
-        case DOCK_TOP:    next_pos = DOCK_RIGHT; break;
+        case DOCK_LEFT:   next_pos = DOCK_RIGHT; break;
         case DOCK_RIGHT:  next_pos = DOCK_BOTTOM; break;
         default:          next_pos = DOCK_BOTTOM; break;
     }
@@ -1372,17 +1374,12 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
 DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_w, int screen_h) {
     int dist_bottom = screen_h - center_y;
-    int dist_top = center_y;
     int dist_left = center_x;
     int dist_right = screen_w - center_x;
 
     int min_dist = dist_bottom;
     DockPosition pos = DOCK_BOTTOM;
 
-    if (dist_top < min_dist) {
-        min_dist = dist_top;
-        pos = DOCK_TOP;
-    }
     if (dist_left < min_dist) {
         min_dist = dist_left;
         pos = DOCK_LEFT;

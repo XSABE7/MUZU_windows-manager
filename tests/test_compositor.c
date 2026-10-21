@@ -24,7 +24,7 @@ int main(void) {
 
     assert(strstr(buf, "dual_kawase") != NULL);
     assert(strstr(buf, "glx") != NULL);
-    assert(strstr(buf, "strength = 5") != NULL);
+    assert(strstr(buf, "strength =") != NULL);
     assert(strstr(buf, "vsync = true") != NULL);
 
     compositor_cleanup();

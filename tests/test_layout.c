@@ -57,12 +57,8 @@ int main(void) {
     assert(dock.x == (1920 - dock.width) / 2);
 
     dock_calculate_geometry(&dock, DOCK_TOP, 0, 1920, 1080);
-    assert(dock.pos == DOCK_TOP);
-    assert(dock.y >= 30);
-    dock.top_offset = 70;
-    dock_calculate_geometry(&dock, DOCK_TOP, 0, 1920, 1080);
-    assert(dock.y == 70);
-    dock.top_offset = 0;
+    assert(dock.pos == DOCK_BOTTOM);
+    assert(dock.y > 1000);
 
     dock_calculate_geometry(&dock, DOCK_LEFT, 0, 1920, 1080);
     assert(dock.pos == DOCK_LEFT);
@@ -119,8 +115,7 @@ int main(void) {
     assert(dock_800.x == (800 - dock_800.width) / 2);
 
     dock_calculate_geometry(&dock_800, DOCK_TOP, 0, 800, 600);
-    assert(dock_800.pos == DOCK_TOP);
-    assert(dock_800.y >= 30);
+    assert(dock_800.pos == DOCK_BOTTOM);
 
     dock_calculate_geometry(&dock_800, DOCK_LEFT, 0, 800, 600);
     assert(dock_800.pos == DOCK_LEFT);
@@ -341,10 +336,6 @@ int main(void) {
         assert(d.height > d.width); // Vertical
 
         dock_cycle_position(NULL, &d, 1920, 1080);
-        assert(d.pos == DOCK_TOP);
-        assert(d.width > d.height); // Horizontal
-
-        dock_cycle_position(NULL, &d, 1920, 1080);
         assert(d.pos == DOCK_RIGHT);
         assert(d.height > d.width); // Vertical
 
@@ -396,13 +387,16 @@ int main(void) {
         dock_cleanup(&d);
     }
 
-    // Test 13: Dock Calculate Nearest Edge for Drag-and-Snap
+    // Test 13: Dock Calculate Nearest Edge for Drag-and-Snap (BOTTOM, LEFT, RIGHT - TOP disabled)
     {
         // Bottom: near (960, 1000) on 1920x1080 screen
         assert(dock_calculate_nearest_edge(960, 1000, 1920, 1080) == DOCK_BOTTOM);
 
-        // Top: near (960, 50) on 1920x1080 screen
-        assert(dock_calculate_nearest_edge(960, 50, 1920, 1080) == DOCK_TOP);
+        // Near top-left (400, 50) snaps to LEFT because TOP is disabled
+        assert(dock_calculate_nearest_edge(400, 50, 1920, 1080) == DOCK_LEFT);
+
+        // Near top-right (1500, 50) snaps to RIGHT because TOP is disabled
+        assert(dock_calculate_nearest_edge(1500, 50, 1920, 1080) == DOCK_RIGHT);
 
         // Left: near (50, 540) on 1920x1080 screen
         assert(dock_calculate_nearest_edge(50, 540, 1920, 1080) == DOCK_LEFT);

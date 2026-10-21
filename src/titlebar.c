@@ -66,6 +66,11 @@ Window titlebar_create(Display *dpy, Window client_win, int width) {
                                  DefaultVisual(dpy, screen),
                                  CWBackPixel | CWEventMask, &attrs);
 
+    Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    XChangeProperty(dpy, frame, net_wm_name, XInternAtom(dpy, "UTF8_STRING", False), 8,
+                    PropModeReplace, (unsigned char *)"MUZUwm Titlebar", 15);
+    XStoreName(dpy, frame, "MUZUwm Titlebar");
+
     XReparentWindow(dpy, client_win, frame, 0, TITLEBAR_HEIGHT);
     XMapWindow(dpy, frame);
     return frame;

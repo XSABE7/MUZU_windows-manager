@@ -13,7 +13,7 @@ tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_pr
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c
+test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c src/client_props.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_trigger: tests/test_trigger.c src/trigger.c
