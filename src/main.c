@@ -208,7 +208,7 @@ static void handle_menu_action(int action_id, void *userdata) {
             dock_set_position(dpy, dock, DOCK_LEFT, screen_w, screen_h);
             break;
         case DOCK_ACTION_POS_TOP:
-            dock_set_position(dpy, dock, DOCK_TOP, screen_w, screen_h);
+            dock_set_position(dpy, dock, DOCK_BOTTOM, screen_w, screen_h);
             break;
         case DOCK_ACTION_POS_RIGHT:
             dock_set_position(dpy, dock, DOCK_RIGHT, screen_w, screen_h);
@@ -1071,7 +1071,6 @@ int main(int argc, char **argv) {
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
                         menu_add_item(&context_menu, "Position: Left", DOCK_ACTION_POS_LEFT);
-                        menu_add_item(&context_menu, "Position: Top", DOCK_ACTION_POS_TOP);
                         menu_add_item(&context_menu, "Position: Right", DOCK_ACTION_POS_RIGHT);
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);

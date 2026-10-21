@@ -49,7 +49,7 @@ int main(void) {
     layout_calculate(&cfg, head, 1);
     assert(client_find(head, 102)->width == 1920);
 
-    // Test 5: Dock 4-edge positioning geometry calculation
+    // Test 5: Dock 3-edge positioning geometry calculation (Top disabled, falls back to Bottom)
     Dock dock = {0};
     dock_calculate_geometry(&dock, DOCK_BOTTOM, 0, 1920, 1080);
     assert(dock.pos == DOCK_BOTTOM);
@@ -57,8 +57,8 @@ int main(void) {
     assert(dock.x == (1920 - dock.width) / 2);
 
     dock_calculate_geometry(&dock, DOCK_TOP, 0, 1920, 1080);
-    assert(dock.pos == DOCK_TOP);
-    assert(dock.y == 6);
+    assert(dock.pos == DOCK_BOTTOM);
+    assert(dock.y > 1000);
 
     dock_calculate_geometry(&dock, DOCK_LEFT, 0, 1920, 1080);
     assert(dock.pos == DOCK_LEFT);
@@ -115,8 +115,8 @@ int main(void) {
     assert(dock_800.x == (800 - dock_800.width) / 2);
 
     dock_calculate_geometry(&dock_800, DOCK_TOP, 0, 800, 600);
-    assert(dock_800.pos == DOCK_TOP);
-    assert(dock_800.y == 6);
+    assert(dock_800.pos == DOCK_BOTTOM);
+    assert(dock_800.y > 530);
 
     dock_calculate_geometry(&dock_800, DOCK_LEFT, 0, 800, 600);
     assert(dock_800.pos == DOCK_LEFT);
@@ -336,14 +336,12 @@ int main(void) {
         assert(d.pos == DOCK_LEFT);
         assert(d.height > d.width); // Vertical
 
-        dock_cycle_position(NULL, &d, 1920, 1080);
-        assert(d.pos == DOCK_TOP);
-        assert(d.width > d.height); // Horizontal
-
+        // Top disabled, cycles directly to Right
         dock_cycle_position(NULL, &d, 1920, 1080);
         assert(d.pos == DOCK_RIGHT);
         assert(d.height > d.width); // Vertical
 
+        // Cycle 3: Right -> Bottom
         dock_cycle_position(NULL, &d, 1920, 1080);
         assert(d.pos == DOCK_BOTTOM);
         assert(d.width > d.height); // Horizontal
@@ -397,8 +395,8 @@ int main(void) {
         // Bottom: near (960, 1000) on 1920x1080 screen
         assert(dock_calculate_nearest_edge(960, 1000, 1920, 1080) == DOCK_BOTTOM);
 
-        // Top: near (960, 50) on 1920x1080 screen
-        assert(dock_calculate_nearest_edge(960, 50, 1920, 1080) == DOCK_TOP);
+        // Top edge disabled: near (960, 50) snaps to nearest valid edge (Left or Right, not Top)
+        assert(dock_calculate_nearest_edge(960, 50, 1920, 1080) != DOCK_TOP);
 
         // Left: near (50, 540) on 1920x1080 screen
         assert(dock_calculate_nearest_edge(50, 540, 1920, 1080) == DOCK_LEFT);
@@ -523,6 +521,28 @@ int main(void) {
         dock_render_tooltip(NULL, &sep_dock, 1920, 1080);
 
         dock_cleanup(&sep_dock);
+    }
+
+    // Test dock top position removal & edge cycling
+    {
+        Dock d;
+        memset(&d, 0, sizeof(d));
+        d.size = 48;
+        d.pos = DOCK_BOTTOM;
+
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_LEFT);
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_RIGHT);
+        dock_cycle_position(NULL, &d, 1920, 1080);
+        assert(d.pos == DOCK_BOTTOM);
+
+        DockPosition nearest = dock_calculate_nearest_edge(960, 10, 1920, 1080);
+        assert(nearest != DOCK_TOP);
+
+        d.pos = DOCK_TOP;
+        dock_calculate_geometry(&d, d.pos, 0, 1920, 1080);
+        assert(d.pos == DOCK_BOTTOM);
     }
 
     printf("test_layout passed!\n");

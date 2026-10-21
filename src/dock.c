@@ -250,6 +250,11 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
     int content_len = count * (icon_size + margin) + sep_gap +
                       (min_count > 0 ? 18 + min_count * (icon_size + margin) : 0) + 12;
 
+    if (pos == DOCK_TOP) {
+        pos = DOCK_BOTTOM;
+        dock->pos = DOCK_BOTTOM;
+    }
+
     switch (pos) {
         case DOCK_BOTTOM:
             dock->width = content_len < (int)(screen_w * 0.85) ? content_len : (int)(screen_w * 0.85);
@@ -679,6 +684,9 @@ void dock_load_settings(Dock *dock) {
         }
     }
     fclose(f);
+    if (dock->pos == DOCK_TOP) {
+        dock->pos = DOCK_BOTTOM;
+    }
     dock_enforce_special_items(dock);
 }
 
@@ -1332,6 +1340,8 @@ void dock_handle_click(Display *dpy, Dock *dock, RofiLauncher *rofi, int x, int 
 }
 
 void dock_set_position(Display *dpy, Dock *dock, DockPosition new_pos, int screen_w, int screen_h) {
+    if (!dock) return;
+    if (new_pos == DOCK_TOP) new_pos = DOCK_BOTTOM;
     dock_calculate_geometry(dock, new_pos, dock->is_hidden, screen_w, screen_h);
     if (dpy && dock->win) {
         XMoveResizeWindow(dpy, dock->win, dock->x, dock->y, dock->width, dock->height);
@@ -1351,8 +1361,7 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     DockPosition next_pos;
     switch (dock->pos) {
         case DOCK_BOTTOM: next_pos = DOCK_LEFT; break;
-        case DOCK_LEFT:   next_pos = DOCK_TOP; break;
-        case DOCK_TOP:    next_pos = DOCK_RIGHT; break;
+        case DOCK_LEFT:   next_pos = DOCK_RIGHT; break;
         case DOCK_RIGHT:  next_pos = DOCK_BOTTOM; break;
         default:          next_pos = DOCK_BOTTOM; break;
     }
@@ -1361,17 +1370,12 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
 DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_w, int screen_h) {
     int dist_bottom = screen_h - center_y;
-    int dist_top = center_y;
     int dist_left = center_x;
     int dist_right = screen_w - center_x;
 
     int min_dist = dist_bottom;
     DockPosition pos = DOCK_BOTTOM;
 
-    if (dist_top < min_dist) {
-        min_dist = dist_top;
-        pos = DOCK_TOP;
-    }
     if (dist_left < min_dist) {
         min_dist = dist_left;
         pos = DOCK_LEFT;
