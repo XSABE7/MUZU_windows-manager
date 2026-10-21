@@ -344,6 +344,9 @@ int dock_add_minimized(Dock *dock, Client *c) {
         dock->minimized[idx].icon_surface = c->icon_surface;
     } else {
         c->icon_surface = icon_load_surface(c->title);
+        if (!c->icon_surface) {
+            c->icon_surface = icon_load_surface("application-x-executable");
+        }
         dock->minimized[idx].icon_surface = c->icon_surface;
     }
     dock->minimized_count++;
@@ -543,6 +546,9 @@ int dock_add_app(Dock *dock, const char *name, const char *exec, const char *ico
     safe_copy(dock->items[idx].icon_name, icon_name ? icon_name : "", sizeof(dock->items[idx].icon_name));
     dock->items[idx].is_running = 0;
     dock->items[idx].icon_surface = icon_load_surface(dock->items[idx].icon_name);
+    if (!dock->items[idx].icon_surface && name && name[0] != '\0') {
+        dock->items[idx].icon_surface = icon_load_surface(name);
+    }
     if (!dock->items[idx].icon_surface) {
         dock->items[idx].icon_surface = icon_load_surface("application-x-executable");
     }
