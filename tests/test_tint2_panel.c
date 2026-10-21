@@ -91,6 +91,27 @@ int main(void) {
         tint2_panel_cleanup(&cfg_panel);
     }
 
+    // Test 8: Bottom panel inset in LayoutConfig
+    {
+        Client *b_clients = NULL;
+        client_add(&b_clients, 2001, CLIENT_TILED);
+        LayoutConfig b_lcfg = {
+            .screen_width = 1920,
+            .screen_height = 1080,
+            .master_count = 1,
+            .top_inset = 0,
+            .bottom_inset = 28,
+            .current_workspace = 0
+        };
+        layout_calculate(&b_lcfg, b_clients, 0);
+        Client *bc = client_find(b_clients, 2001);
+        assert(bc != NULL);
+        assert(bc->y == 0);
+        assert(bc->height == 1080 - 28);
+        assert(bc->width == 1920);
+        client_remove(&b_clients, 2001);
+    }
+
     tint2_panel_cleanup(&panel);
     printf("test_tint2_panel passed!\n");
     return 0;

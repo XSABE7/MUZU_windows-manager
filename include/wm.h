@@ -47,6 +47,7 @@ typedef struct {
     int screen_height;
     int master_count;
     int top_inset;
+    int bottom_inset;
     int current_workspace;
 } LayoutConfig;
 

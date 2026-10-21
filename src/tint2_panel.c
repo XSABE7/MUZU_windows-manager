@@ -44,12 +44,51 @@ static void draw_rounded_rect(cairo_t *cr, double x, double y, double w, double 
 }
 
 const char *tint2_panel_get_config_path(void) {
-    if (tint2_cfg_path[0] == '\0') {
-        const char *home = getenv("HOME");
-        if (!home) home = "/tmp";
-        snprintf(tint2_cfg_path, sizeof(tint2_cfg_path), "%s/.config/muzuwm/tint2rc", home);
+    if (tint2_cfg_path[0] != '\0') return tint2_cfg_path;
+
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+
+    char candidate[512];
+    // 1. Check ~/.config/muzuwm/tint2rc
+    snprintf(candidate, sizeof(candidate), "%s/.config/muzuwm/tint2rc", home);
+    if (access(candidate, R_OK) == 0) {
+        snprintf(tint2_cfg_path, sizeof(tint2_cfg_path), "%s", candidate);
+        return tint2_cfg_path;
     }
+
+    // 2. Check upstream standard ~/.config/tint2/tint2rc
+    snprintf(candidate, sizeof(candidate), "%s/.config/tint2/tint2rc", home);
+    if (access(candidate, R_OK) == 0) {
+        snprintf(tint2_cfg_path, sizeof(tint2_cfg_path), "%s", candidate);
+        return tint2_cfg_path;
+    }
+
+    // 3. Check system-wide /etc/xdg/tint2/tint2rc
+    if (access("/etc/xdg/tint2/tint2rc", R_OK) == 0) {
+        snprintf(tint2_cfg_path, sizeof(tint2_cfg_path), "/etc/xdg/tint2/tint2rc");
+        return tint2_cfg_path;
+    }
+
+    // Default target: ~/.config/muzuwm/tint2rc
+    snprintf(tint2_cfg_path, sizeof(tint2_cfg_path), "%s/.config/muzuwm/tint2rc", home);
     return tint2_cfg_path;
+}
+
+static int tint2_parse_color(const char *val, double *r, double *g, double *b, double *a) {
+    if (!val || val[0] != '#') return 0;
+    unsigned int hex = 0;
+    int alpha_pct = 100;
+    if (sscanf(val, "#%6x %d", &hex, &alpha_pct) >= 1) {
+        *r = ((hex >> 16) & 0xFF) / 255.0;
+        *g = ((hex >> 8) & 0xFF) / 255.0;
+        *b = (hex & 0xFF) / 255.0;
+        if (alpha_pct < 0) alpha_pct = 0;
+        if (alpha_pct > 100) alpha_pct = 100;
+        *a = alpha_pct / 100.0;
+        return 1;
+    }
+    return 0;
 }
 
 static void tint2_panel_ensure_config(void) {
@@ -83,16 +122,8 @@ static void tint2_panel_ensure_config(void) {
 
 void tint2_panel_load_config(Tint2Panel *panel) {
     if (!panel) return;
-    const char *home = getenv("HOME");
-    if (!home) return;
-
-    char path[512];
-    snprintf(path, sizeof(path), "%s/.config/muzuwm/tint2rc", home);
+    const char *path = tint2_panel_get_config_path();
     FILE *f = fopen(path, "r");
-    if (!f) {
-        snprintf(path, sizeof(path), "%s/.config/tint2/tint2rc", home);
-        f = fopen(path, "r");
-    }
     if (!f) return;
 
     char line[512];
@@ -129,6 +160,30 @@ void tint2_panel_load_config(Tint2Panel *panel) {
                 panel->is_top = 0;
             } else {
                 panel->is_top = 1;
+            }
+        } else if (strcmp(key, "background_color") == 0) {
+            if (tint2_parse_color(val, &panel->bg_r, &panel->bg_g, &panel->bg_b, &panel->bg_a)) {
+                panel->has_custom_bg = 1;
+            }
+        } else if (strcmp(key, "border_color") == 0) {
+            if (tint2_parse_color(val, &panel->border_r, &panel->border_g, &panel->border_b, &panel->border_a)) {
+                panel->has_custom_border = 1;
+            }
+        } else if (strcmp(key, "border_width") == 0) {
+            panel->border_width = atof(val);
+        } else if (strcmp(key, "rounded") == 0) {
+            panel->rounded = atof(val);
+        } else if (strcmp(key, "clock_font_color") == 0) {
+            if (tint2_parse_color(val, &panel->clock_r, &panel->clock_g, &panel->clock_b, &panel->clock_a)) {
+                panel->has_custom_clock_color = 1;
+            }
+        } else if (strcmp(key, "taskbar_name_font_color") == 0) {
+            if (tint2_parse_color(val, &panel->ws_font_r, &panel->ws_font_g, &panel->ws_font_b, &panel->ws_font_a)) {
+                panel->has_custom_ws_color = 1;
+            }
+        } else if (strcmp(key, "taskbar_name_active_font_color") == 0) {
+            if (tint2_parse_color(val, &panel->ws_active_font_r, &panel->ws_active_font_g, &panel->ws_active_font_b, &panel->ws_active_font_a)) {
+                panel->has_custom_ws_color = 1;
             }
         }
     }
@@ -176,6 +231,7 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
     memset(panel, 0, sizeof(Tint2Panel));
     panel->width = (screen_w > 0) ? screen_w : 1920;
     panel->height = TINT2_PANEL_HEIGHT;
+    panel->is_top = 1;
     panel->current_workspace = 0;
     panel->hover_workspace = -1;
     panel->hover_power = 0;
@@ -189,6 +245,8 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
     if (dpy) {
         int screen = DefaultScreen(dpy);
         Window root = RootWindow(dpy, screen);
+        int screen_h = DisplayHeight(dpy, screen);
+        int win_y = panel->is_top ? 0 : (screen_h - panel->height);
 
         XSetWindowAttributes attrs;
         attrs.override_redirect = True;
@@ -196,7 +254,7 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
         attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
                            PointerMotionMask | EnterWindowMask | LeaveWindowMask;
 
-        panel->win = XCreateWindow(dpy, root, 0, 0, panel->width, panel->height, 0,
+        panel->win = XCreateWindow(dpy, root, 0, win_y, panel->width, panel->height, 0,
                                    CopyFromParent, InputOutput, CopyFromParent,
                                    CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
 
@@ -282,23 +340,38 @@ void tint2_panel_render(Display *dpy, Tint2Panel *panel) {
     cairo_t *cr = cairo_create(panel->surface);
     if (!cr) return;
 
-    // 1. Liquid / Acrylic Smoked Glass Background
+    // 1. Background (Custom from tint2rc or Liquid / Acrylic Smoked Glass)
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_pattern_t *bg_pat = cairo_pattern_create_linear(0, 0, 0, panel->height);
-    cairo_pattern_add_color_stop_rgba(bg_pat, 0.0, 0.09, 0.10, 0.13, 0.88);
-    cairo_pattern_add_color_stop_rgba(bg_pat, 1.0, 0.05, 0.06, 0.08, 0.80);
-    cairo_set_source(cr, bg_pat);
-    cairo_rectangle(cr, 0, 0, panel->width, panel->height);
-    cairo_fill(cr);
-    cairo_pattern_destroy(bg_pat);
+    if (panel->has_custom_bg) {
+        cairo_set_source_rgba(cr, panel->bg_r, panel->bg_g, panel->bg_b, panel->bg_a);
+        cairo_rectangle(cr, 0, 0, panel->width, panel->height);
+        cairo_fill(cr);
+    } else {
+        cairo_pattern_t *bg_pat = cairo_pattern_create_linear(0, 0, 0, panel->height);
+        cairo_pattern_add_color_stop_rgba(bg_pat, 0.0, 0.09, 0.10, 0.13, 0.88);
+        cairo_pattern_add_color_stop_rgba(bg_pat, 1.0, 0.05, 0.06, 0.08, 0.80);
+        cairo_set_source(cr, bg_pat);
+        cairo_rectangle(cr, 0, 0, panel->width, panel->height);
+        cairo_fill(cr);
+        cairo_pattern_destroy(bg_pat);
+    }
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
-    // Bottom specular refraction border
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.14);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, 0, panel->height - 0.5);
-    cairo_line_to(cr, panel->width, panel->height - 0.5);
-    cairo_stroke(cr);
+    // Border (Custom from tint2rc or bottom specular refraction border)
+    if (panel->has_custom_border) {
+        cairo_set_source_rgba(cr, panel->border_r, panel->border_g, panel->border_b, panel->border_a);
+        cairo_set_line_width(cr, panel->border_width > 0 ? panel->border_width : 1.0);
+        double by = panel->is_top ? (panel->height - 0.5) : 0.5;
+        cairo_move_to(cr, 0, by);
+        cairo_line_to(cr, panel->width, by);
+        cairo_stroke(cr);
+    } else {
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.14);
+        cairo_set_line_width(cr, 1.0);
+        cairo_move_to(cr, 0, panel->height - 0.5);
+        cairo_line_to(cr, panel->width, panel->height - 0.5);
+        cairo_stroke(cr);
+    }
 
     // 2. Left Section: Workspaces Manager (1 .. 4)
     for (int i = 0; i < TINT2_NUM_WORKSPACES; i++) {
@@ -336,9 +409,17 @@ void tint2_panel_render(Display *dpy, Tint2Panel *panel) {
         cairo_text_extents_t ext;
         cairo_text_extents(cr, ws_lbl, &ext);
         if (is_active) {
-            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+            if (panel->has_custom_ws_color) {
+                cairo_set_source_rgba(cr, panel->ws_active_font_r, panel->ws_active_font_g, panel->ws_active_font_b, panel->ws_active_font_a);
+            } else {
+                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+            }
         } else {
-            cairo_set_source_rgba(cr, 0.82, 0.85, 0.90, 0.85);
+            if (panel->has_custom_ws_color) {
+                cairo_set_source_rgba(cr, panel->ws_font_r, panel->ws_font_g, panel->ws_font_b, panel->ws_font_a);
+            } else {
+                cairo_set_source_rgba(cr, 0.82, 0.85, 0.90, 0.85);
+            }
         }
         cairo_move_to(cr, wx + (ww - ext.width) / 2.0 - ext.x_bearing, wy + 14.0);
         cairo_show_text(cr, ws_lbl);
@@ -383,7 +464,11 @@ void tint2_panel_render(Display *dpy, Tint2Panel *panel) {
     cairo_set_font_size(cr, 11.5);
     cairo_text_extents_t cext;
     cairo_text_extents(cr, full_clock, &cext);
-    cairo_set_source_rgb(cr, 0.94, 0.96, 0.99);
+    if (panel->has_custom_clock_color) {
+        cairo_set_source_rgba(cr, panel->clock_r, panel->clock_g, panel->clock_b, panel->clock_a);
+    } else {
+        cairo_set_source_rgb(cr, 0.94, 0.96, 0.99);
+    }
     cairo_move_to(cr, clock_x + (clock_w - cext.width) / 2.0 - cext.x_bearing, 18.0);
     cairo_show_text(cr, full_clock);
 

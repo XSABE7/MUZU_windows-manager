@@ -52,10 +52,22 @@ typedef struct RofiLauncher {
     int drag_start_root_x, drag_start_root_y;
     int drag_app_idx;
 
+    // Rofi configuration compatibility
+    int has_custom_colors;
+    double bg_r, bg_g, bg_b;
+    double fg_r, fg_g, fg_b;
+    double accent_r, accent_g, accent_b;
+    char font_name[64];
+    char prompt_text[64];
+    char config_path[512];
+    int use_external_rofi;
+
     const GtkTheme *theme;
 } RofiLauncher;
 
 void rofi_launcher_init(Display *dpy, RofiLauncher *rofi, int screen_w, int screen_h, const GtkTheme *theme);
+void rofi_launcher_load_config(RofiLauncher *rofi);
+const char *rofi_launcher_get_config_path(const RofiLauncher *rofi);
 void rofi_launcher_cleanup(RofiLauncher *rofi);
 void rofi_launcher_scan_apps(RofiLauncher *rofi);
 void rofi_launcher_filter(RofiLauncher *rofi);

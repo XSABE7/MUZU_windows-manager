@@ -350,6 +350,221 @@ void rofi_launcher_execute_selected(Display *dpy, RofiLauncher *rofi) {
     }
 }
 
+static int rofi_parse_hex_color(const char *val, double *r, double *g, double *b) {
+    if (!val) return 0;
+    const char *hash = strchr(val, '#');
+    if (!hash) return 0;
+    hash++; // Skip '#'
+    unsigned int hex = 0;
+    int len = 0;
+    while (isxdigit((unsigned char)hash[len])) len++;
+    if (len >= 6) {
+        if (sscanf(hash, "%6x", &hex) == 1) {
+            *r = ((hex >> 16) & 0xFF) / 255.0;
+            *g = ((hex >> 8) & 0xFF) / 255.0;
+            *b = (hex & 0xFF) / 255.0;
+            return 1;
+        }
+    } else if (len >= 3) {
+        if (sscanf(hash, "%3x", &hex) == 1) {
+            unsigned int r_int = (hex >> 8) & 0xF;
+            unsigned int g_int = (hex >> 4) & 0xF;
+            unsigned int b_int = hex & 0xF;
+            *r = (r_int | (r_int << 4)) / 255.0;
+            *g = (g_int | (g_int << 4)) / 255.0;
+            *b = (b_int | (b_int << 4)) / 255.0;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void parse_rasi_file(RofiLauncher *rofi, const char *path, const char *base_dir, int depth) {
+    if (!rofi || !path || depth > 5) return;
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        // Strip comments // or /*
+        char *c_slash = strstr(line, "//");
+        if (c_slash) *c_slash = '\0';
+        char *c_block = strstr(line, "/*");
+        if (c_block) *c_block = '\0';
+        line[strcspn(line, "\r\n")] = '\0';
+
+        char *p = line;
+        while (*p && isspace((unsigned char)*p)) p++;
+
+        // Check @import "filename"
+        if (strncmp(p, "@import", 7) == 0) {
+            char *quote_start = strpbrk(p + 7, "'\"");
+            if (quote_start) {
+                char q = *quote_start;
+                char *quote_end = strchr(quote_start + 1, q);
+                if (quote_end) {
+                    *quote_end = '\0';
+                    char imp_name[256];
+                    safe_copy(imp_name, quote_start + 1, sizeof(imp_name));
+                    if (!strchr(imp_name, '.')) {
+                        strncat(imp_name, ".rasi", sizeof(imp_name) - strlen(imp_name) - 1);
+                    }
+                    char resolved[512];
+                    if (imp_name[0] == '/' || imp_name[0] == '~') {
+                        if (imp_name[0] == '~') {
+                            const char *home = getenv("HOME");
+                            snprintf(resolved, sizeof(resolved), "%s%s", home ? home : "", imp_name + 1);
+                        } else {
+                            safe_copy(resolved, imp_name, sizeof(resolved));
+                        }
+                    } else if (base_dir && base_dir[0] != '\0') {
+                        snprintf(resolved, sizeof(resolved), "%s/%s", base_dir, imp_name);
+                    } else {
+                        safe_copy(resolved, imp_name, sizeof(resolved));
+                    }
+                    parse_rasi_file(rofi, resolved, base_dir, depth + 1);
+                }
+            }
+            continue;
+        }
+
+        // Look for property : value
+        char *colon = strchr(p, ':');
+        if (!colon) continue;
+        *colon = '\0';
+        char *key = p;
+        char *val = colon + 1;
+
+        // Trim key
+        while (*key && isspace((unsigned char)*key)) key++;
+        char *end_k = key + strlen(key) - 1;
+        while (end_k > key && isspace((unsigned char)*end_k)) *end_k-- = '\0';
+
+        // Trim val
+        while (*val && isspace((unsigned char)*val)) val++;
+        char *end_v = val + strlen(val) - 1;
+        while (end_v > val && (*end_v == ';' || isspace((unsigned char)*end_v))) *end_v-- = '\0';
+
+        if (strcmp(key, "bg") == 0 || strcmp(key, "background") == 0 || strcmp(key, "background-color") == 0) {
+            if (rofi_parse_hex_color(val, &rofi->bg_r, &rofi->bg_g, &rofi->bg_b)) {
+                rofi->has_custom_colors = 1;
+            }
+        } else if (strcmp(key, "fg") == 0 || strcmp(key, "foreground") == 0 || strcmp(key, "text-color") == 0) {
+            if (rofi_parse_hex_color(val, &rofi->fg_r, &rofi->fg_g, &rofi->fg_b)) {
+                rofi->has_custom_colors = 1;
+            }
+        } else if (strcmp(key, "accent") == 0 || strcmp(key, "primary") == 0 || strcmp(key, "highlight") == 0 || strcmp(key, "border-color") == 0) {
+            if (rofi_parse_hex_color(val, &rofi->accent_r, &rofi->accent_g, &rofi->accent_b)) {
+                rofi->has_custom_colors = 1;
+            }
+        } else if (strcmp(key, "font") == 0) {
+            char *q_start = strpbrk(val, "'\"");
+            char font_buf[128];
+            if (q_start) {
+                char q = *q_start;
+                char *q_end = strchr(q_start + 1, q);
+                if (q_end) *q_end = '\0';
+                safe_copy(font_buf, q_start + 1, sizeof(font_buf));
+            } else {
+                safe_copy(font_buf, val, sizeof(font_buf));
+            }
+            char *last_space = strrchr(font_buf, ' ');
+            if (last_space && isdigit((unsigned char)*(last_space + 1))) {
+                *last_space = '\0';
+            }
+            safe_copy(rofi->font_name, font_buf, sizeof(rofi->font_name));
+        } else if (strcmp(key, "display-drun") == 0 || strcmp(key, "prompt") == 0) {
+            char *q_start = strpbrk(val, "'\"");
+            if (q_start) {
+                char q = *q_start;
+                char *q_end = strchr(q_start + 1, q);
+                if (q_end) *q_end = '\0';
+                safe_copy(rofi->prompt_text, q_start + 1, sizeof(rofi->prompt_text));
+            } else {
+                safe_copy(rofi->prompt_text, val, sizeof(rofi->prompt_text));
+            }
+        }
+    }
+    fclose(f);
+}
+
+const char *rofi_launcher_get_config_path(const RofiLauncher *rofi) {
+    if (rofi && rofi->config_path[0] != '\0') return rofi->config_path;
+
+    static char found_path[512] = {0};
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+
+    const char *candidates[] = {
+        "%s/.config/muzuwm/config.rasi",
+        "%s/.config/muzuwm/rofi.rasi",
+        "%s/.config/rofi/config.rasi",
+        "%s/.config/i3/rofi/config.rasi",
+        "/etc/rofi/config.rasi"
+    };
+
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        char path[512];
+        if (candidates[i][0] == '%') {
+            snprintf(path, sizeof(path), candidates[i], home);
+        } else {
+            safe_copy(path, candidates[i], sizeof(path));
+        }
+        if (access(path, R_OK) == 0) {
+            safe_copy(found_path, path, sizeof(found_path));
+            return found_path;
+        }
+    }
+
+    snprintf(found_path, sizeof(found_path), "%s/.config/muzuwm/config.rasi", home);
+    return found_path;
+}
+
+void rofi_launcher_load_config(RofiLauncher *rofi) {
+    if (!rofi) return;
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+
+    const char *cfg_path = rofi_launcher_get_config_path(rofi);
+    if (cfg_path && access(cfg_path, R_OK) == 0) {
+        safe_copy(rofi->config_path, cfg_path, sizeof(rofi->config_path));
+        char base_dir[512];
+        safe_copy(base_dir, cfg_path, sizeof(base_dir));
+        char *slash = strrchr(base_dir, '/');
+        if (slash) *slash = '\0';
+        else base_dir[0] = '\0';
+
+        parse_rasi_file(rofi, cfg_path, base_dir, 0);
+    }
+
+    // Supplementary check for colors.rasi if needed
+    if (!rofi->has_custom_colors) {
+        const char *color_candidates[] = {
+            "%s/.config/muzuwm/colors.rasi",
+            "%s/.config/rofi/colors.rasi",
+            "%s/.config/i3/rofi/colors.rasi"
+        };
+        for (size_t i = 0; i < sizeof(color_candidates) / sizeof(color_candidates[0]); i++) {
+            char cpath[512];
+            snprintf(cpath, sizeof(cpath), color_candidates[i], home);
+            if (access(cpath, R_OK) == 0) {
+                char base_dir[512];
+                safe_copy(base_dir, cpath, sizeof(base_dir));
+                char *slash = strrchr(base_dir, '/');
+                if (slash) *slash = '\0';
+                else base_dir[0] = '\0';
+                parse_rasi_file(rofi, cpath, base_dir, 0);
+                if (rofi->has_custom_colors) break;
+            }
+        }
+    }
+
+    const char *ext_env = getenv("MUZU_EXTERNAL_ROFI");
+    if (ext_env && (strcmp(ext_env, "1") == 0 || strcmp(ext_env, "true") == 0)) {
+        rofi->use_external_rofi = 1;
+    }
+}
+
 void rofi_launcher_init(Display *dpy, RofiLauncher *rofi, int screen_w, int screen_h, const GtkTheme *theme) {
     if (!rofi) return;
     memset(rofi, 0, sizeof(RofiLauncher));
@@ -365,6 +580,7 @@ void rofi_launcher_init(Display *dpy, RofiLauncher *rofi, int screen_w, int scre
     rofi->is_visible = 0;
     rofi->is_animating = 0;
 
+    rofi_launcher_load_config(rofi);
     rofi_launcher_scan_apps(rofi);
     rofi_launcher_filter(rofi);
 
@@ -428,15 +644,28 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
     cairo_t *cr = cairo_create(rofi->surface);
     if (!cr) return;
 
-    // Background: Deep dark #121214 with subtle 1px border #323238
-    cairo_set_source_rgb(cr, 0.07, 0.07, 0.08); // #121214
-    cairo_paint(cr);
+    const char *font_fam = rofi->font_name[0] ? rofi->font_name : "Sans";
+    const char *prompt_str = rofi->prompt_text[0] ? rofi->prompt_text : "> ";
 
-    // Subtle 1px inner border
-    cairo_set_source_rgba(cr, 0.22, 0.22, 0.24, 0.9);
-    cairo_set_line_width(cr, 1.5);
-    draw_rounded_rect(cr, 0.75, 0.75, rofi->width - 1.5, rofi->height - 1.5, 12.0);
-    cairo_stroke(cr);
+    // Background: Deep dark or custom from rasi
+    if (rofi->has_custom_colors) {
+        cairo_set_source_rgb(cr, rofi->bg_r, rofi->bg_g, rofi->bg_b);
+        cairo_paint(cr);
+
+        cairo_set_source_rgba(cr, rofi->accent_r, rofi->accent_g, rofi->accent_b, 0.45);
+        cairo_set_line_width(cr, 1.5);
+        draw_rounded_rect(cr, 0.75, 0.75, rofi->width - 1.5, rofi->height - 1.5, 12.0);
+        cairo_stroke(cr);
+    } else {
+        cairo_set_source_rgb(cr, 0.07, 0.07, 0.08); // #121214
+        cairo_paint(cr);
+
+        // Subtle 1px inner border
+        cairo_set_source_rgba(cr, 0.22, 0.22, 0.24, 0.9);
+        cairo_set_line_width(cr, 1.5);
+        draw_rounded_rect(cr, 0.75, 0.75, rofi->width - 1.5, rofi->height - 1.5, 12.0);
+        cairo_stroke(cr);
+    }
 
     // --- Search Header Box ---
     double search_x = 16.0;
@@ -444,38 +673,68 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
     double search_w = rofi->width - 32.0;
     double search_h = 40.0;
 
-    cairo_set_source_rgba(cr, 0.14, 0.14, 0.16, 0.95);
-    draw_rounded_rect(cr, search_x, search_y, search_w, search_h, 8.0);
-    cairo_fill(cr);
+    if (rofi->has_custom_colors) {
+        double sb_r = rofi->bg_r + 0.06; if (sb_r > 1.0) sb_r = 1.0;
+        double sb_g = rofi->bg_g + 0.06; if (sb_g > 1.0) sb_g = 1.0;
+        double sb_b = rofi->bg_b + 0.06; if (sb_b > 1.0) sb_b = 1.0;
+        cairo_set_source_rgba(cr, sb_r, sb_g, sb_b, 0.95);
+        draw_rounded_rect(cr, search_x, search_y, search_w, search_h, 8.0);
+        cairo_fill(cr);
 
-    // Search Box 1px outline
-    cairo_set_source_rgba(cr, 0.28, 0.28, 0.32, 0.8);
-    cairo_set_line_width(cr, 1.0);
-    draw_rounded_rect(cr, search_x + 0.5, search_y + 0.5, search_w - 1.0, search_h - 1.0, 8.0);
-    cairo_stroke(cr);
+        cairo_set_source_rgba(cr, rofi->accent_r, rofi->accent_g, rofi->accent_b, 0.35);
+        cairo_set_line_width(cr, 1.0);
+        draw_rounded_rect(cr, search_x + 0.5, search_y + 0.5, search_w - 1.0, search_h - 1.0, 8.0);
+        cairo_stroke(cr);
+    } else {
+        cairo_set_source_rgba(cr, 0.14, 0.14, 0.16, 0.95);
+        draw_rounded_rect(cr, search_x, search_y, search_w, search_h, 8.0);
+        cairo_fill(cr);
 
-    // Prompt Indicator: "> " or icon
-    cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        // Search Box 1px outline
+        cairo_set_source_rgba(cr, 0.28, 0.28, 0.32, 0.8);
+        cairo_set_line_width(cr, 1.0);
+        draw_rounded_rect(cr, search_x + 0.5, search_y + 0.5, search_w - 1.0, search_h - 1.0, 8.0);
+        cairo_stroke(cr);
+    }
+
+    // Prompt Indicator: "> " or custom prompt
+    cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, 15.0);
-    cairo_set_source_rgba(cr, 0.45, 0.65, 0.95, 1.0); // Accent blue
+    if (rofi->has_custom_colors) {
+        cairo_set_source_rgba(cr, rofi->accent_r, rofi->accent_g, rofi->accent_b, 1.0);
+    } else {
+        cairo_set_source_rgba(cr, 0.45, 0.65, 0.95, 1.0); // Accent blue
+    }
+    cairo_text_extents_t pext;
+    cairo_text_extents(cr, prompt_str, &pext);
     cairo_move_to(cr, search_x + 14.0, search_y + 25.0);
-    cairo_show_text(cr, "> ");
+    cairo_show_text(cr, prompt_str);
+
+    double query_start_x = search_x + 18.0 + pext.x_advance;
 
     // Query text or placeholder
     if (rofi->query_len > 0) {
-        cairo_set_source_rgb(cr, 0.95, 0.95, 0.95);
-        cairo_move_to(cr, search_x + 36.0, search_y + 25.0);
+        if (rofi->has_custom_colors) {
+            cairo_set_source_rgb(cr, rofi->fg_r, rofi->fg_g, rofi->fg_b);
+        } else {
+            cairo_set_source_rgb(cr, 0.95, 0.95, 0.95);
+        }
+        cairo_move_to(cr, query_start_x, search_y + 25.0);
         cairo_show_text(cr, rofi->query);
 
         // Blinking / solid cursor
         cairo_text_extents_t ext;
         cairo_text_extents(cr, rofi->query, &ext);
-        cairo_set_source_rgba(cr, 0.45, 0.65, 0.95, 0.9);
-        cairo_rectangle(cr, search_x + 38.0 + ext.x_advance, search_y + 11.0, 2.0, 18.0);
+        if (rofi->has_custom_colors) {
+            cairo_set_source_rgba(cr, rofi->accent_r, rofi->accent_g, rofi->accent_b, 0.9);
+        } else {
+            cairo_set_source_rgba(cr, 0.45, 0.65, 0.95, 0.9);
+        }
+        cairo_rectangle(cr, query_start_x + 2.0 + ext.x_advance, search_y + 11.0, 2.0, 18.0);
         cairo_fill(cr);
     } else {
         cairo_set_source_rgba(cr, 0.45, 0.45, 0.48, 0.8);
-        cairo_move_to(cr, search_x + 36.0, search_y + 25.0);
+        cairo_move_to(cr, query_start_x, search_y + 25.0);
         cairo_show_text(cr, "Type to search applications...");
     }
 
@@ -495,14 +754,25 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
 
         if (is_selected) {
             // Selected accent pill
-            cairo_set_source_rgba(cr, 0.18, 0.32, 0.52, 0.6); // Deep translucent blue
-            draw_rounded_rect(cr, item_x, item_y, item_w, item_h, 8.0);
-            cairo_fill(cr);
+            if (rofi->has_custom_colors) {
+                cairo_set_source_rgba(cr, rofi->accent_r, rofi->accent_g, rofi->accent_b, 0.28);
+                draw_rounded_rect(cr, item_x, item_y, item_w, item_h, 8.0);
+                cairo_fill(cr);
 
-            cairo_set_source_rgba(cr, 0.35, 0.55, 0.85, 0.8); // Crisp outline
-            cairo_set_line_width(cr, 1.0);
-            draw_rounded_rect(cr, item_x + 0.5, item_y + 0.5, item_w - 1.0, item_h - 1.0, 8.0);
-            cairo_stroke(cr);
+                cairo_set_source_rgba(cr, rofi->accent_r, rofi->accent_g, rofi->accent_b, 0.85);
+                cairo_set_line_width(cr, 1.0);
+                draw_rounded_rect(cr, item_x + 0.5, item_y + 0.5, item_w - 1.0, item_h - 1.0, 8.0);
+                cairo_stroke(cr);
+            } else {
+                cairo_set_source_rgba(cr, 0.18, 0.32, 0.52, 0.6); // Deep translucent blue
+                draw_rounded_rect(cr, item_x, item_y, item_w, item_h, 8.0);
+                cairo_fill(cr);
+
+                cairo_set_source_rgba(cr, 0.35, 0.55, 0.85, 0.8); // Crisp outline
+                cairo_set_line_width(cr, 1.0);
+                draw_rounded_rect(cr, item_x + 0.5, item_y + 0.5, item_w - 1.0, item_h - 1.0, 8.0);
+                cairo_stroke(cr);
+            }
         }
 
         int app_idx = rofi->matches[i];
@@ -535,7 +805,7 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
             cairo_fill(cr);
 
             cairo_set_source_rgb(cr, 0.9, 0.9, 0.9);
-            cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+            cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
             cairo_set_font_size(cr, 14.0);
             char initial[2] = { (char)toupper((unsigned char)app->name[0]), '\0' };
             cairo_text_extents_t ext;
@@ -546,20 +816,32 @@ void rofi_launcher_render(Display *dpy, RofiLauncher *rofi, int screen_w, int sc
         }
 
         // Application Title
-        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cr, 13.5);
         if (is_selected) {
-            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+            if (rofi->has_custom_colors) {
+                cairo_set_source_rgb(cr, rofi->fg_r, rofi->fg_g, rofi->fg_b);
+            } else {
+                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+            }
         } else {
-            cairo_set_source_rgb(cr, 0.88, 0.88, 0.90);
+            if (rofi->has_custom_colors) {
+                cairo_set_source_rgba(cr, rofi->fg_r, rofi->fg_g, rofi->fg_b, 0.88);
+            } else {
+                cairo_set_source_rgb(cr, 0.88, 0.88, 0.90);
+            }
         }
         cairo_move_to(cr, icon_x + 42.0, item_y + 20.0);
         cairo_show_text(cr, app->name);
 
         // Application Comment / Subtitle
-        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_select_font_face(cr, font_fam, CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 11.0);
-        cairo_set_source_rgba(cr, 0.55, 0.55, 0.58, 0.9);
+        if (rofi->has_custom_colors) {
+            cairo_set_source_rgba(cr, rofi->fg_r, rofi->fg_g, rofi->fg_b, 0.55);
+        } else {
+            cairo_set_source_rgba(cr, 0.55, 0.55, 0.58, 0.9);
+        }
         cairo_move_to(cr, icon_x + 42.0, item_y + 36.0);
         const char *sub = app->comment[0] != '\0' ? app->comment : app->exec;
         cairo_show_text(cr, sub);
@@ -592,6 +874,20 @@ void rofi_launcher_toggle(Display *dpy, RofiLauncher *rofi) {
     if (!rofi) return;
 
     if (!rofi->is_visible) {
+        if (rofi->use_external_rofi) {
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                if (rofi->config_path[0] != '\0') {
+                    execlp("rofi", "rofi", "-show", "drun", "-config", rofi->config_path, NULL);
+                } else {
+                    execlp("rofi", "rofi", "-show", "drun", NULL);
+                }
+                _exit(1);
+            }
+            return;
+        }
+
         rofi->is_visible = 1;
         rofi_launcher_set_query(rofi, "");
 

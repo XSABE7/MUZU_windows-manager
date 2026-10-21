@@ -117,6 +117,18 @@ int main(void) {
     assert(rofi.selected_idx == 0);
     assert(rofi.scroll_offset == 0);
 
+    // Test 11: Rasi config compatibility
+    const char *r_path = rofi_launcher_get_config_path(&rofi);
+    assert(r_path != NULL);
+    assert(strstr(r_path, ".rasi") != NULL);
+    if (rofi.has_custom_colors) {
+        assert(rofi.bg_r >= 0.0 && rofi.bg_r <= 1.0);
+        assert(rofi.fg_r >= 0.0 && rofi.fg_r <= 1.0);
+        assert(rofi.accent_r >= 0.0 && rofi.accent_r <= 1.0);
+        printf("Rofi loaded config: %s | font: '%s' | prompt: '%s'\n",
+               r_path, rofi.font_name, rofi.prompt_text);
+    }
+
     rofi_launcher_cleanup(&rofi);
     printf("test_rofi_launcher passed!\n");
     return 0;

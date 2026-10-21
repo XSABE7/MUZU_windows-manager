@@ -16,27 +16,61 @@ static pid_t picom_pid = 0;
 static char config_path[512] = {0};
 
 const char *compositor_get_config_path(void) {
-    if (config_path[0] == '\0') {
-        const char *home = getenv("HOME");
-        if (!home) home = "/tmp";
-        snprintf(config_path, sizeof(config_path), "%s/.config/muzuwm/picom.conf", home);
+    if (config_path[0] != '\0') return config_path;
+
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+
+    char candidate[512];
+    // 1. Check ~/.config/muzuwm/picom.conf
+    snprintf(candidate, sizeof(candidate), "%s/.config/muzuwm/picom.conf", home);
+    if (access(candidate, R_OK) == 0) {
+        snprintf(config_path, sizeof(config_path), "%s", candidate);
+        return config_path;
     }
+
+    // 2. Check upstream standard ~/.config/picom/picom.conf
+    snprintf(candidate, sizeof(candidate), "%s/.config/picom/picom.conf", home);
+    if (access(candidate, R_OK) == 0) {
+        snprintf(config_path, sizeof(config_path), "%s", candidate);
+        return config_path;
+    }
+
+    // 3. Check legacy ~/.config/picom.conf
+    snprintf(candidate, sizeof(candidate), "%s/.config/picom.conf", home);
+    if (access(candidate, R_OK) == 0) {
+        snprintf(config_path, sizeof(config_path), "%s", candidate);
+        return config_path;
+    }
+
+    // 4. Check user desktop ~/.config/i3/picom/picom.conf
+    snprintf(candidate, sizeof(candidate), "%s/.config/i3/picom/picom.conf", home);
+    if (access(candidate, R_OK) == 0) {
+        snprintf(config_path, sizeof(config_path), "%s", candidate);
+        return config_path;
+    }
+
+    // 5. Check system-wide /etc/xdg/picom.conf
+    if (access("/etc/xdg/picom.conf", R_OK) == 0) {
+        snprintf(config_path, sizeof(config_path), "/etc/xdg/picom.conf");
+        return config_path;
+    }
+
+    // 6. Check system-wide /etc/xdg/picom/picom.conf
+    if (access("/etc/xdg/picom/picom.conf", R_OK) == 0) {
+        snprintf(config_path, sizeof(config_path), "/etc/xdg/picom/picom.conf");
+        return config_path;
+    }
+
+    // Default target for auto-generation: ~/.config/muzuwm/picom.conf
+    snprintf(config_path, sizeof(config_path), "%s/.config/muzuwm/picom.conf", home);
     return config_path;
 }
 
 static void compositor_ensure_config(void) {
     const char *path = compositor_get_config_path();
     if (access(path, F_OK) == 0) {
-        FILE *rf = fopen(path, "r");
-        if (rf) {
-            char check_buf[2048];
-            size_t n = fread(check_buf, 1, sizeof(check_buf) - 1, rf);
-            check_buf[n] = '\0';
-            fclose(rf);
-            if (strstr(check_buf, "dual_kawase") != NULL) {
-                return; // Already up-to-date
-            }
-        }
+        return; // Valid user or upstream config found, do not overwrite
     }
 
     const char *home = getenv("HOME");

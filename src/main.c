@@ -657,6 +657,13 @@ int main(int argc, char **argv) {
 
     // Initialize UI subsystems
     tint2_panel_init(dpy, &panel, screen_w, &current_theme);
+    if (panel.is_top) {
+        cfg.top_inset = panel.height;
+        cfg.bottom_inset = 0;
+    } else {
+        cfg.top_inset = 0;
+        cfg.bottom_inset = panel.height;
+    }
     rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
 

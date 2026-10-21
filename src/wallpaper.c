@@ -37,6 +37,62 @@ static void expand_tilde(const char *in, char *out, size_t max_len) {
     safe_copy(out, in, max_len);
 }
 
+static int parse_fehbg(const char *home, char *path_out, size_t max_len) {
+    char fehbg[512];
+    snprintf(fehbg, sizeof(fehbg), "%s/.fehbg", home);
+    FILE *f = fopen(fehbg, "r");
+    if (!f) return 0;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        if (strstr(line, "feh ") != NULL || strstr(line, "--bg-") != NULL) {
+            char *quote_start = strpbrk(line, "'\"");
+            if (quote_start) {
+                char quote_char = *quote_start;
+                char *quote_end = strchr(quote_start + 1, quote_char);
+                if (quote_end) {
+                    *quote_end = '\0';
+                    char expanded[512];
+                    expand_tilde(quote_start + 1, expanded, sizeof(expanded));
+                    if (expanded[0] != '\0' && access(expanded, R_OK) == 0) {
+                        fclose(f);
+                        safe_copy(path_out, expanded, max_len);
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
+static int parse_nitrogen(const char *home, char *path_out, size_t max_len) {
+    char nit_cfg[512];
+    snprintf(nit_cfg, sizeof(nit_cfg), "%s/.config/nitrogen/bg-saved.cfg", home);
+    FILE *f = fopen(nit_cfg, "r");
+    if (!f) return 0;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        char *p = line;
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (strncmp(p, "file=", 5) == 0) {
+            char *val = p + 5;
+            line[strcspn(line, "\r\n")] = '\0';
+            char expanded[512];
+            expand_tilde(val, expanded, sizeof(expanded));
+            if (expanded[0] != '\0' && access(expanded, R_OK) == 0) {
+                fclose(f);
+                safe_copy(path_out, expanded, max_len);
+                return 1;
+            }
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
 int wallpaper_get_configured_path(char *path_out, size_t max_len) {
     if (!path_out || max_len == 0) return 0;
     path_out[0] = '\0';
@@ -44,7 +100,18 @@ int wallpaper_get_configured_path(char *path_out, size_t max_len) {
     const char *home = getenv("HOME");
     if (!home) return 0;
 
-    // Check Waypaper configuration first: ~/.config/waypaper/config.ini
+    // 1. Check MUZUwm custom wallpaper: ~/.config/muzuwm/wallpaper.png, .jpg, .jpeg
+    const char *exts[] = { ".png", ".jpg", ".jpeg" };
+    for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
+        char muzuwm_wall[512];
+        snprintf(muzuwm_wall, sizeof(muzuwm_wall), "%s/.config/muzuwm/wallpaper%s", home, exts[i]);
+        if (access(muzuwm_wall, R_OK) == 0) {
+            safe_copy(path_out, muzuwm_wall, max_len);
+            return 1;
+        }
+    }
+
+    // 2. Check Waypaper configuration: ~/.config/waypaper/config.ini
     char waypaper_cfg[512];
     snprintf(waypaper_cfg, sizeof(waypaper_cfg), "%s/.config/waypaper/config.ini", home);
 
@@ -82,13 +149,27 @@ int wallpaper_get_configured_path(char *path_out, size_t max_len) {
         fclose(f);
     }
 
-    // Check fallback MUZUwm wallpaper: ~/.config/muzuwm/wallpaper.png, .jpg, .jpeg
-    const char *exts[] = { ".png", ".jpg", ".jpeg" };
+    // 3. Check upstream feh configuration: ~/.fehbg
+    if (parse_fehbg(home, path_out, max_len)) {
+        return 1;
+    }
+
+    // 4. Check upstream nitrogen configuration: ~/.config/nitrogen/bg-saved.cfg
+    if (parse_nitrogen(home, path_out, max_len)) {
+        return 1;
+    }
+
+    // 5. Check standard user wallpaper fallbacks: ~/.wallpaper.* or ~/.config/wallpaper.*
     for (size_t i = 0; i < sizeof(exts) / sizeof(exts[0]); i++) {
-        char muzuwm_wall[512];
-        snprintf(muzuwm_wall, sizeof(muzuwm_wall), "%s/.config/muzuwm/wallpaper%s", home, exts[i]);
-        if (access(muzuwm_wall, R_OK) == 0) {
-            safe_copy(path_out, muzuwm_wall, max_len);
+        char fallback_wall[512];
+        snprintf(fallback_wall, sizeof(fallback_wall), "%s/.wallpaper%s", home, exts[i]);
+        if (access(fallback_wall, R_OK) == 0) {
+            safe_copy(path_out, fallback_wall, max_len);
+            return 1;
+        }
+        snprintf(fallback_wall, sizeof(fallback_wall), "%s/.config/wallpaper%s", home, exts[i]);
+        if (access(fallback_wall, R_OK) == 0) {
+            safe_copy(path_out, fallback_wall, max_len);
             return 1;
         }
     }

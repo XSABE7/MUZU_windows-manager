@@ -41,6 +41,17 @@ typedef struct {
     char time1_format[64];
     char time2_format[64];
     int is_top;
+    int has_custom_bg;
+    double bg_r, bg_g, bg_b, bg_a;
+    int has_custom_border;
+    double border_r, border_g, border_b, border_a;
+    double border_width;
+    double rounded;
+    int has_custom_clock_color;
+    double clock_r, clock_g, clock_b, clock_a;
+    int has_custom_ws_color;
+    double ws_font_r, ws_font_g, ws_font_b, ws_font_a;
+    double ws_active_font_r, ws_active_font_g, ws_active_font_b, ws_active_font_a;
     char time_str[64];
     char date_str[64];
     char active_title[128];

@@ -101,7 +101,7 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
     int tiled_count = idx; // Clamp strictly to buffer capacity
 
     int top_y = cfg->top_inset;
-    int avail_h = cfg->screen_height - top_y;
+    int avail_h = cfg->screen_height - top_y - cfg->bottom_inset;
     if (avail_h < 34) avail_h = 34;
 
     // Reverse so first added is master
@@ -174,7 +174,7 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
             c->y = top_y + i * stack_h;
             c->width = cfg->screen_width - half_w;
             if (i == stack_count - 1) {
-                c->height = cfg->screen_height - c->y;
+                c->height = (cfg->screen_height - cfg->bottom_inset) - c->y;
             } else {
                 c->height = stack_h;
             }
