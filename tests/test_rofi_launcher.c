@@ -117,6 +117,28 @@ int main(void) {
     assert(rofi.selected_idx == 0);
     assert(rofi.scroll_offset == 0);
 
+    // Test: Continuous multi-step scrolling and motion stability
+    rofi_launcher_set_query(&rofi, "");
+    rofi.is_visible = 1;
+    rofi.scroll_offset = 0;
+    rofi.selected_idx = 0;
+
+    for (int step = 0; step < 5; step++) {
+        rofi_launcher_handle_press(NULL, &rofi, Button5, rofi.x + 100, rofi.y + 100);
+    }
+    assert(rofi.scroll_offset == 5);
+    assert(rofi.selected_idx >= 5);
+
+    // Mouse motion inside visible rows updates selection without reverting scroll_offset
+    rofi_launcher_handle_motion(NULL, &rofi, 100, ROFI_HEADER_HEIGHT + 6 + 2 * ROFI_ROW_HEIGHT);
+    assert(rofi.scroll_offset == 5);
+    assert(rofi.selected_idx == 5 + 2);
+
+    for (int step = 0; step < 3; step++) {
+        rofi_launcher_handle_press(NULL, &rofi, Button4, rofi.x + 100, rofi.y + 100);
+    }
+    assert(rofi.scroll_offset == 2);
+
     // Test 11: Rasi config compatibility
     const char *r_path = rofi_launcher_get_config_path(&rofi);
     assert(r_path != NULL);

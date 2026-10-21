@@ -1004,6 +1004,7 @@ int main(int argc, char **argv) {
                 if (rofi_launcher.is_visible) {
                     rofi_launcher_handle_press(dpy, &rofi_launcher, ev.xbutton.button,
                                                ev.xbutton.x_root, ev.xbutton.y_root);
+                    XAllowEvents(dpy, AsyncPointer, CurrentTime);
                     break;
                 }
 
