@@ -81,12 +81,68 @@ static void tint2_panel_ensure_config(void) {
     fclose(f);
 }
 
+void tint2_panel_load_config(Tint2Panel *panel) {
+    if (!panel) return;
+    const char *home = getenv("HOME");
+    if (!home) return;
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/.config/muzuwm/tint2rc", home);
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        snprintf(path, sizeof(path), "%s/.config/tint2/tint2rc", home);
+        f = fopen(path, "r");
+    }
+    if (!f) return;
+
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        char *hash = strchr(line, '#');
+        if (hash) *hash = '\0';
+        line[strcspn(line, "\r\n")] = '\0';
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *key = line;
+        char *val = eq + 1;
+
+        while (*key == ' ' || *key == '\t') key++;
+        char *end_k = key + strlen(key) - 1;
+        while (end_k > key && (*end_k == ' ' || *end_k == '\t')) *end_k-- = '\0';
+
+        while (*val == ' ' || *val == '\t') val++;
+        char *end_v = val + strlen(val) - 1;
+        while (end_v > val && (*end_v == ' ' || *end_v == '\t')) *end_v-- = '\0';
+
+        if (strcmp(key, "time1_format") == 0) {
+            safe_copy(panel->time1_format, val, sizeof(panel->time1_format));
+        } else if (strcmp(key, "time2_format") == 0) {
+            safe_copy(panel->time2_format, val, sizeof(panel->time2_format));
+        } else if (strcmp(key, "panel_size") == 0) {
+            int h = 0;
+            if (sscanf(val, "%*s %d", &h) == 1 && h >= 16 && h <= 100) {
+                panel->height = h;
+            }
+        } else if (strcmp(key, "panel_position") == 0) {
+            if (strstr(val, "bottom") != NULL) {
+                panel->is_top = 0;
+            } else {
+                panel->is_top = 1;
+            }
+        }
+    }
+    fclose(f);
+}
+
 void tint2_panel_update_time(Tint2Panel *panel, time_t now) {
     if (!panel) return;
     struct tm tm_info;
     localtime_r(&now, &tm_info);
-    strftime(panel->time_str, sizeof(panel->time_str), "%H:%M:%S", &tm_info);
-    strftime(panel->date_str, sizeof(panel->date_str), "%a %d %b %Y", &tm_info);
+    const char *t_fmt = panel->time1_format[0] ? panel->time1_format : "%H:%M:%S";
+    const char *d_fmt = panel->time2_format[0] ? panel->time2_format : "%a %d %b %Y";
+    strftime(panel->time_str, sizeof(panel->time_str), t_fmt, &tm_info);
+    strftime(panel->date_str, sizeof(panel->date_str), d_fmt, &tm_info);
 }
 
 void tint2_panel_update_workspaces(Tint2Panel *panel, Client *clients, int current_ws, const char *focused_title) {
@@ -127,6 +183,7 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
     safe_copy(panel->active_title, "MUZUwm Desktop", sizeof(panel->active_title));
 
     tint2_panel_ensure_config();
+    tint2_panel_load_config(panel);
     tint2_panel_update_time(panel, time(NULL));
 
     if (dpy) {
@@ -320,7 +377,7 @@ void tint2_panel_render(Display *dpy, Tint2Panel *panel) {
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.06);
     cairo_fill(cr);
 
-    char full_clock[128];
+    char full_clock[256];
     snprintf(full_clock, sizeof(full_clock), "%s   •   %s", panel->date_str, panel->time_str);
     cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, 11.5);

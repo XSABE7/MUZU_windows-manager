@@ -80,6 +80,17 @@ int main(void) {
     while (clients) {
         client_remove(&clients, clients->win);
     }
+
+    // Test 7: Verify tint2rc parsing
+    {
+        Tint2Panel cfg_panel = {0};
+        tint2_panel_init(NULL, &cfg_panel, 1920, NULL);
+        assert(strlen(cfg_panel.time1_format) > 0);
+        assert(strlen(cfg_panel.time2_format) > 0);
+        assert(cfg_panel.height >= 16);
+        tint2_panel_cleanup(&cfg_panel);
+    }
+
     tint2_panel_cleanup(&panel);
     printf("test_tint2_panel passed!\n");
     return 0;
