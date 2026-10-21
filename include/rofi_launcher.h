@@ -67,6 +67,7 @@ typedef struct RofiLauncher {
 
 void rofi_launcher_init(Display *dpy, RofiLauncher *rofi, int screen_w, int screen_h, const GtkTheme *theme);
 void rofi_launcher_load_config(RofiLauncher *rofi);
+void rofi_launcher_load_config_file(RofiLauncher *rofi, const char *path, const char *base_dir);
 const char *rofi_launcher_get_config_path(const RofiLauncher *rofi);
 void rofi_launcher_cleanup(RofiLauncher *rofi);
 void rofi_launcher_scan_apps(RofiLauncher *rofi);

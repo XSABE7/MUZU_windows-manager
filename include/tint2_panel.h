@@ -60,6 +60,7 @@ typedef struct {
 
 void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTheme *theme);
 void tint2_panel_load_config(Tint2Panel *panel);
+void tint2_panel_load_config_file(Tint2Panel *panel, const char *path);
 void tint2_panel_cleanup(Tint2Panel *panel);
 void tint2_panel_update_time(Tint2Panel *panel, time_t now);
 void tint2_panel_update_workspaces(Tint2Panel *panel, Client *clients, int current_ws, const char *focused_title);

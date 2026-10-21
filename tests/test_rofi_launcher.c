@@ -152,6 +152,20 @@ int main(void) {
         }
     }
 
+    // Test 13: Empty key/value parser resilience in rasi loader
+    {
+        FILE *fempty = fopen("/tmp/test_empty_rofi.rasi", "w");
+        if (fempty) {
+            fprintf(fempty, ":bar\nfoo:\n:\n   :   \nbg: #123456;\n");
+            fclose(fempty);
+            RofiLauncher e_rofi = {0};
+            rofi_launcher_load_config_file(&e_rofi, "/tmp/test_empty_rofi.rasi", "/tmp");
+            assert(e_rofi.has_custom_colors == 1);
+            rofi_launcher_cleanup(&e_rofi);
+            remove("/tmp/test_empty_rofi.rasi");
+        }
+    }
+
     printf("test_rofi_launcher passed!\n");
     return 0;
 }

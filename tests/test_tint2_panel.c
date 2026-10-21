@@ -112,6 +112,20 @@ int main(void) {
         client_remove(&b_clients, 2001);
     }
 
+    // Test 9: Empty key/value parser resilience
+    {
+        FILE *fempty = fopen("/tmp/test_empty_tint2.conf", "w");
+        if (fempty) {
+            fprintf(fempty, "=bar\nfoo=\n=\n   =   \ntime1_format = %%H:%%M\n");
+            fclose(fempty);
+            Tint2Panel e_panel = {0};
+            tint2_panel_load_config_file(&e_panel, "/tmp/test_empty_tint2.conf");
+            assert(strcmp(e_panel.time1_format, "%H:%M") == 0);
+            tint2_panel_cleanup(&e_panel);
+            remove("/tmp/test_empty_tint2.conf");
+        }
+    }
+
     tint2_panel_cleanup(&panel);
     printf("test_tint2_panel passed!\n");
     return 0;

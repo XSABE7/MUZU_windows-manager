@@ -120,9 +120,8 @@ static void tint2_panel_ensure_config(void) {
     fclose(f);
 }
 
-void tint2_panel_load_config(Tint2Panel *panel) {
-    if (!panel) return;
-    const char *path = tint2_panel_get_config_path();
+void tint2_panel_load_config_file(Tint2Panel *panel, const char *path) {
+    if (!panel || !path) return;
     FILE *f = fopen(path, "r");
     if (!f) return;
 
@@ -139,12 +138,18 @@ void tint2_panel_load_config(Tint2Panel *panel) {
         char *val = eq + 1;
 
         while (*key == ' ' || *key == '\t') key++;
-        char *end_k = key + strlen(key) - 1;
-        while (end_k > key && (*end_k == ' ' || *end_k == '\t')) *end_k-- = '\0';
+        size_t klen = strlen(key);
+        if (klen > 0) {
+            char *end_k = key + klen - 1;
+            while (end_k > key && (*end_k == ' ' || *end_k == '\t')) *end_k-- = '\0';
+        }
 
         while (*val == ' ' || *val == '\t') val++;
-        char *end_v = val + strlen(val) - 1;
-        while (end_v > val && (*end_v == ' ' || *end_v == '\t')) *end_v-- = '\0';
+        size_t vlen = strlen(val);
+        if (vlen > 0) {
+            char *end_v = val + vlen - 1;
+            while (end_v > val && (*end_v == ' ' || *end_v == '\t')) *end_v-- = '\0';
+        }
 
         if (strcmp(key, "time1_format") == 0) {
             safe_copy(panel->time1_format, val, sizeof(panel->time1_format));
@@ -188,6 +193,11 @@ void tint2_panel_load_config(Tint2Panel *panel) {
         }
     }
     fclose(f);
+}
+
+void tint2_panel_load_config(Tint2Panel *panel) {
+    if (!panel) return;
+    tint2_panel_load_config_file(panel, tint2_panel_get_config_path());
 }
 
 void tint2_panel_update_time(Tint2Panel *panel, time_t now) {

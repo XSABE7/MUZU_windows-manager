@@ -445,13 +445,19 @@ static void parse_rasi_file(RofiLauncher *rofi, const char *path, const char *ba
 
         // Trim key
         while (*key && isspace((unsigned char)*key)) key++;
-        char *end_k = key + strlen(key) - 1;
-        while (end_k > key && isspace((unsigned char)*end_k)) *end_k-- = '\0';
+        size_t klen = strlen(key);
+        if (klen > 0) {
+            char *end_k = key + klen - 1;
+            while (end_k > key && isspace((unsigned char)*end_k)) *end_k-- = '\0';
+        }
 
         // Trim val
         while (*val && isspace((unsigned char)*val)) val++;
-        char *end_v = val + strlen(val) - 1;
-        while (end_v > val && (*end_v == ';' || isspace((unsigned char)*end_v))) *end_v-- = '\0';
+        size_t vlen = strlen(val);
+        if (vlen > 0) {
+            char *end_v = val + vlen - 1;
+            while (end_v > val && (*end_v == ';' || isspace((unsigned char)*end_v))) *end_v-- = '\0';
+        }
 
         if (strcmp(key, "bg") == 0 || strcmp(key, "background") == 0 || strcmp(key, "background-color") == 0) {
             if (rofi_parse_hex_color(val, &rofi->bg_r, &rofi->bg_g, &rofi->bg_b)) {
@@ -571,6 +577,11 @@ void rofi_launcher_load_config(RofiLauncher *rofi) {
     if (ext_env && (strcmp(ext_env, "1") == 0 || strcmp(ext_env, "true") == 0)) {
         rofi->use_external_rofi = 1;
     }
+}
+
+void rofi_launcher_load_config_file(RofiLauncher *rofi, const char *path, const char *base_dir) {
+    if (!rofi || !path) return;
+    parse_rasi_file(rofi, path, base_dir, 0);
 }
 
 void rofi_launcher_init(Display *dpy, RofiLauncher *rofi, int screen_w, int screen_h, const GtkTheme *theme) {
