@@ -19,3 +19,5 @@ test_compositor
 test_tint2_panel
 gtk/
 for_imperment/
+*.d
+test_config_rules

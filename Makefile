@@ -11,7 +11,7 @@ all: muzuwm
 tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_compositor test_tint2_panel test_config_rules test_x11_stress
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
 test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
@@ -49,6 +49,8 @@ test_config_rules: tests/test_config_rules.c src/config_rules.c
 test_x11_stress: tests/test_x11_stress.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+-include $(OBJS:.o=.d)
+
 muzuwm: $(OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
@@ -57,6 +59,6 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
+	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
 
 .PHONY: all tests clean asan

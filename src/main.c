@@ -23,6 +23,7 @@
 #include "menu.h"
 #include "compositor.h"
 #include "tint2_panel.h"
+#include "config_rules.h"
 
 static int running = 1;
 static GtkTheme current_theme;
@@ -480,6 +481,69 @@ static void update_panel_state(Display *dpy, Client *clients, LayoutConfig *cfg)
     XFlush(dpy);
 }
 
+static void spawn_command(const char *cmd) {
+    if (!cmd || cmd[0] == '\0') return;
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        _exit(1);
+    }
+}
+
+// Tile a window to the left/right half. Windows that cannot go fullscreen ignore this.
+static void client_snap(Display *dpy, Client *clients, Client *c, LayoutConfig *cfg, SnapState snap) {
+    if (!c || !c->can_fullscreen) return;
+    if (c->mode == CLIENT_FLOATING && !c->is_maximized) {
+        c->saved_x = c->x;
+        c->saved_y = c->y;
+        c->saved_width = c->width;
+        c->saved_height = c->height;
+        c->saved_mode = CLIENT_FLOATING;
+    }
+    c->is_maximized = 0;
+    c->mode = CLIENT_TILED;
+    c->snap_state = snap;
+    reflow_all(dpy, clients, cfg);
+}
+
+// Return a window to floating, restoring its previous floating geometry (or a centered default).
+static void client_float(Display *dpy, Client *clients, Client *c, LayoutConfig *cfg) {
+    if (!c) return;
+    if (c->is_maximized) {
+        client_toggle_maximize(dpy, c, cfg);
+    }
+    int max_h = cfg->screen_height - cfg->top_inset - cfg->bottom_inset;
+    int have_saved = (c->saved_width > 0 && c->saved_width < cfg->screen_width &&
+                      c->saved_height > 0 && c->saved_height < max_h);
+    if (c->mode == CLIENT_TILED || !have_saved) {
+        if (have_saved && c->saved_mode == CLIENT_FLOATING) {
+            c->x = c->saved_x;
+            c->y = c->saved_y;
+            c->width = c->saved_width;
+            c->height = c->saved_height;
+        } else if (c->mode == CLIENT_TILED || c->width >= cfg->screen_width) {
+            c->width = cfg->screen_width * 3 / 5;
+            c->height = max_h * 3 / 5;
+            c->x = (cfg->screen_width - c->width) / 2;
+            c->y = cfg->top_inset + (max_h - c->height) / 2;
+        }
+    }
+    c->mode = CLIENT_FLOATING;
+    c->snap_state = SNAP_NONE;
+    c->is_maximized = 0;
+    Window target = c->frame ? c->frame : c->win;
+    XMoveResizeWindow(dpy, target, c->x, c->y, c->width, c->height);
+    if (c->frame) {
+        int ch = c->height - TITLEBAR_HEIGHT;
+        if (ch < 10) ch = 10;
+        XResizeWindow(dpy, c->win, c->width, ch);
+        titlebar_draw(dpy, c, &current_theme);
+    }
+    XRaiseWindow(dpy, target);
+    reflow_all(dpy, clients, cfg);
+}
+
 static void switch_workspace(Display *dpy, Client *clients, LayoutConfig *cfg, Dock *dock, int target_ws) {
     if (target_ws < 0 || target_ws >= TINT2_NUM_WORKSPACES) return;
     if (target_ws == cfg->current_workspace) return;
@@ -696,6 +760,13 @@ int main(int argc, char **argv) {
     // Launch X11 Compositor (Picom with Dual-Kawase Frosted Glass Blur)
     compositor_init(dpy);
 
+    // Load window rules & custom shortcuts, then launch apps listed in auto_allowlist
+    config_rules_ensure_files();
+    ShortcutConfig shortcuts_cfg = {0};
+    shortcuts_load(&shortcuts_cfg);
+    int super_pending = 0;
+    config_run_autostart();
+
     // Adopt any pre-existing mapped top-level windows on root
     {
         Window root_ret = None, parent_ret = None, *children = NULL;
@@ -726,8 +797,12 @@ int main(int argc, char **argv) {
     KeyCode super_kc = XKeysymToKeycode(dpy, XK_Super_L);
     if (super_kc == 0) super_kc = XKeysymToKeycode(dpy, XK_Super_R);
     if (super_kc != 0) {
-        XGrabKey(dpy, super_kc, 0, root, True, GrabModeAsync, GrabModeAsync);
+        const unsigned int lock_variants[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+        for (int i = 0; i < 4; i++) {
+            XGrabKey(dpy, super_kc, lock_variants[i], root, True, GrabModeAsync, GrabModeAsync);
+        }
     }
+    shortcuts_grab_keys(dpy, root, &shortcuts_cfg);
 
     // Grab Alt+F1 as fallback trigger
     KeyCode alt_f1_kc = XKeysymToKeycode(dpy, XK_F1);
@@ -801,7 +876,7 @@ int main(int argc, char **argv) {
                 if (!client_find(clients, w)) {
                     int is_dialog = client_is_dialog(dpy, w);
                     int is_csd = client_is_csd(dpy, w);
-                    ClientMode mode = is_dialog ? CLIENT_FLOATING : CLIENT_TILED;
+                    int can_fs = client_supports_fullscreen(dpy, w);
 
                     int win_w = 600, win_h = 400;
                     if (wa.width > 0 && wa.height > 0) {
@@ -809,15 +884,24 @@ int main(int argc, char **argv) {
                         win_h = wa.height;
                     }
 
+                    // Every new window floats centered on the desktop at its natural size
                     int init_x = 0, init_y = TINT2_PANEL_HEIGHT;
                     if (is_dialog) {
                         client_calculate_dialog_geometry(screen_w, screen_h, win_w, win_h,
                                                          &init_x, &init_y, &win_w, &win_h);
-                        if (init_y < TINT2_PANEL_HEIGHT) init_y = TINT2_PANEL_HEIGHT;
+                    } else {
+                        int avail_h = screen_h - cfg.top_inset - cfg.bottom_inset - TITLEBAR_HEIGHT;
+                        if (win_w > screen_w - 40) win_w = screen_w - 40;
+                        if (win_h > avail_h - 20) win_h = avail_h - 20;
+                        if (win_w < 50) win_w = 50;
+                        if (win_h < 50) win_h = 50;
+                        init_x = (screen_w - win_w) / 2;
+                        init_y = cfg.top_inset + (avail_h - win_h) / 2;
                     }
+                    if (init_y < cfg.top_inset) init_y = cfg.top_inset;
 
                     Window frame = is_csd ? None : titlebar_create(dpy, w, win_w);
-                    client_add(&clients, w, mode);
+                    client_add(&clients, w, CLIENT_FLOATING);
                     Client *c = client_find(clients, w);
                     if (c) {
                         c->frame = frame;
@@ -827,9 +911,14 @@ int main(int argc, char **argv) {
                         c->y = init_y;
                         c->width = win_w;
                         c->height = is_csd ? win_h : (win_h + TITLEBAR_HEIGHT);
+                        c->can_fullscreen = can_fs;
                         client_get_title(dpy, w, c->title, sizeof(c->title));
                         if (!c->icon_surface) {
                             c->icon_surface = client_get_icon(dpy, c->win, c->title, 32);
+                        }
+                        // Only apps listed in fullscreen_allowlist open maximized
+                        if (can_fs && config_client_in_fullscreen_allowlist(dpy, w, c->title)) {
+                            client_toggle_maximize(dpy, c, &cfg);
                         }
                     }
                     XAddToSaveSet(dpy, w);
@@ -1032,8 +1121,52 @@ int main(int argc, char **argv) {
 
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
                 if (sym == XK_Super_L || sym == XK_Super_R) {
-                    rofi_launcher_toggle(dpy, &rofi_launcher);
-                } else if (sym == XK_F1 && (ev.xkey.state & Mod1Mask)) {
+                    // Tapping Super alone opens the launcher on release (so Super+Arrow does not)
+                    super_pending = 1;
+                    break;
+                }
+                super_pending = 0;
+
+                const ShortcutBinding *sb = shortcuts_match_event(&shortcuts_cfg, ev.xkey.state, sym);
+                if (sb) {
+                    switch (sb->type) {
+                    case SHORTCUT_ACT_TILE_LEFT:
+                        client_snap(dpy, clients, focused_client, &cfg, SNAP_LEFT);
+                        break;
+                    case SHORTCUT_ACT_TILE_RIGHT:
+                        client_snap(dpy, clients, focused_client, &cfg, SNAP_RIGHT);
+                        break;
+                    case SHORTCUT_ACT_FULLSCREEN:
+                        if (focused_client && focused_client->can_fullscreen) {
+                            client_toggle_maximize(dpy, focused_client, &cfg);
+                            if (focused_client->frame) {
+                                titlebar_draw(dpy, focused_client, &current_theme);
+                                XRaiseWindow(dpy, focused_client->frame);
+                            }
+                            reflow_all(dpy, clients, &cfg);
+                        }
+                        break;
+                    case SHORTCUT_ACT_FLOAT:
+                        client_float(dpy, clients, focused_client, &cfg);
+                        break;
+                    case SHORTCUT_ACT_CLOSE:
+                        if (focused_client) client_close(dpy, focused_client->win);
+                        break;
+                    case SHORTCUT_ACT_LAUNCHER:
+                        rofi_launcher_toggle(dpy, &rofi_launcher);
+                        break;
+                    case SHORTCUT_ACT_EXEC:
+                        spawn_command(sb->exec_cmd);
+                        break;
+                    case SHORTCUT_ACT_NONE:
+                        break;
+                    }
+                    update_panel_state(dpy, clients, &cfg);
+                    raise_system_overlays(dpy);
+                    break;
+                }
+
+                if (sym == XK_F1 && (ev.xkey.state & Mod1Mask)) {
                     rofi_launcher_toggle(dpy, &rofi_launcher);
                 } else if ((sym >= XK_1 && sym <= XK_4) &&
                            (ev.xkey.state & (Mod1Mask | Mod4Mask))) {
@@ -1045,6 +1178,15 @@ int main(int argc, char **argv) {
                     } else {
                         switch_workspace(dpy, clients, &cfg, &dock, target_ws);
                     }
+                }
+                break;
+            }
+
+            case KeyRelease: {
+                KeySym rsym = XLookupKeysym(&ev.xkey, 0);
+                if ((rsym == XK_Super_L || rsym == XK_Super_R) && super_pending) {
+                    super_pending = 0;
+                    rofi_launcher_toggle(dpy, &rofi_launcher);
                 }
                 break;
             }
@@ -1536,7 +1678,7 @@ int main(int argc, char **argv) {
                     XUngrabPointer(dpy, CurrentTime);
 
                     const int SNAP_THRESHOLD = 16;
-                    if (ev.xbutton.y_root <= TINT2_PANEL_HEIGHT + SNAP_THRESHOLD) {
+                    if (drag_client->can_fullscreen && ev.xbutton.y_root <= TINT2_PANEL_HEIGHT + SNAP_THRESHOLD) {
                         // Top edge -> Maximize!
                         if (!drag_client->is_maximized) {
                             client_toggle_maximize(dpy, drag_client, &cfg);
@@ -1544,7 +1686,7 @@ int main(int argc, char **argv) {
                                 titlebar_draw(dpy, drag_client, &current_theme);
                             }
                         }
-                    } else if (ev.xbutton.x_root <= SNAP_THRESHOLD) {
+                    } else if (drag_client->can_fullscreen && ev.xbutton.x_root <= SNAP_THRESHOLD) {
                         // Left edge -> Left half (50%)
                         if (drag_client->is_maximized) {
                             drag_client->is_maximized = 0;
@@ -1552,7 +1694,7 @@ int main(int argc, char **argv) {
                         drag_client->mode = CLIENT_TILED;
                         drag_client->snap_state = SNAP_LEFT;
                         reflow_all(dpy, clients, &cfg);
-                    } else if (ev.xbutton.x_root >= screen_w - SNAP_THRESHOLD) {
+                    } else if (drag_client->can_fullscreen && ev.xbutton.x_root >= screen_w - SNAP_THRESHOLD) {
                         // Right edge -> Right half (50%)
                         if (drag_client->is_maximized) {
                             drag_client->is_maximized = 0;

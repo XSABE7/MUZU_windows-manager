@@ -27,21 +27,16 @@ DISPLAY=:2 ./muzuwm &
 WM_PID=$!
 sleep 0.5
 
-echo "Spawning test terminal windows..."
-DISPLAY=:2 xterm -fa "Monospace" -fs 10 &
-sleep 0.5
-DISPLAY=:2 xterm -fa "Monospace" -fs 10 &
-
 echo ""
 echo "========================================================"
 echo " MUZUwm is now running inside the Xephyr window ($RES)!"
 echo " Things you can test with your mouse and keyboard:"
-echo " 1. First xterm is auto-maximized, second is 50:50 tiled"
-echo " 2. Drag a titlebar -> detaches window into Floating"
-echo " 3. Double-click titlebar or drag to top edge -> Re-tiles"
-echo " 4. Move mouse to top-left corner (0,0) -> Opens Launchpad"
-echo " 5. In Launchpad, type 'wwssadadba' -> Reveals 'Will She Know' button!"
-echo " 6. Move mouse to bottom edge -> Dock slides up"
+echo " 1. Windows open floating; only apps in ~/.config/muzuwm/fullscreen_allowlist open maximized"
+echo " 2. Apps in ~/.config/muzuwm/auto_allowlist start with MUZUwm (none by default)"
+echo " 3. Super+Left / Super+Right tile, Super+Up maximize, Super+Down float"
+echo " 4. Super+Return opens wezterm, Super+b opens google-chrome (edit shortcuts.conf)"
+echo " 5. Drag a titlebar to the left/right/top edge to snap"
+echo " 6. Tap Super -> Launchpad; move mouse to bottom edge -> Dock slides up"
 echo "========================================================"
 echo "Press Ctrl+C to close test environment."
 
