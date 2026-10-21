@@ -257,12 +257,14 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
             dock->x = (screen_w - dock->width) / 2;
             dock->y = is_hidden ? screen_h - 4 : screen_h - dock->height - 6;
             break;
-        case DOCK_TOP:
+        case DOCK_TOP: {
             dock->width = content_len < (int)(screen_w * 0.85) ? content_len : (int)(screen_w * 0.85);
             dock->height = dock->size;
             dock->x = (screen_w - dock->width) / 2;
-            dock->y = is_hidden ? -dock->height + 4 : 6;
+            int top_clearance = dock->top_offset > 0 ? dock->top_offset : 58;
+            dock->y = is_hidden ? -dock->height + 4 : top_clearance;
             break;
+        }
         case DOCK_LEFT:
             dock->width = dock->size;
             dock->height = content_len < (int)(screen_h * 0.85) ? content_len : (int)(screen_h * 0.85);
@@ -640,6 +642,9 @@ void dock_save_settings(const Dock *dock) {
     fprintf(f, "position=%d\n", (int)dock->pos);
     fprintf(f, "size=%d\n", dock->size);
     fprintf(f, "apps_corner=%s\n", dock->apps_at_left ? "left" : "right");
+    if (dock->top_offset > 0) {
+        fprintf(f, "top_offset=%d\n", dock->top_offset);
+    }
     fclose(f);
 }
 
@@ -676,6 +681,8 @@ void dock_load_settings(Dock *dock) {
             }
         } else if (sscanf(line, "apps_at_left=%d", &val) == 1) {
             dock->apps_at_left = (val != 0) ? 1 : 0;
+        } else if (sscanf(line, "top_offset=%d", &val) == 1) {
+            if (val > 0 && val < 500) dock->top_offset = val;
         }
     }
     fclose(f);
@@ -1241,7 +1248,11 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
 
     int in_trigger = 0;
     if (dock->pos == DOCK_BOTTOM && y >= screen_h - dock->size - 10) in_trigger = 1;
-    else if (dock->pos == DOCK_TOP && y <= dock->size + 10) in_trigger = 1;
+    else if (dock->pos == DOCK_TOP) {
+        int top_y = dock->top_offset > 0 ? dock->top_offset : 58;
+        int trigger_max = dock->is_hidden ? (top_y + 10) : (dock->y + dock->height + 10);
+        if (y <= trigger_max) in_trigger = 1;
+    }
     else if (dock->pos == DOCK_LEFT && x <= dock->size + 10) in_trigger = 1;
     else if (dock->pos == DOCK_RIGHT && x >= screen_w - dock->size - 10) in_trigger = 1;
 

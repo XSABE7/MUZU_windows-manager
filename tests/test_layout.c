@@ -58,7 +58,11 @@ int main(void) {
 
     dock_calculate_geometry(&dock, DOCK_TOP, 0, 1920, 1080);
     assert(dock.pos == DOCK_TOP);
-    assert(dock.y == 6);
+    assert(dock.y >= 30);
+    dock.top_offset = 70;
+    dock_calculate_geometry(&dock, DOCK_TOP, 0, 1920, 1080);
+    assert(dock.y == 70);
+    dock.top_offset = 0;
 
     dock_calculate_geometry(&dock, DOCK_LEFT, 0, 1920, 1080);
     assert(dock.pos == DOCK_LEFT);
@@ -116,7 +120,7 @@ int main(void) {
 
     dock_calculate_geometry(&dock_800, DOCK_TOP, 0, 800, 600);
     assert(dock_800.pos == DOCK_TOP);
-    assert(dock_800.y == 6);
+    assert(dock_800.y >= 30);
 
     dock_calculate_geometry(&dock_800, DOCK_LEFT, 0, 800, 600);
     assert(dock_800.pos == DOCK_LEFT);

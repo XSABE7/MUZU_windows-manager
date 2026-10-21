@@ -666,6 +666,14 @@ int main(int argc, char **argv) {
     }
     rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
+    if (dock.top_offset <= 0) {
+        dock.top_offset = panel.is_top ? (panel.height + TITLEBAR_HEIGHT + 6) : (TITLEBAR_HEIGHT + 6);
+    }
+    dock_calculate_geometry(&dock, dock.pos, dock.is_hidden, screen_w, screen_h);
+    if (dock.win) {
+        XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
+        dock_render(dpy, &dock, screen_w, screen_h);
+    }
 
     Menu context_menu = {0};
     WmContext wm_ctx = {
