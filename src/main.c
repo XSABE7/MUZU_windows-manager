@@ -708,6 +708,7 @@ int main(int argc, char **argv) {
     // Load GTK theme configuration & export env for GTK applications
     gtk_theme_init(&current_theme);
     gtk_theme_export_env(&current_theme);
+    gtk_theme_apply_cursor(dpy, root, &current_theme);
 
     // Initialize Wallpaper (Zero-Overhead Root Window Pixmap)
     if (cli_wallpaper) {

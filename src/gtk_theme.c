@@ -4,6 +4,9 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <X11/Xlib.h>
+#include <X11/cursorfont.h>
+#include <X11/Xcursor/Xcursor.h>
 #include "gtk_theme.h"
 
 static void trim(char *s) {
@@ -15,6 +18,10 @@ static void trim(char *s) {
     while (len > 0 && isspace((unsigned char)s[len - 1])) {
         s[len - 1] = '\0';
         len--;
+    }
+    if (len >= 2 && ((s[0] == '"' && s[len - 1] == '"') || (s[0] == '\'' && s[len - 1] == '\''))) {
+        memmove(s, s + 1, len - 2);
+        s[len - 2] = '\0';
     }
 }
 
@@ -88,10 +95,16 @@ void gtk_theme_load_from_file(GtkTheme *theme, const char *filepath) {
         } else if (strcmp(key, "gtk-icon-theme-name") == 0 && strlen(val) > 0) {
             strncpy(theme->icon_theme_name, val, sizeof(theme->icon_theme_name) - 1);
             theme->icon_theme_name[sizeof(theme->icon_theme_name) - 1] = '\0';
+        } else if (strcmp(key, "gtk-cursor-theme-name") == 0 && strlen(val) > 0) {
+            strncpy(theme->cursor_theme_name, val, sizeof(theme->cursor_theme_name) - 1);
+            theme->cursor_theme_name[sizeof(theme->cursor_theme_name) - 1] = '\0';
+        } else if (strcmp(key, "gtk-cursor-theme-size") == 0 && strlen(val) > 0) {
+            int sz = atoi(val);
+            if (sz > 0) theme->cursor_theme_size = sz;
         } else if (strcmp(key, "gtk-font-name") == 0 && strlen(val) > 0) {
             parse_font_string(val, theme->font_family, sizeof(theme->font_family), &theme->font_size);
         } else if (strcmp(key, "gtk-application-prefer-dark-theme") == 0) {
-            theme->is_dark = (atoi(val) == 1);
+            theme->is_dark = (atoi(val) == 1 || strcasecmp(val, "true") == 0);
         }
     }
     fclose(f);
@@ -106,6 +119,8 @@ void gtk_theme_init(GtkTheme *theme) {
     // Sensible modern defaults
     strncpy(theme->theme_name, "Adwaita-dark", sizeof(theme->theme_name) - 1);
     strncpy(theme->icon_theme_name, "hicolor", sizeof(theme->icon_theme_name) - 1);
+    strncpy(theme->cursor_theme_name, "Adwaita", sizeof(theme->cursor_theme_name) - 1);
+    theme->cursor_theme_size = 24;
     strncpy(theme->font_family, "Sans", sizeof(theme->font_family) - 1);
     theme->font_size = 11.0;
     theme->is_dark = 1;
@@ -114,6 +129,11 @@ void gtk_theme_init(GtkTheme *theme) {
     const char *home = getenv("HOME");
     if (home) {
         char path[512];
+        snprintf(path, sizeof(path), "%s/.gtkrc-2.0", home);
+        if (access(path, R_OK) == 0) {
+            gtk_theme_load_from_file(theme, path);
+        }
+
         snprintf(path, sizeof(path), "%s/.config/gtk-3.0/settings.ini", home);
         if (access(path, R_OK) == 0) {
             gtk_theme_load_from_file(theme, path);
@@ -132,5 +152,33 @@ void gtk_theme_export_env(const GtkTheme *theme) {
     if (!theme) return;
     if (strlen(theme->theme_name) > 0) {
         setenv("GTK_THEME", theme->theme_name, 1);
+    }
+    if (strlen(theme->cursor_theme_name) > 0) {
+        setenv("XCURSOR_THEME", theme->cursor_theme_name, 1);
+    }
+    if (theme->cursor_theme_size > 0) {
+        char sz_buf[16];
+        snprintf(sz_buf, sizeof(sz_buf), "%d", theme->cursor_theme_size);
+        setenv("XCURSOR_SIZE", sz_buf, 1);
+    }
+}
+
+void gtk_theme_apply_cursor(Display *dpy, Window root, const GtkTheme *theme) {
+    if (!dpy || root == None || !theme) return;
+
+    if (strlen(theme->cursor_theme_name) > 0) {
+        XcursorSetTheme(dpy, theme->cursor_theme_name);
+    }
+    int size = theme->cursor_theme_size > 0 ? theme->cursor_theme_size : 24;
+    XcursorSetDefaultSize(dpy, size);
+
+    Cursor cur = XcursorLibraryLoadCursor(dpy, "left_ptr");
+    if (cur == None) {
+        cur = XCreateFontCursor(dpy, XC_left_ptr);
+    }
+    if (cur != None) {
+        XDefineCursor(dpy, root, cur);
+        XFreeCursor(dpy, cur);
+        XFlush(dpy);
     }
 }

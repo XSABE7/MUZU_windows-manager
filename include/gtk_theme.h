@@ -1,6 +1,8 @@
 #ifndef MUZU_GTK_THEME_H
 #define MUZU_GTK_THEME_H
 
+#include <X11/Xlib.h>
+
 typedef struct {
     double r, g, b, a;
 } ColorRGBA;
@@ -8,6 +10,8 @@ typedef struct {
 typedef struct {
     char theme_name[128];
     char icon_theme_name[128];
+    char cursor_theme_name[128];
+    int cursor_theme_size;
     char font_family[64];
     double font_size;
     int is_dark;
@@ -21,5 +25,6 @@ typedef struct {
 void gtk_theme_init(GtkTheme *theme);
 void gtk_theme_load_from_file(GtkTheme *theme, const char *filepath);
 void gtk_theme_export_env(const GtkTheme *theme);
+void gtk_theme_apply_cursor(Display *dpy, Window root, const GtkTheme *theme);
 
 #endif /* MUZU_GTK_THEME_H */

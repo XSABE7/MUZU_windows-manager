@@ -15,16 +15,20 @@ int main(void) {
     assert(theme.is_dark == 1);
     assert(strlen(theme.theme_name) > 0);
     assert(strlen(theme.icon_theme_name) > 0);
+    assert(strlen(theme.cursor_theme_name) > 0);
+    assert(theme.cursor_theme_size > 0);
     assert(theme.bg_titlebar.a > 0.0);
     assert(theme.fg_titlebar.a > 0.0);
 
-    // 2. Test INI Parsing with Dark Theme
+    // 2. Test INI Parsing with Dark Theme and Cursor Theme
     const char *tmp_dark_ini = "/tmp/muzuwm_test_gtk_dark.ini";
     FILE *f = fopen(tmp_dark_ini, "w");
     assert(f != NULL);
     fprintf(f, "[Settings]\n");
     fprintf(f, "gtk-theme-name=WhiteSur-Dark\n");
     fprintf(f, "gtk-icon-theme-name=WhiteSur-dark\n");
+    fprintf(f, "gtk-cursor-theme-name=\"WhiteSur-cursors\"\n");
+    fprintf(f, "gtk-cursor-theme-size=32\n");
     fprintf(f, "gtk-font-name=Ubuntu 11\n");
     fprintf(f, "gtk-application-prefer-dark-theme=1\n");
     fclose(f);
@@ -34,6 +38,8 @@ int main(void) {
 
     assert(strcmp(theme.theme_name, "WhiteSur-Dark") == 0);
     assert(strcmp(theme.icon_theme_name, "WhiteSur-dark") == 0);
+    assert(strcmp(theme.cursor_theme_name, "WhiteSur-cursors") == 0);
+    assert(theme.cursor_theme_size == 32);
     assert(strcmp(theme.font_family, "Ubuntu") == 0);
     assert(theme.font_size == 11.0);
     assert(theme.is_dark == 1);
@@ -60,10 +66,15 @@ int main(void) {
     assert(theme.is_dark == 0);
     assert(theme.bg_titlebar.r > 0.8); // Light titlebar
 
-    // 4. Test Environment Variable Export
+    // 4. Test Environment Variable Export & NULL Display Cursor Safety
     gtk_theme_export_env(&theme);
     const char *env_theme = getenv("GTK_THEME");
     assert(env_theme != NULL && strcmp(env_theme, "Adwaita") == 0);
+    const char *env_cursor = getenv("XCURSOR_THEME");
+    assert(env_cursor != NULL && strcmp(env_cursor, "WhiteSur-cursors") == 0);
+    const char *env_cursor_size = getenv("XCURSOR_SIZE");
+    assert(env_cursor_size != NULL && strcmp(env_cursor_size, "32") == 0);
+    gtk_theme_apply_cursor(NULL, 0, &theme);
 
     printf("test_gtk_theme passed!\n");
     return 0;
