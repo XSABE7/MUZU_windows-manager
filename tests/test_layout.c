@@ -7,6 +7,13 @@
 #include "dock.h"
 #include "titlebar.h"
 
+static void free_clients(Client **head) {
+    if (!head) return;
+    while (*head) {
+        client_remove(head, (*head)->win);
+    }
+}
+
 int main(void) {
     LayoutConfig cfg = { .screen_width = 1920, .screen_height = 1080, .master_count = 1 };
     Client *head = NULL;
@@ -48,6 +55,7 @@ int main(void) {
     c3->mode = CLIENT_FLOATING;
     layout_calculate(&cfg, head, 1);
     assert(client_find(head, 102)->width == 1920);
+    free_clients(&head);
 
     // Test 5: Dock 3-edge positioning geometry calculation (Top disabled, falls back to Bottom)
     Dock dock = {0};
@@ -77,6 +85,7 @@ int main(void) {
     // Must safely clamp to buffer capacity without crashing
     layout_calculate(&cfg, many_head, 150);
     assert(client_find(many_head, 1001)->width > 0);
+    free_clients(&many_head);
 
     // Test 7: 800x600 Compact Screen Layout & Dock
     LayoutConfig cfg_800 = { .screen_width = 800, .screen_height = 600, .master_count = 1 };
@@ -106,6 +115,7 @@ int main(void) {
     assert(w2->width == 400 && w2->height == 300);
     assert(w3->width == 400 && w3->height == 300);
     assert(w3->y == 300);
+    free_clients(&head_800);
 
     // Dock positioning on 800x600
     Dock dock_800 = {0};
