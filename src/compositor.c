@@ -70,7 +70,22 @@ const char *compositor_get_config_path(void) {
 static void compositor_ensure_config(void) {
     const char *path = compositor_get_config_path();
     if (access(path, F_OK) == 0) {
-        return; // Valid user or upstream config found, do not overwrite
+        // If it is our own ~/.config/muzuwm/picom.conf from an older version lacking DOCK exclusion, upgrade it
+        if (strstr(path, "/.config/muzuwm/picom.conf") != NULL) {
+            FILE *chk = fopen(path, "r");
+            if (chk) {
+                char buf[4096];
+                size_t n = fread(buf, 1, sizeof(buf) - 1, chk);
+                buf[n] = '\0';
+                fclose(chk);
+                if (strstr(buf, "name = 'MUZUwm Dock'") != NULL &&
+                    strstr(buf, "glx-no-stencil") == NULL) {
+                    return;
+                }
+            }
+        } else {
+            return; // Valid user or upstream config found, do not overwrite
+        }
     }
 
     const char *home = getenv("HOME");
@@ -91,8 +106,6 @@ static void compositor_ensure_config(void) {
         "\n"
         "# Rendering Backend\n"
         "backend = \"glx\";\n"
-        "glx-no-stencil = true;\n"
-        "glx-no-rebind-pixmap = true;\n"
         "vsync = true;\n"
         "\n"
         "# Dual-Kawase Frosted Glass Blur\n"
@@ -117,7 +130,7 @@ static void compositor_ensure_config(void) {
         "shadow-offset-y = -8;\n"
         "shadow-exclude = [\n"
         "    \"name = 'MUZUwm Dock'\",\n"
-        "    \"_NET_WM_WINDOW_TYPE@:a *= 'DOCK'\",\n"
+        "    \"window_type = 'dock'\",\n"
         "    \"_GTK_FRAME_EXTENTS@\"\n"
         "];\n"
         "\n"
@@ -180,6 +193,15 @@ int compositor_find_picom(char *out_bin, size_t out_len) {
     return 0;
 }
 
+static int compositor_has_hardware_glx(Display *dpy) {
+    if (!dpy) return 0;
+    int major = 0, first_event = 0, first_error = 0;
+    if (XQueryExtension(dpy, "DRI3", &major, &first_event, &first_error)) return 1;
+    if (XQueryExtension(dpy, "DRI2", &major, &first_event, &first_error)) return 1;
+    if (XQueryExtension(dpy, "NV-GLX", &major, &first_event, &first_error)) return 1;
+    return 0;
+}
+
 void compositor_init(Display *dpy) {
     compositor_ensure_config();
     if (!dpy) return;
@@ -199,11 +221,18 @@ void compositor_init(Display *dpy) {
         return;
     }
 
+    int hw_glx = compositor_has_hardware_glx(dpy);
+
     pid_t pid = fork();
     if (pid == 0) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         setsid();
-        execl(picom_bin, "picom", "--config", compositor_get_config_path(), NULL);
+        if (hw_glx) {
+            execl(picom_bin, "picom", "--config", compositor_get_config_path(), NULL);
+        } else {
+            execl(picom_bin, "picom", "--config", compositor_get_config_path(),
+                  "--backend", "xrender", "--no-vsync", "--blur-method", "none", NULL);
+        }
         _exit(0);
     } else if (pid > 0) {
         picom_pid = pid;

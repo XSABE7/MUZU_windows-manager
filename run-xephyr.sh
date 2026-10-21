@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-# Support resolution argument: default to 1366x768, allow 800x600, 1920x1080, etc.
-RES="${1:-1366x768}"
+# Support resolution argument: default to 1280x700 (fits cleanly inside 1366x768 host screens), allow 800x600, 1366x768, 1920x1080, etc.
+RES="${1:-1280x700}"
 if [ "$RES" = "800" ]; then
     RES="800x600"
 elif [ "$RES" = "1366" ]; then

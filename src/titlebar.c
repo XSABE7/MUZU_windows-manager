@@ -66,6 +66,7 @@ Window titlebar_create(Display *dpy, Window client_win, int width) {
                                  DefaultVisual(dpy, screen),
                                  CWBackPixel | CWEventMask, &attrs);
 
+    XStoreName(dpy, frame, "MUZUwm Titlebar");
     XReparentWindow(dpy, client_win, frame, 0, TITLEBAR_HEIGHT);
     XMapWindow(dpy, frame);
     return frame;
@@ -134,14 +135,18 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     if (!focused) {
         // Subtle muted dots for unfocused state
         cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.50);
+        cairo_new_path(cr);
         cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
         cairo_fill(cr);
+        cairo_new_path(cr);
         cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
         cairo_fill(cr);
+        cairo_new_path(cr);
         cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
         cairo_fill(cr);
     } else {
         // 1. Red (Close)
+        cairo_new_path(cr);
         cairo_set_source_rgb(cr, 1.00, 0.37, 0.34); // #FF5F56
         cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
         cairo_fill_preserve(cr);
@@ -150,6 +155,7 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
         cairo_stroke(cr);
 
         // 2. Yellow (Minimize)
+        cairo_new_path(cr);
         cairo_set_source_rgb(cr, 1.00, 0.74, 0.18); // #FFBD2E
         cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
         cairo_fill_preserve(cr);
@@ -158,6 +164,7 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
         cairo_stroke(cr);
 
         // 3. Green (Maximize)
+        cairo_new_path(cr);
         cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
         cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
         cairo_fill_preserve(cr);

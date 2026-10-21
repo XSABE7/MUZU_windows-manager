@@ -468,7 +468,6 @@ static void set_focused_client(Display *dpy, Client *c) {
             snprintf(g_panel->active_title, sizeof(g_panel->active_title), "MUZUwm Desktop");
         }
         tint2_panel_render(dpy, g_panel);
-        XClearArea(dpy, g_panel->win, 0, 0, 1, 1, True);
         XFlush(dpy);
     }
 }
@@ -478,7 +477,6 @@ static void update_panel_state(Display *dpy, Client *clients, LayoutConfig *cfg)
     tint2_panel_update_workspaces(g_panel, clients, cfg->current_workspace,
                                   focused_client ? focused_client->title : "");
     tint2_panel_render(dpy, g_panel);
-    XClearArea(dpy, g_panel->win, 0, 0, 1, 1, True);
     XFlush(dpy);
 }
 
@@ -648,6 +646,11 @@ int main(int argc, char **argv) {
     Dock dock = {0};
     Tint2Panel panel = {0};
 
+    // Select root window events early so MapRequest events during init are queued
+    XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
+                            ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+                            KeyPressMask | KeyReleaseMask | PropertyChangeMask);
+
     // Load GTK theme configuration & export env for GTK applications
     gtk_theme_init(&current_theme);
     gtk_theme_export_env(&current_theme);
@@ -693,10 +696,31 @@ int main(int argc, char **argv) {
     // Launch X11 Compositor (Picom with Dual-Kawase Frosted Glass Blur)
     compositor_init(dpy);
 
-    // Select root window events
-    XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
-                            ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
-                            KeyPressMask | KeyReleaseMask | PropertyChangeMask);
+    // Adopt any pre-existing mapped top-level windows on root
+    {
+        Window root_ret = None, parent_ret = None, *children = NULL;
+        unsigned int nchildren = 0;
+        if (XQueryTree(dpy, root, &root_ret, &parent_ret, &children, &nchildren) && children) {
+            for (int i = (int)nchildren - 1; i >= 0; i--) {
+                Window cw = children[i];
+                if (cw == rofi_launcher.win || cw == dock.win || cw == context_menu.win ||
+                    cw == panel.win || (dock.tooltip_win && cw == dock.tooltip_win)) {
+                    continue;
+                }
+                XWindowAttributes wa = {0};
+                if (XGetWindowAttributes(dpy, cw, &wa) && !wa.override_redirect && wa.map_state == IsViewable) {
+                    XEvent mrev;
+                    memset(&mrev, 0, sizeof(mrev));
+                    mrev.type = MapRequest;
+                    mrev.xmaprequest.display = dpy;
+                    mrev.xmaprequest.parent = root;
+                    mrev.xmaprequest.window = cw;
+                    XPutBackEvent(dpy, &mrev);
+                }
+            }
+            XFree(children);
+        }
+    }
 
     // Grab Super key (Mod4Mask)
     KeyCode super_kc = XKeysymToKeycode(dpy, XK_Super_L);
@@ -804,32 +828,33 @@ int main(int argc, char **argv) {
                         c->width = win_w;
                         c->height = is_csd ? win_h : (win_h + TITLEBAR_HEIGHT);
                         client_get_title(dpy, w, c->title, sizeof(c->title));
+                        if (!c->icon_surface) {
+                            c->icon_surface = client_get_icon(dpy, c->win, c->title, 32);
+                        }
                     }
                     XAddToSaveSet(dpy, w);
                     XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask | FocusChangeMask | EnterWindowMask | LeaveWindowMask);
-
-                    if (is_dialog) {
-                        if (frame != None) {
-                            XMoveResizeWindow(dpy, frame, init_x, init_y, win_w, win_h + TITLEBAR_HEIGHT);
-                            XResizeWindow(dpy, w, win_w, win_h);
-                            titlebar_draw(dpy, c, &current_theme);
-                        } else {
-                            XMoveResizeWindow(dpy, w, init_x, init_y, win_w, win_h);
-                        }
-                    } else {
-                        reflow_all(dpy, clients, &cfg);
-                    }
                 }
                 XMapWindow(dpy, w);
                 Client *c = client_find(clients, w);
                 if (c) {
+                    set_focused_client(dpy, c);
+                    if (c->mode == CLIENT_FLOATING) {
+                        if (c->frame != None) {
+                            int ch = c->height - TITLEBAR_HEIGHT;
+                            if (ch < 10) ch = 10;
+                            XMoveResizeWindow(dpy, c->frame, c->x, c->y, c->width, c->height);
+                            XMoveResizeWindow(dpy, w, 0, TITLEBAR_HEIGHT, c->width, ch);
+                            titlebar_draw(dpy, c, &current_theme);
+                        } else {
+                            XMoveResizeWindow(dpy, w, c->x, c->y, c->width, c->height);
+                        }
+                    } else {
+                        reflow_all(dpy, clients, &cfg);
+                    }
                     if (c->frame) {
                         XRaiseWindow(dpy, c->frame);
                     }
-                    if (!c->icon_surface) {
-                        c->icon_surface = client_get_icon(dpy, c->win, c->title, 32);
-                    }
-                    set_focused_client(dpy, c);
                 } else {
                     XSetInputFocus(dpy, w, RevertToPointerRoot, CurrentTime);
                 }
@@ -842,15 +867,60 @@ int main(int argc, char **argv) {
 
             case ConfigureRequest: {
                 XConfigureRequestEvent *cre = &ev.xconfigurerequest;
-                XWindowChanges wc;
-                wc.x = cre->x;
-                wc.y = cre->y;
-                wc.width = cre->width;
-                wc.height = cre->height;
-                wc.border_width = cre->border_width;
-                wc.sibling = cre->above;
-                wc.stack_mode = cre->detail;
-                XConfigureWindow(dpy, cre->window, cre->value_mask, &wc);
+                Client *c = client_find(clients, cre->window);
+                if (c) {
+                    if (c->mode == CLIENT_FLOATING && !c->is_maximized) {
+                        if (cre->value_mask & CWX) c->x = cre->x;
+                        if (cre->value_mask & CWY) c->y = cre->y;
+                        if (cre->value_mask & CWWidth) c->width = cre->width > 50 ? cre->width : 50;
+                        if (cre->value_mask & CWHeight) {
+                            int req_h = cre->height > 50 ? cre->height : 50;
+                            c->height = c->frame ? (req_h + TITLEBAR_HEIGHT) : req_h;
+                        }
+                        if (c->frame) {
+                            int ch = c->height - TITLEBAR_HEIGHT;
+                            if (ch < 10) ch = 10;
+                            XMoveResizeWindow(dpy, c->frame, c->x, c->y, c->width, c->height);
+                            XMoveResizeWindow(dpy, c->win, 0, TITLEBAR_HEIGHT, c->width, ch);
+                            titlebar_draw(dpy, c, &current_theme);
+                        } else {
+                            XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
+                        }
+                    } else {
+                        // Tiled or maximized: enforce WM geometry and send synthetic ConfigureNotify
+                        int ch = c->frame ? (c->height - TITLEBAR_HEIGHT) : c->height;
+                        if (ch < 10) ch = 10;
+                        if (c->frame) {
+                            XMoveResizeWindow(dpy, c->win, 0, TITLEBAR_HEIGHT, c->width, ch);
+                        } else {
+                            XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
+                        }
+                        XConfigureEvent ce;
+                        memset(&ce, 0, sizeof(ce));
+                        ce.type = ConfigureNotify;
+                        ce.display = dpy;
+                        ce.event = c->win;
+                        ce.window = c->win;
+                        ce.x = c->x;
+                        ce.y = c->frame ? (c->y + TITLEBAR_HEIGHT) : c->y;
+                        ce.width = c->width;
+                        ce.height = ch;
+                        ce.border_width = 0;
+                        ce.above = None;
+                        ce.override_redirect = False;
+                        XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *)&ce);
+                    }
+                } else {
+                    XWindowChanges wc;
+                    wc.x = cre->x;
+                    wc.y = cre->y;
+                    wc.width = cre->width;
+                    wc.height = cre->height;
+                    wc.border_width = cre->border_width;
+                    wc.sibling = cre->above;
+                    wc.stack_mode = cre->detail;
+                    XConfigureWindow(dpy, cre->window, cre->value_mask, &wc);
+                }
                 raise_system_overlays(dpy);
                 break;
             }
@@ -1555,8 +1625,6 @@ int main(int argc, char **argv) {
             last_inactivity_check = now;
             tint2_panel_update_time(&panel, now);
             tint2_panel_render(dpy, &panel);
-            XClearArea(dpy, panel.win, 0, 0, 1, 1, True);
-            XFlush(dpy);
             for (Client *curr = clients; curr; curr = curr->next) {
                 if (curr != focused_client && !curr->is_minimized && !curr->is_hovered) {
                     if (curr->last_unfocus_time > 0 && (now - curr->last_unfocus_time >= 20)) {
