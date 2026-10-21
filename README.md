@@ -2,7 +2,6 @@
 
 ### Modern, Lightweight, Mouse-First Hybrid Floating &amp; Tiling X11 Window Manager
 
-> *"User ใช้ง่าย สบายมือ แต่คน Dev บอกเลยว่า ‘むず’ (Muzu / โคตรยาก)"*  
 > Intuitive, fluid one-handed desktop ergonomics for the user — engineered with pure low-level C11, Xlib, Xcursor, and Cairo graphics under the hood.
 
 ![Language](https://img.shields.io/badge/Language-C11-blue.svg)
