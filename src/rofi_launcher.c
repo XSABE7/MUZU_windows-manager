@@ -186,6 +186,14 @@ static int compare_apps(const void *a, const void *b) {
 
 void rofi_launcher_scan_apps(RofiLauncher *rofi) {
     if (!rofi) return;
+
+    for (int i = 0; i < rofi->app_count; i++) {
+        if (rofi->apps[i].icon_surface) {
+            cairo_surface_finish(rofi->apps[i].icon_surface);
+            cairo_surface_destroy(rofi->apps[i].icon_surface);
+            rofi->apps[i].icon_surface = NULL;
+        }
+    }
     rofi->app_count = 0;
 
     char user_app_dir[512];

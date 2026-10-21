@@ -130,6 +130,28 @@ int main(void) {
     }
 
     rofi_launcher_cleanup(&rofi);
+
+    // Test 12: Re-scanning apps cleans up existing icon surfaces safely
+    {
+        RofiLauncher mock_rofi;
+        memset(&mock_rofi, 0, sizeof(mock_rofi));
+        mock_rofi.app_count = 2;
+        mock_rofi.apps[0].icon_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
+        mock_rofi.apps[1].icon_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 16, 16);
+
+        // Call scan_apps which must destroy and reset old icon_surfaces without leaking
+        rofi_launcher_scan_apps(&mock_rofi);
+
+        // After rescan, surfaces must be newly loaded or NULL, clean up
+        for (int i = 0; i < mock_rofi.app_count; i++) {
+            if (mock_rofi.apps[i].icon_surface) {
+                cairo_surface_finish(mock_rofi.apps[i].icon_surface);
+                cairo_surface_destroy(mock_rofi.apps[i].icon_surface);
+                mock_rofi.apps[i].icon_surface = NULL;
+            }
+        }
+    }
+
     printf("test_rofi_launcher passed!\n");
     return 0;
 }
