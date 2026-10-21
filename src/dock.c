@@ -805,15 +805,30 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
                         PropModeReplace, (unsigned char *)"MUZUwm Dock", 11);
         XStoreName(dpy, dock->win, "MUZUwm Dock");
 
-        XSetWindowAttributes tattrs;
-        tattrs.override_redirect = True;
-        tattrs.background_pixel = BlackPixel(dpy, screen);
-        tattrs.event_mask = ExposureMask;
+        if (dock->depth == 32 && dock->colormap != None) {
+            XSetWindowAttributes tattrs;
+            tattrs.override_redirect = True;
+            tattrs.colormap = dock->colormap;
+            tattrs.border_pixel = 0;
+            tattrs.background_pixel = 0;
+            tattrs.event_mask = ExposureMask;
 
-        dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
-                                          DefaultDepth(dpy, screen), InputOutput,
-                                          DefaultVisual(dpy, screen),
-                                          CWOverrideRedirect | CWBackPixel | CWEventMask, &tattrs);
+            dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
+                                              dock->depth, InputOutput,
+                                              dock->visual,
+                                              CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixel | CWEventMask,
+                                              &tattrs);
+        } else {
+            XSetWindowAttributes tattrs;
+            tattrs.override_redirect = True;
+            tattrs.background_pixel = BlackPixel(dpy, screen);
+            tattrs.event_mask = ExposureMask;
+
+            dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
+                                              DefaultDepth(dpy, screen), InputOutput,
+                                              DefaultVisual(dpy, screen),
+                                              CWOverrideRedirect | CWBackPixel | CWEventMask, &tattrs);
+        }
 
         XMapRaised(dpy, dock->win);
         dock_render(dpy, dock, screen_w, screen_h);

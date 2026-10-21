@@ -128,7 +128,7 @@ static void compositor_ensure_config(void) {
         "opacity-rule = [\n"
         "    \"94:name = 'MUZUwm Dock'\",\n"
         "    \"94:window_type = 'dock'\",\n"
-        "    \"90:name = 'MUZUwm Titlebar'\",\n"
+        "    \"88:name = 'MUZUwm Titlebar'\",\n"
         "    \"96:window_type = 'dialog'\"\n"
         "];\n"
         "\n"

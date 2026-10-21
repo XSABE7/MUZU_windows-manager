@@ -1170,6 +1170,9 @@ int main(int argc, char **argv) {
                                 client_close(dpy, clicked_c->win);
                                 break;
                             } else if (action == TITLEBAR_CLICK_MINIMIZE) {
+                                if (clicked_c && !clicked_c->icon_surface) {
+                                    clicked_c->icon_surface = client_get_icon(dpy, clicked_c->win, clicked_c->title, 32);
+                                }
                                 if (dock_add_minimized(&dock, clicked_c)) {
                                     clicked_c->is_minimized = 1;
                                     Window target = clicked_c->frame ? clicked_c->frame : clicked_c->win;
