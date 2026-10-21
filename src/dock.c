@@ -7,6 +7,7 @@
 #include <math.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
+#include <X11/Xatom.h>
 #include "dock.h"
 #include "wm.h"
 #include "icon_fetcher.h"
@@ -711,6 +712,23 @@ void dock_set_magnification(Dock *dock, int enabled) {
     dock_save_settings(dock);
 }
 
+void dock_setup_ewmh(Display *dpy, Window win) {
+    if (!dpy || win == 0) return;
+
+    XStoreName(dpy, win, "MUZUwm Dock");
+
+    Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
+    const char *dock_name = "MUZUwm Dock";
+    XChangeProperty(dpy, win, net_wm_name, utf8_string, 8,
+                    PropModeReplace, (const unsigned char *)dock_name, (int)strlen(dock_name));
+
+    Atom net_wm_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom net_wm_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    XChangeProperty(dpy, win, net_wm_type, XA_ATOM, 32,
+                    PropModeReplace, (unsigned char *)&net_wm_dock, 1);
+}
+
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme) {
     if (!dock) return;
     dock->size = 48;
@@ -763,6 +781,8 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
                                   DefaultDepth(dpy, screen), InputOutput,
                                   DefaultVisual(dpy, screen),
                                   CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+
+        dock_setup_ewmh(dpy, dock->win);
 
         XSetWindowAttributes tattrs;
         tattrs.override_redirect = True;

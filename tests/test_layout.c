@@ -543,6 +543,9 @@ int main(void) {
         d.pos = DOCK_TOP;
         dock_calculate_geometry(&d, d.pos, 0, 1920, 1080);
         assert(d.pos == DOCK_BOTTOM);
+
+        // Test dock EWMH helper setup
+        dock_setup_ewmh(NULL, 0);
     }
 
     printf("test_layout passed!\n");

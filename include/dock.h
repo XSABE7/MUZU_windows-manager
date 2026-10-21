@@ -58,6 +58,7 @@ typedef struct {
 } Dock;
 
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h);
+void dock_setup_ewmh(Display *dpy, Window win);
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme);
 void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h);
 void dock_render_tooltip(Display *dpy, Dock *dock, int screen_w, int screen_h);
