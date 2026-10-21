@@ -38,6 +38,7 @@ typedef struct {
     int drag_offset_x, drag_offset_y; // Drag anchor offset
     int hover_state;
     int hover_item;     // -1 if none, 0..item_count-1
+    int hover_minimized; // -1 if none, 0..minimized_count-1
     int magnification_enabled; // 1 = macOS magnification wave on, 0 = off
     double mouse_pos;   // Cursor coordinate along dock axis
     int is_hovered;     // 1 if cursor is currently within dock bounds
@@ -51,12 +52,18 @@ typedef struct {
     DockMinimizedItem minimized[DOCK_MAX_MINIMIZED];
     int x, y, width, height;
     cairo_surface_t *surface;
+    Window tooltip_win;
+    cairo_surface_t *tooltip_surface;
     const GtkTheme *theme;
 } Dock;
 
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h);
 void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int screen_h, const GtkTheme *theme);
 void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h);
+void dock_render_tooltip(Display *dpy, Dock *dock, int screen_w, int screen_h);
+void dock_hide_tooltip(Display *dpy, Dock *dock);
+int dock_get_item_center_coord(const Dock *dock, int index, int start_pos, int icon_size, int margin);
+int dock_get_minimized_center_coord(const Dock *dock, int index, int min_start_pos, int icon_size, int margin);
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h);
 int dock_get_item_at(const Dock *dock, int x, int y);

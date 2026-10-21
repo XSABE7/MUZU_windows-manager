@@ -147,6 +147,94 @@ static void draw_trash_bin_icon(cairo_t *cr, int x, int y, int size) {
     cairo_restore(cr);
 }
 
+static int dock_get_special_separator_offset(const Dock *dock, int index) {
+    if (!dock || dock->item_count <= 0) return 0;
+
+    int has_apps = 0, has_trash = 0, reg_count = 0;
+    for (int i = 0; i < dock->item_count; i++) {
+        if (is_apps_item(&dock->items[i])) has_apps = 1;
+        else if (is_trash_item(&dock->items[i])) has_trash = 1;
+        else reg_count++;
+    }
+
+    if (reg_count == 0 || (!has_apps && !has_trash)) return 0;
+
+    const int SEP_GAP = 18;
+    if (!dock->apps_at_left) {
+        if (index >= reg_count) return SEP_GAP;
+        return 0;
+    } else {
+        if (index == 0) return 0;
+        int off = SEP_GAP;
+        if (has_trash && index == dock->item_count - 1) {
+            off += SEP_GAP;
+        }
+        return off;
+    }
+}
+
+static int dock_get_total_separator_gap(const Dock *dock) {
+    if (!dock || dock->item_count <= 0) return 0;
+
+    int has_apps = 0, has_trash = 0, reg_count = 0;
+    for (int i = 0; i < dock->item_count; i++) {
+        if (is_apps_item(&dock->items[i])) has_apps = 1;
+        else if (is_trash_item(&dock->items[i])) has_trash = 1;
+        else reg_count++;
+    }
+
+    if (reg_count == 0 || (!has_apps && !has_trash)) return 0;
+
+    const int SEP_GAP = 18;
+    if (!dock->apps_at_left) {
+        return SEP_GAP;
+    } else {
+        return has_trash ? (SEP_GAP * 2) : SEP_GAP;
+    }
+}
+
+int dock_get_item_center_coord(const Dock *dock, int index, int start_pos, int icon_size, int margin) {
+    int sep_off = dock_get_special_separator_offset(dock, index);
+    return start_pos + margin / 2 + index * (icon_size + margin) + sep_off + icon_size / 2;
+}
+
+int dock_get_minimized_center_coord(const Dock *dock, int index, int min_start_pos, int icon_size, int margin) {
+    (void)dock;
+    return min_start_pos + margin / 2 + index * (icon_size + margin) + icon_size / 2;
+}
+
+static void draw_prominent_divider(cairo_t *cr, double pos, int is_vertical, int dock_thickness, double accent_r, double accent_g, double accent_b) {
+    cairo_save(cr);
+    double line_len = 22.0;
+    if (line_len > dock_thickness - 16.0) line_len = dock_thickness - 16.0;
+
+    // Glowing vibrant halo
+    cairo_set_source_rgba(cr, accent_r, accent_g, accent_b, 0.45);
+    cairo_set_line_width(cr, 3.6);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    if (is_vertical) {
+        cairo_move_to(cr, (dock_thickness - line_len) / 2.0, pos);
+        cairo_line_to(cr, (dock_thickness + line_len) / 2.0, pos);
+    } else {
+        cairo_move_to(cr, pos, (dock_thickness - line_len) / 2.0);
+        cairo_line_to(cr, pos, (dock_thickness + line_len) / 2.0);
+    }
+    cairo_stroke(cr);
+
+    // Crisp high-luminance core
+    cairo_set_source_rgba(cr, accent_r * 0.3 + 0.7, accent_g * 0.3 + 0.7, accent_b * 0.3 + 0.7, 0.98);
+    cairo_set_line_width(cr, 1.8);
+    if (is_vertical) {
+        cairo_move_to(cr, (dock_thickness - (line_len - 2.0)) / 2.0, pos);
+        cairo_line_to(cr, (dock_thickness + (line_len - 2.0)) / 2.0, pos);
+    } else {
+        cairo_move_to(cr, pos, (dock_thickness - (line_len - 2.0)) / 2.0);
+        cairo_line_to(cr, pos, (dock_thickness + (line_len - 2.0)) / 2.0);
+    }
+    cairo_stroke(cr);
+    cairo_restore(cr);
+}
+
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h) {
     if (!dock) return;
     if (dock->size <= 0) dock->size = 48;
@@ -157,8 +245,10 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
     int margin = 8;
     int count = dock->item_count > 0 ? dock->item_count : 1;
     int min_count = dock->minimized_count;
-    // Tight fit: no 260px minimum width, just 12px total outer padding (6px per side)
-    int content_len = count * (icon_size + margin) + (min_count > 0 ? 16 + min_count * (icon_size + margin) : 0) + 12;
+    int sep_gap = dock_get_total_separator_gap(dock);
+    // Tight fit: no 260px minimum width, dedicated gap for special items separator and minimized separator
+    int content_len = count * (icon_size + margin) + sep_gap +
+                      (min_count > 0 ? 18 + min_count * (icon_size + margin) : 0) + 12;
 
     switch (pos) {
         case DOCK_BOTTOM:
@@ -204,16 +294,16 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     int icon_size = dock_get_base_icon_size(dock);
     int margin = 8;
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
+    int launcher_len = dock->item_count * (icon_size + margin) + dock_get_total_separator_gap(dock);
+    int total_len = launcher_len + (dock->minimized_count > 0 ? 18 + dock->minimized_count * (icon_size + margin) : 0);
 
     if (is_vertical) {
-        int launcher_h = dock->item_count * (icon_size + margin);
-        int total_h = launcher_h + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
-        int start_y = (dock->height - total_h) / 2;
+        int start_y = (dock->height - total_len) / 2;
         if (start_y < 4) start_y = 4;
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_y = start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+            int center_y = dock_get_item_center_coord(dock, i, start_y, icon_size, margin);
             double scale = dock_get_magnification_scale(dock, center_y);
             double half_w = (icon_size * scale) / 2.0 + 3.0;
             double half_h = (icon_size * scale) / 2.0 + 3.0;
@@ -224,14 +314,12 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
         }
         return -1;
     } else {
-        int launcher_w = dock->item_count * (icon_size + margin);
-        int total_w = launcher_w + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
-        int start_x = (dock->width - total_w) / 2;
+        int start_x = (dock->width - total_len) / 2;
         if (start_x < 4) start_x = 4;
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_x = start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+            int center_x = dock_get_item_center_coord(dock, i, start_x, icon_size, margin);
             double scale = dock_get_magnification_scale(dock, center_x);
             double half_w = (icon_size * scale) / 2.0 + 3.0;
             double half_h = (icon_size * scale) / 2.0 + 3.0;
@@ -265,7 +353,8 @@ int dock_add_minimized(Dock *dock, Client *c) {
         int icon_size = dock_get_base_icon_size(dock);
         int margin = 8;
         int count = dock->item_count > 0 ? dock->item_count : 1;
-        int content_len = count * (icon_size + margin) + 16 + dock->minimized_count * (icon_size + margin) + 12;
+        int sep_gap = dock_get_total_separator_gap(dock);
+        int content_len = count * (icon_size + margin) + sep_gap + 18 + dock->minimized_count * (icon_size + margin) + 12;
         if (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT) {
             dock->height = content_len;
         } else {
@@ -294,8 +383,9 @@ void dock_remove_minimized(Dock *dock, Client *c) {
         int icon_size = dock_get_base_icon_size(dock);
         int margin = 8;
         int count = dock->item_count > 0 ? dock->item_count : 1;
-        int content_len = count * (icon_size + margin) +
-                          (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0) + 12;
+        int sep_gap = dock_get_total_separator_gap(dock);
+        int content_len = count * (icon_size + margin) + sep_gap +
+                          (dock->minimized_count > 0 ? 18 + dock->minimized_count * (icon_size + margin) : 0) + 12;
         if (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT) {
             dock->height = content_len;
         } else {
@@ -309,17 +399,17 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
     int icon_size = dock_get_base_icon_size(dock);
     int margin = 8;
     int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
+    int launcher_len = dock->item_count * (icon_size + margin) + dock_get_total_separator_gap(dock);
+    int total_len = launcher_len + 18 + dock->minimized_count * (icon_size + margin);
 
     if (is_vertical) {
-        int launcher_h = dock->item_count * (icon_size + margin);
-        int total_h = launcher_h + 16 + dock->minimized_count * (icon_size + margin);
-        int start_y = (dock->height - total_h) / 2;
+        int start_y = (dock->height - total_len) / 2;
         if (start_y < 4) start_y = 4;
-        int min_start_y = start_y + launcher_h + 16;
+        int min_start_y = start_y + launcher_len + 18;
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->minimized_count; i++) {
-            int center_y = min_start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+            int center_y = dock_get_minimized_center_coord(dock, i, min_start_y, icon_size, margin);
             double scale = dock_get_magnification_scale(dock, center_y);
             double half_w = (icon_size * scale) / 2.0 + 3.0;
             double half_h = (icon_size * scale) / 2.0 + 3.0;
@@ -330,15 +420,13 @@ Client *dock_get_minimized_at(const Dock *dock, int x, int y) {
         }
         return NULL;
     } else {
-        int launcher_w = dock->item_count * (icon_size + margin);
-        int total_w = launcher_w + 16 + dock->minimized_count * (icon_size + margin);
-        int start_x = (dock->width - total_w) / 2;
+        int start_x = (dock->width - total_len) / 2;
         if (start_x < 4) start_x = 4;
-        int min_start_x = start_x + launcher_w + 16;
+        int min_start_x = start_x + launcher_len + 18;
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->minimized_count; i++) {
-            int center_x = min_start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+            int center_x = dock_get_minimized_center_coord(dock, i, min_start_x, icon_size, margin);
             double scale = dock_get_magnification_scale(dock, center_x);
             double half_w = (icon_size * scale) / 2.0 + 3.0;
             double half_h = (icon_size * scale) / 2.0 + 3.0;
@@ -625,6 +713,7 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->drag_offset_y = 0;
     dock->hover_state = 0;
     dock->hover_item = -1;
+    dock->hover_minimized = -1;
     dock->magnification_enabled = 1;
     dock->mouse_pos = -1.0;
     dock->is_hovered = 0;
@@ -634,6 +723,8 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->press_y = 0;
     dock->is_reordering = 0;
     dock->surface = NULL;
+    dock->tooltip_win = None;
+    dock->tooltip_surface = NULL;
     dock->theme = theme;
     dock->item_count = 0;
     dock->minimized_count = 0;
@@ -664,6 +755,16 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
                                   DefaultDepth(dpy, screen), InputOutput,
                                   DefaultVisual(dpy, screen),
                                   CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+
+        XSetWindowAttributes tattrs;
+        tattrs.override_redirect = True;
+        tattrs.background_pixel = BlackPixel(dpy, screen);
+        tattrs.event_mask = ExposureMask;
+
+        dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
+                                          DefaultDepth(dpy, screen), InputOutput,
+                                          DefaultVisual(dpy, screen),
+                                          CWOverrideRedirect | CWBackPixel | CWEventMask, &tattrs);
 
         XMapRaised(dpy, dock->win);
         dock_render(dpy, dock, screen_w, screen_h);
@@ -737,15 +838,23 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         {0.90, 0.60, 0.20}
     };
 
+    int has_apps = 0, has_trash = 0, reg_count = 0;
+    for (int i = 0; i < dock->item_count; i++) {
+        if (is_apps_item(&dock->items[i])) has_apps = 1;
+        else if (is_trash_item(&dock->items[i])) has_trash = 1;
+        else reg_count++;
+    }
+
+    int launcher_len = dock->item_count * (icon_size + margin) + dock_get_total_separator_gap(dock);
+    int total_len = launcher_len + (dock->minimized_count > 0 ? 18 + dock->minimized_count * (icon_size + margin) : 0);
+
     if (is_vertical) {
-        int launcher_h = dock->item_count * (icon_size + margin);
-        int total_h = launcher_h + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
-        int start_y = (dock->height - total_h) / 2;
+        int start_y = (dock->height - total_len) / 2;
         if (start_y < 4) start_y = 4;
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_y = start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+            int center_y = dock_get_item_center_coord(dock, i, start_y, icon_size, margin);
             double scale = dock_get_magnification_scale(dock, center_y);
             int eff_size = (int)(icon_size * scale);
             int ix = center_x - eff_size / 2;
@@ -791,18 +900,35 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
             }
         }
 
+        // Prominent colored divider line separating Apps/Trash from pinned/running applications
+        if (!dock->apps_at_left) {
+            if (reg_count > 0 && (has_apps || has_trash)) {
+                double div_pos = start_y + margin / 2 + reg_count * (icon_size + margin) + 9.0;
+                draw_prominent_divider(cr, div_pos, 1, dock->width, accent_r, accent_g, accent_b);
+            }
+        } else {
+            if (has_apps && reg_count > 0) {
+                double div1_pos = start_y + margin / 2 + 1 * (icon_size + margin) + 9.0;
+                draw_prominent_divider(cr, div1_pos, 1, dock->width, accent_r, accent_g, accent_b);
+            }
+            if (has_trash && reg_count > 0) {
+                double div2_pos = start_y + margin / 2 + (dock->item_count - 1) * (icon_size + margin) + 18.0 + 9.0;
+                draw_prominent_divider(cr, div2_pos, 1, dock->width, accent_r, accent_g, accent_b);
+            }
+        }
+
         // Separator line and Minimized Windows section (vertical)
         if (dock->minimized_count > 0) {
-            int sep_y = start_y + launcher_h + 7;
+            int sep_y = start_y + launcher_len + 9;
             cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
             cairo_set_line_width(cr, 1.5);
-            cairo_move_to(cr, (dock->width - 24) / 2, sep_y);
-            cairo_line_to(cr, (dock->width + 24) / 2, sep_y);
+            cairo_move_to(cr, (dock->width - 24) / 2.0, sep_y);
+            cairo_line_to(cr, (dock->width + 24) / 2.0, sep_y);
             cairo_stroke(cr);
 
-            int min_start_y = start_y + launcher_h + 16;
+            int min_start_y = start_y + launcher_len + 18;
             for (int i = 0; i < dock->minimized_count; i++) {
-                int center_y = min_start_y + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+                int center_y = dock_get_minimized_center_coord(dock, i, min_start_y, icon_size, margin);
                 double scale = dock_get_magnification_scale(dock, center_y);
                 int eff_size = (int)(icon_size * scale);
                 int mx = center_x - eff_size / 2;
@@ -826,14 +952,12 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         }
     } else {
         // Horizontal dock
-        int launcher_w = dock->item_count * (icon_size + margin);
-        int total_w = launcher_w + (dock->minimized_count > 0 ? 16 + dock->minimized_count * (icon_size + margin) : 0);
-        int start_x = (dock->width - total_w) / 2;
+        int start_x = (dock->width - total_len) / 2;
         if (start_x < 4) start_x = 4;
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
-            int center_x = start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+            int center_x = dock_get_item_center_coord(dock, i, start_x, icon_size, margin);
             double scale = dock_get_magnification_scale(dock, center_x);
             int eff_size = (int)(icon_size * scale);
             int ix = center_x - eff_size / 2;
@@ -878,18 +1002,35 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
             }
         }
 
+        // Prominent colored divider line separating Apps/Trash from pinned/running applications
+        if (!dock->apps_at_left) {
+            if (reg_count > 0 && (has_apps || has_trash)) {
+                double div_pos = start_x + margin / 2 + reg_count * (icon_size + margin) + 9.0;
+                draw_prominent_divider(cr, div_pos, 0, dock->height, accent_r, accent_g, accent_b);
+            }
+        } else {
+            if (has_apps && reg_count > 0) {
+                double div1_pos = start_x + margin / 2 + 1 * (icon_size + margin) + 9.0;
+                draw_prominent_divider(cr, div1_pos, 0, dock->height, accent_r, accent_g, accent_b);
+            }
+            if (has_trash && reg_count > 0) {
+                double div2_pos = start_x + margin / 2 + (dock->item_count - 1) * (icon_size + margin) + 18.0 + 9.0;
+                draw_prominent_divider(cr, div2_pos, 0, dock->height, accent_r, accent_g, accent_b);
+            }
+        }
+
         // Separator line and Minimized Windows section (horizontal)
         if (dock->minimized_count > 0) {
-            int sep_x = start_x + launcher_w + 7;
+            int sep_x = start_x + launcher_len + 9;
             cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.25);
             cairo_set_line_width(cr, 1.5);
-            cairo_move_to(cr, sep_x, (dock->height - 24) / 2);
-            cairo_line_to(cr, sep_x, (dock->height + 24) / 2);
+            cairo_move_to(cr, sep_x, (dock->height - 24) / 2.0);
+            cairo_line_to(cr, sep_x, (dock->height + 24) / 2.0);
             cairo_stroke(cr);
 
-            int min_start_x = start_x + launcher_w + 16;
+            int min_start_x = start_x + launcher_len + 18;
             for (int i = 0; i < dock->minimized_count; i++) {
-                int center_x = min_start_x + margin / 2 + i * (icon_size + margin) + icon_size / 2;
+                int center_x = dock_get_minimized_center_coord(dock, i, min_start_x, icon_size, margin);
                 double scale = dock_get_magnification_scale(dock, center_x);
                 int eff_size = (int)(icon_size * scale);
                 int mx = center_x - eff_size / 2;
@@ -919,8 +1060,168 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         if (!dock->is_hidden) {
             XRaiseWindow(dpy, dock->win);
         }
+        dock_render_tooltip(dpy, dock, screen_w, screen_h);
         XFlush(dpy);
     }
+}
+
+void dock_hide_tooltip(Display *dpy, Dock *dock) {
+    if (!dock) return;
+    if (dpy && dock->tooltip_win) {
+        XUnmapWindow(dpy, dock->tooltip_win);
+        XFlush(dpy);
+    }
+}
+
+void dock_render_tooltip(Display *dpy, Dock *dock, int screen_w, int screen_h) {
+    if (!dpy || !dock || !dock->tooltip_win) return;
+    if (dock->is_hidden || dock->is_dragging || !dock->is_hovered || (dock->hover_item < 0 && dock->hover_minimized < 0)) {
+        dock_hide_tooltip(dpy, dock);
+        return;
+    }
+
+    const char *text = NULL;
+    int is_minimized_item = 0;
+    int target_idx = -1;
+
+    if (dock->hover_item >= 0 && dock->hover_item < dock->item_count) {
+        text = dock->items[dock->hover_item].name;
+        target_idx = dock->hover_item;
+    } else if (dock->hover_minimized >= 0 && dock->hover_minimized < dock->minimized_count) {
+        text = dock->minimized[dock->hover_minimized].title;
+        target_idx = dock->hover_minimized;
+        is_minimized_item = 1;
+    }
+
+    if (!text || text[0] == '\0') {
+        dock_hide_tooltip(dpy, dock);
+        return;
+    }
+
+    // Measure text extents
+    cairo_surface_t *measure_surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+    cairo_t *mcr = cairo_create(measure_surf);
+    cairo_select_font_face(mcr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(mcr, 11.5);
+    cairo_text_extents_t extents;
+    cairo_text_extents(mcr, text, &extents);
+    cairo_destroy(mcr);
+    cairo_surface_destroy(measure_surf);
+
+    int tooltip_w = (int)(extents.width + 22.0);
+    if (tooltip_w < 44) tooltip_w = 44;
+    int tooltip_h = 24;
+
+    int icon_size = dock_get_base_icon_size(dock);
+    int margin = 8;
+    int is_vertical = (dock->pos == DOCK_LEFT || dock->pos == DOCK_RIGHT);
+    int launcher_len = dock->item_count * (icon_size + margin) + dock_get_total_separator_gap(dock);
+    int total_len = launcher_len + (dock->minimized_count > 0 ? 18 + dock->minimized_count * (icon_size + margin) : 0);
+
+    int item_center = 0;
+    if (is_vertical) {
+        int start_y = (dock->height - total_len) / 2;
+        if (start_y < 4) start_y = 4;
+        if (is_minimized_item) {
+            int min_start_y = start_y + launcher_len + 18;
+            item_center = dock_get_minimized_center_coord(dock, target_idx, min_start_y, icon_size, margin);
+        } else {
+            item_center = dock_get_item_center_coord(dock, target_idx, start_y, icon_size, margin);
+        }
+    } else {
+        int start_x = (dock->width - total_len) / 2;
+        if (start_x < 4) start_x = 4;
+        if (is_minimized_item) {
+            int min_start_x = start_x + launcher_len + 18;
+            item_center = dock_get_minimized_center_coord(dock, target_idx, min_start_x, icon_size, margin);
+        } else {
+            item_center = dock_get_item_center_coord(dock, target_idx, start_x, icon_size, margin);
+        }
+    }
+
+    int tooltip_x = 0;
+    int tooltip_y = 0;
+
+    switch (dock->pos) {
+        case DOCK_BOTTOM:
+            tooltip_x = dock->x + item_center - tooltip_w / 2;
+            tooltip_y = dock->y - tooltip_h - 8;
+            break;
+        case DOCK_TOP:
+            tooltip_x = dock->x + item_center - tooltip_w / 2;
+            tooltip_y = dock->y + dock->height + 8;
+            break;
+        case DOCK_LEFT:
+            tooltip_x = dock->x + dock->width + 8;
+            tooltip_y = dock->y + item_center - tooltip_h / 2;
+            break;
+        case DOCK_RIGHT:
+            tooltip_x = dock->x - tooltip_w - 8;
+            tooltip_y = dock->y + item_center - tooltip_h / 2;
+            break;
+    }
+
+    if (tooltip_x < 4) tooltip_x = 4;
+    if (tooltip_x + tooltip_w > screen_w - 4) tooltip_x = screen_w - tooltip_w - 4;
+    if (tooltip_y < 4) tooltip_y = 4;
+    if (tooltip_y + tooltip_h > screen_h - 4) tooltip_y = screen_h - tooltip_h - 4;
+
+    XMoveResizeWindow(dpy, dock->tooltip_win, tooltip_x, tooltip_y, tooltip_w, tooltip_h);
+    XMapRaised(dpy, dock->tooltip_win);
+
+    int screen = DefaultScreen(dpy);
+    Visual *visual = DefaultVisual(dpy, screen);
+    if (!dock->tooltip_surface) {
+        dock->tooltip_surface = cairo_xlib_surface_create(dpy, dock->tooltip_win, visual, tooltip_w, tooltip_h);
+    } else {
+        cairo_xlib_surface_set_size(dock->tooltip_surface, tooltip_w, tooltip_h);
+    }
+
+    cairo_t *cr = cairo_create(dock->tooltip_surface);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+    // Liquid Glass Tooltip Pill (Deep dark frosted background + specular highlight)
+    cairo_pattern_t *pat = cairo_pattern_create_linear(0, 0, 0, tooltip_h);
+    cairo_pattern_add_color_stop_rgba(pat, 0.0, 0.12, 0.14, 0.18, 0.96);
+    cairo_pattern_add_color_stop_rgba(pat, 1.0, 0.07, 0.08, 0.11, 0.92);
+    cairo_set_source(cr, pat);
+    draw_rounded_rectangle(cr, 1.0, 1.0, tooltip_w - 2.0, tooltip_h - 2.0, 6.0);
+    cairo_fill(cr);
+    cairo_pattern_destroy(pat);
+
+    // Subtle dark outer border
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.65);
+    cairo_set_line_width(cr, 1.0);
+    draw_rounded_rectangle(cr, 0.5, 0.5, tooltip_w - 1.0, tooltip_h - 1.0, 6.0);
+    cairo_stroke(cr);
+
+    // Specular refraction rim
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.22);
+    cairo_set_line_width(cr, 1.0);
+    draw_rounded_rectangle(cr, 1.5, 1.5, tooltip_w - 3.0, tooltip_h - 3.0, 5.0);
+    cairo_stroke(cr);
+
+    // Crisp high-contrast text centered
+    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(cr, 11.5);
+    double tx = (tooltip_w - extents.width) / 2.0 - extents.x_bearing;
+    double ty = (tooltip_h - extents.height) / 2.0 - extents.y_bearing;
+
+    // Drop shadow
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.70);
+    cairo_move_to(cr, tx, ty + 1.0);
+    cairo_show_text(cr, text);
+
+    // Text foreground
+    cairo_set_source_rgba(cr, 0.97, 0.98, 1.0, 1.0);
+    cairo_move_to(cr, tx, ty);
+    cairo_show_text(cr, text);
+
+    cairo_destroy(cr);
+    cairo_surface_flush(dock->tooltip_surface);
+    XFlush(dpy);
 }
 
 void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, int screen_h) {
@@ -955,8 +1256,10 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
     } else if (!in_trigger && !dock->is_hidden && !dock->is_dragging && dock->press_item < 0) {
         dock->is_hidden = 1;
         dock->hover_item = -1;
+        dock->hover_minimized = -1;
         dock->is_hovered = 0;
         dock->mouse_pos = -1.0;
+        dock_hide_tooltip(dpy, dock);
         dock_calculate_geometry(dock, dock->pos, 1, screen_w, screen_h);
         if (dpy && dock->win) {
             XMoveWindow(dpy, dock->win, dock->x, dock->y);
@@ -975,14 +1278,29 @@ void dock_handle_hover(Display *dpy, Dock *dock, int x, int y, int screen_w, int
     }
 
     int item = dock_get_item_at(dock, x, y);
-    if (item != dock->hover_item || dock->magnification_enabled) {
+    int min_idx = -1;
+    if (item < 0 && dock->minimized_count > 0) {
+        Client *mc = dock_get_minimized_at(dock, x, y);
+        if (mc) {
+            for (int i = 0; i < dock->minimized_count; i++) {
+                if (dock->minimized[i].client == mc) {
+                    min_idx = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (item != dock->hover_item || min_idx != dock->hover_minimized || dock->magnification_enabled) {
         dock->hover_item = item;
+        dock->hover_minimized = min_idx;
         dock_render(dpy, dock, screen_w, screen_h);
     }
 }
 
 void dock_handle_click(Display *dpy, Dock *dock, RofiLauncher *rofi, int x, int y) {
     if (!dock) return;
+    dock_hide_tooltip(dpy, dock);
 
     int item = dock_get_item_at(dock, x, y);
     if (item < 0 || item >= dock->item_count) return;
@@ -1123,6 +1441,11 @@ void dock_cleanup(Dock *dock) {
     }
     for (int i = 0; i < dock->minimized_count; i++) {
         dock->minimized[i].icon_surface = NULL;
+    }
+    if (dock->tooltip_surface) {
+        cairo_surface_finish(dock->tooltip_surface);
+        cairo_surface_destroy(dock->tooltip_surface);
+        dock->tooltip_surface = NULL;
     }
     if (dock->surface) {
         cairo_surface_finish(dock->surface);

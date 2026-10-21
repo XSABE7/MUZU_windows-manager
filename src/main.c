@@ -32,9 +32,63 @@ typedef struct {
     Window root;
     Dock *dock;
     RofiLauncher *rofi;
+    Client **clients_ptr;
+    LayoutConfig *cfg_ptr;
     int screen_w, screen_h;
     int right_clicked_dock_item;
 } WmContext;
+
+static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg);
+static void raise_system_overlays(Display *dpy);
+
+static pid_t client_get_pid(Display *dpy, Window win) {
+    if (!dpy || win == None) return 0;
+    Atom net_wm_pid = XInternAtom(dpy, "_NET_WM_PID", True);
+    if (net_wm_pid == None) return 0;
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = NULL;
+    pid_t pid = 0;
+    if (XGetWindowProperty(dpy, win, net_wm_pid, 0, 1, False, XA_CARDINAL,
+                           &actual_type, &actual_format, &nitems, &bytes_after, &prop) == Success) {
+        if (prop && nitems > 0) {
+            pid = (pid_t)(*(unsigned long *)prop);
+        }
+        if (prop) XFree(prop);
+    }
+    return pid;
+}
+
+static int client_matches_dock_item(Display *dpy, const Client *c, const DockItem *item) {
+    if (!c || !item) return 0;
+    if (c->title[0] != '\0') {
+        if (strcasestr(c->title, item->name) != NULL) return 1;
+        if (item->exec_cmd[0] != '\0' && strcasestr(c->title, item->exec_cmd) != NULL) return 1;
+    }
+    if (dpy && c->win != None) {
+        XClassHint ch;
+        if (XGetClassHint(dpy, c->win, &ch)) {
+            int match = 0;
+            if (ch.res_name) {
+                if (strcasestr(ch.res_name, item->name) ||
+                    (item->exec_cmd[0] && strcasestr(ch.res_name, item->exec_cmd))) {
+                    match = 1;
+                }
+            }
+            if (ch.res_class) {
+                if (strcasestr(ch.res_class, item->name) ||
+                    (item->exec_cmd[0] && strcasestr(ch.res_class, item->exec_cmd))) {
+                    match = 1;
+                }
+            }
+            if (ch.res_name) XFree(ch.res_name);
+            if (ch.res_class) XFree(ch.res_class);
+            if (match) return 1;
+        }
+    }
+    return 0;
+}
 
 static void handle_menu_action(int action_id, void *userdata) {
     WmContext *ctx = (WmContext *)userdata;
@@ -45,6 +99,99 @@ static void handle_menu_action(int action_id, void *userdata) {
     int screen_h = ctx->screen_h;
 
     switch (action_id) {
+        case DOCK_ACTION_LAUNCH_APP:
+            if (ctx->right_clicked_dock_item >= 0 && ctx->right_clicked_dock_item < dock->item_count) {
+                const char *cmd = dock->items[ctx->right_clicked_dock_item].exec_cmd;
+                pid_t pid = fork();
+                if (pid == 0) {
+                    setsid();
+                    execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+                    _exit(1);
+                }
+            }
+            break;
+
+        case DOCK_ACTION_CLOSE_APP:
+            if (ctx->right_clicked_dock_item >= 0 && ctx->right_clicked_dock_item < dock->item_count && ctx->clients_ptr) {
+                const DockItem *item = &dock->items[ctx->right_clicked_dock_item];
+                Client *target_c = NULL;
+                for (Client *c = *ctx->clients_ptr; c; c = c->next) {
+                    if (client_matches_dock_item(dpy, c, item)) {
+                        if (c->is_focused) {
+                            target_c = c;
+                            break;
+                        }
+                        if (!target_c) target_c = c;
+                    }
+                }
+                if (target_c) {
+                    client_close(dpy, target_c->win);
+                }
+            }
+            break;
+
+        case DOCK_ACTION_KILL_APP:
+            if (ctx->right_clicked_dock_item >= 0 && ctx->right_clicked_dock_item < dock->item_count && ctx->clients_ptr) {
+                const DockItem *item = &dock->items[ctx->right_clicked_dock_item];
+                for (Client *c = *ctx->clients_ptr; c; c = c->next) {
+                    if (client_matches_dock_item(dpy, c, item)) {
+                        pid_t pid = client_get_pid(dpy, c->win);
+                        if (pid > 1) {
+                            kill(pid, SIGKILL);
+                        }
+                        XKillClient(dpy, c->win);
+                    }
+                }
+            }
+            break;
+
+        case DOCK_ACTION_CLOSE_ALL_WINDOWS:
+            if (ctx->right_clicked_dock_item >= 0 && ctx->right_clicked_dock_item < dock->item_count && ctx->clients_ptr) {
+                const DockItem *item = &dock->items[ctx->right_clicked_dock_item];
+                for (Client *c = *ctx->clients_ptr; c; c = c->next) {
+                    if (client_matches_dock_item(dpy, c, item)) {
+                        client_close(dpy, c->win);
+                    }
+                }
+            }
+            break;
+
+        case DOCK_ACTION_DETACH_ALL_WINDOWS:
+            if (ctx->right_clicked_dock_item >= 0 && ctx->right_clicked_dock_item < dock->item_count && ctx->clients_ptr) {
+                const DockItem *item = &dock->items[ctx->right_clicked_dock_item];
+                int detached_any = 0;
+                int stagger = 0;
+                for (Client *c = *ctx->clients_ptr; c; c = c->next) {
+                    if (client_matches_dock_item(dpy, c, item)) {
+                        if (c->mode == CLIENT_TILED) {
+                            c->mode = CLIENT_FLOATING;
+                            c->snap_state = SNAP_NONE;
+                            c->is_maximized = 0;
+                            c->width = (screen_w * 3) / 5;
+                            c->height = (screen_h * 3) / 5;
+                            c->x = (screen_w - c->width) / 2 + stagger;
+                            c->y = (screen_h - c->height) / 2 + stagger;
+                            stagger += 30;
+                            Window target = c->frame ? c->frame : c->win;
+                            XMoveResizeWindow(dpy, target, c->x, c->y, c->width, c->height);
+                            if (c->frame) {
+                                int ch = c->height - TITLEBAR_HEIGHT;
+                                if (ch < 10) ch = 10;
+                                XResizeWindow(dpy, c->win, c->width, ch);
+                                titlebar_draw(dpy, c, &current_theme);
+                            }
+                            XRaiseWindow(dpy, target);
+                            detached_any = 1;
+                        }
+                    }
+                }
+                if (detached_any && ctx->cfg_ptr) {
+                    reflow_all(dpy, *ctx->clients_ptr, ctx->cfg_ptr);
+                    raise_system_overlays(dpy);
+                }
+            }
+            break;
+
         case DOCK_ACTION_TOGGLE_MAGNIFICATION:
             dock->magnification_enabled = !dock->magnification_enabled;
             dock_render(dpy, dock, screen_w, screen_h);
@@ -519,6 +666,8 @@ int main(int argc, char **argv) {
         .root = root,
         .dock = &dock,
         .rofi = &rofi_launcher,
+        .clients_ptr = &clients,
+        .cfg_ptr = &cfg,
         .screen_w = screen_w,
         .screen_h = screen_h,
         .right_clicked_dock_item = -1
@@ -603,7 +752,7 @@ int main(int argc, char **argv) {
             switch (ev.type) {
             case MapRequest: {
                 Window w = ev.xmaprequest.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win || (dock.tooltip_win && w == dock.tooltip_win)) {
                     XMapWindow(dpy, w);
                     break;
                 }
@@ -766,7 +915,7 @@ int main(int argc, char **argv) {
 
             case UnmapNotify: {
                 Window w = ev.xunmap.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win || (dock.tooltip_win && w == dock.tooltip_win)) {
                     break;
                 }
                 Client *c = client_find_by_any(clients, w);
@@ -779,7 +928,7 @@ int main(int argc, char **argv) {
 
             case DestroyNotify: {
                 Window w = ev.xdestroywindow.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win || (dock.tooltip_win && w == dock.tooltip_win)) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
@@ -881,6 +1030,27 @@ int main(int argc, char **argv) {
                                 menu_add_item(&context_menu, "Empty Trash", DOCK_ACTION_EMPTY_TRASH);
                                 menu_add_separator(&context_menu);
                             } else if (strcmp(cmd, "__ROFI__") != 0 && strcmp(cmd, "__LAUNCHPAD__") != 0) {
+                                int matching_win_count = 0;
+                                for (Client *c = clients; c; c = c->next) {
+                                    if (client_matches_dock_item(dpy, c, &dock.items[clicked_item])) {
+                                        matching_win_count++;
+                                    }
+                                }
+
+                                menu_add_item(&context_menu, "Open New Window", DOCK_ACTION_LAUNCH_APP);
+
+                                if (matching_win_count > 0) {
+                                    menu_add_item(&context_menu, "End App (Close)", DOCK_ACTION_CLOSE_APP);
+                                    menu_add_item(&context_menu, "Force Kill App (kill -9)", DOCK_ACTION_KILL_APP);
+                                    if (matching_win_count > 1) {
+                                        char close_all_lbl[128];
+                                        snprintf(close_all_lbl, sizeof(close_all_lbl), "Close All Windows (%d)", matching_win_count);
+                                        menu_add_item(&context_menu, close_all_lbl, DOCK_ACTION_CLOSE_ALL_WINDOWS);
+                                    }
+                                    menu_add_item(&context_menu, "Detach Windows to Floating", DOCK_ACTION_DETACH_ALL_WINDOWS);
+                                }
+
+                                menu_add_separator(&context_menu);
                                 char remove_lbl[128];
                                 snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", dock.items[clicked_item].name);
                                 menu_add_item(&context_menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
@@ -1171,8 +1341,10 @@ int main(int argc, char **argv) {
                 }
 
                 if (ev.xcrossing.window == dock.win && !rofi_launcher.is_dragging_out && dock.press_item < 0) {
-                    if (dock.hover_item != -1 || dock.is_hovered) {
+                    dock_hide_tooltip(dpy, &dock);
+                    if (dock.hover_item != -1 || dock.hover_minimized != -1 || dock.is_hovered) {
                         dock.hover_item = -1;
+                        dock.hover_minimized = -1;
                         dock.is_hovered = 0;
                         dock.mouse_pos = -1.0;
                         if (!dock.is_hidden) {
@@ -1319,6 +1491,8 @@ int main(int argc, char **argv) {
                 } else if (ev.xexpose.window == dock.win) {
                     dock_render(dpy, &dock, screen_w, screen_h);
                     raise_system_overlays(dpy);
+                } else if (dock.tooltip_win && ev.xexpose.window == dock.tooltip_win) {
+                    dock_render_tooltip(dpy, &dock, screen_w, screen_h);
                 } else if (ev.xexpose.window == rofi_launcher.win) {
                     rofi_launcher_render(dpy, &rofi_launcher, screen_w, screen_h);
                     raise_system_overlays(dpy);
@@ -1386,6 +1560,10 @@ int main(int argc, char **argv) {
     }
     menu_cleanup(&context_menu);
     dock_cleanup(&dock);
+    if (dock.tooltip_win) {
+        XDestroyWindow(dpy, dock.tooltip_win);
+        dock.tooltip_win = None;
+    }
     tint2_panel_cleanup(&panel);
     rofi_launcher_cleanup(&rofi_launcher);
     compositor_cleanup();

@@ -488,6 +488,43 @@ int main(void) {
         dock_cleanup(&auto_dock);
     }
 
+    // Test 18: Special Items Prominent Separator Math & Tooltip Functions
+    {
+        Dock sep_dock = {0};
+        sep_dock.size = 48;
+        sep_dock.apps_at_left = 0;
+        dock_add_app(&sep_dock, "Trash", "__TRASH__", "user-trash");
+        dock_add_app(&sep_dock, "Apps", "__ROFI__", "view-app-grid");
+        dock_add_app(&sep_dock, "Firefox", "firefox", "firefox");
+        dock_add_app(&sep_dock, "Terminal", "xterm", "utilities-terminal");
+        assert(sep_dock.item_count == 4);
+
+        // Apps is at right (apps_at_left == 0)
+        // Items 0 and 1 are regular apps: Firefox, Terminal
+        // Item 2 is Trash, Item 3 is Apps
+        int c0 = dock_get_item_center_coord(&sep_dock, 0, 100, 32, 8);
+        int c1 = dock_get_item_center_coord(&sep_dock, 1, 100, 32, 8);
+        int c2 = dock_get_item_center_coord(&sep_dock, 2, 100, 32, 8);
+        int c3 = dock_get_item_center_coord(&sep_dock, 3, 100, 32, 8);
+
+        // Gap between index 0 and 1 is regular margin (32 + 8 = 40)
+        assert(c1 - c0 == 40);
+        // Gap between index 1 (last regular app) and index 2 (Trash) includes 18px separator gap (40 + 18 = 58)
+        assert(c2 - c1 == 58);
+        // Gap between index 2 (Trash) and index 3 (Apps) is regular margin (40)
+        assert(c3 - c2 == 40);
+
+        // Minimized item coordinates
+        int mc0 = dock_get_minimized_center_coord(&sep_dock, 0, 500, 32, 8);
+        assert(mc0 == 500 + 4 + 16);
+
+        // Tooltip hide safety with NULL display
+        dock_hide_tooltip(NULL, &sep_dock);
+        dock_render_tooltip(NULL, &sep_dock, 1920, 1080);
+
+        dock_cleanup(&sep_dock);
+    }
+
     printf("test_layout passed!\n");
     return 0;
 }

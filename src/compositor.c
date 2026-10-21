@@ -27,7 +27,16 @@ const char *compositor_get_config_path(void) {
 static void compositor_ensure_config(void) {
     const char *path = compositor_get_config_path();
     if (access(path, F_OK) == 0) {
-        return; // Already exists
+        FILE *rf = fopen(path, "r");
+        if (rf) {
+            char check_buf[2048];
+            size_t n = fread(check_buf, 1, sizeof(check_buf) - 1, rf);
+            check_buf[n] = '\0';
+            fclose(rf);
+            if (strstr(check_buf, "dual_kawase") != NULL) {
+                return; // Already up-to-date
+            }
+        }
     }
 
     const char *home = getenv("HOME");

@@ -55,6 +55,22 @@ int main(void) {
     menu_calculate_geometry(&menu, 960, 1040, 1920, dock_y - 2);
     assert(menu.y + menu.height < dock_y);
 
+    // Test 7: Verify new Dock context menu actions
+    menu_clear(&menu);
+    menu_add_item(&menu, "Launch", DOCK_ACTION_LAUNCH_APP);
+    menu_add_item(&menu, "Close App", DOCK_ACTION_CLOSE_APP);
+    menu_add_item(&menu, "Force Kill", DOCK_ACTION_KILL_APP);
+    menu_add_item(&menu, "Close All", DOCK_ACTION_CLOSE_ALL_WINDOWS);
+    menu_add_item(&menu, "Detach All", DOCK_ACTION_DETACH_ALL_WINDOWS);
+    assert(menu.item_count == 5);
+
+    menu_select_item(&menu, 1);
+    assert(last_action == DOCK_ACTION_CLOSE_APP);
+    menu_select_item(&menu, 2);
+    assert(last_action == DOCK_ACTION_KILL_APP);
+    menu_select_item(&menu, 4);
+    assert(last_action == DOCK_ACTION_DETACH_ALL_WINDOWS);
+
     menu_cleanup(&menu);
     printf("test_menu passed!\n");
     return 0;
