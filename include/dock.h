@@ -52,6 +52,9 @@ typedef struct {
     int minimized_count;
     DockMinimizedItem minimized[DOCK_MAX_MINIMIZED];
     int x, y, width, height;
+    Visual *visual;
+    int depth;
+    Colormap colormap;
     cairo_surface_t *surface;
     Window tooltip_win;
     cairo_surface_t *tooltip_surface;

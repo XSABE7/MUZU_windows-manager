@@ -8,6 +8,7 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xutil.h>
 #include "dock.h"
 #include "wm.h"
 #include "icon_fetcher.h"
@@ -734,6 +735,9 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->surface = NULL;
     dock->tooltip_win = None;
     dock->tooltip_surface = NULL;
+    dock->visual = NULL;
+    dock->depth = 0;
+    dock->colormap = None;
     dock->theme = theme;
     dock->item_count = 0;
     dock->minimized_count = 0;
@@ -754,16 +758,42 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
         int screen = DefaultScreen(dpy);
         Window root = RootWindow(dpy, screen);
 
-        XSetWindowAttributes attrs;
-        attrs.override_redirect = True;
-        attrs.background_pixel = BlackPixel(dpy, screen);
-        attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
-                           ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
+        XVisualInfo vinfo;
+        if (XMatchVisualInfo(dpy, screen, 32, TrueColor, &vinfo)) {
+            dock->visual = vinfo.visual;
+            dock->depth = vinfo.depth;
+            dock->colormap = XCreateColormap(dpy, root, vinfo.visual, AllocNone);
 
-        dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
-                                  DefaultDepth(dpy, screen), InputOutput,
-                                  DefaultVisual(dpy, screen),
-                                  CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+            XSetWindowAttributes attrs;
+            attrs.override_redirect = True;
+            attrs.colormap = dock->colormap;
+            attrs.border_pixel = 0;
+            attrs.background_pixel = 0;
+            attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
+                               ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
+
+            dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
+                                      dock->depth, InputOutput,
+                                      dock->visual,
+                                      CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixel | CWEventMask,
+                                      &attrs);
+        } else {
+            dock->visual = DefaultVisual(dpy, screen);
+            dock->depth = DefaultDepth(dpy, screen);
+            dock->colormap = None;
+
+            XSetWindowAttributes attrs;
+            attrs.override_redirect = True;
+            attrs.background_pixel = BlackPixel(dpy, screen);
+            attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
+                               ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
+
+            dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
+                                      dock->depth, InputOutput,
+                                      dock->visual,
+                                      CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+            client_set_opacity(dpy, dock->win, 0xF0AAAAAA);
+        }
 
         Atom net_wm_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
         Atom net_wm_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
@@ -774,8 +804,6 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
         XChangeProperty(dpy, dock->win, net_wm_name, XInternAtom(dpy, "UTF8_STRING", False), 8,
                         PropModeReplace, (unsigned char *)"MUZUwm Dock", 11);
         XStoreName(dpy, dock->win, "MUZUwm Dock");
-
-        client_set_opacity(dpy, dock->win, 0xF0AAAAAA);
 
         XSetWindowAttributes tattrs;
         tattrs.override_redirect = True;
@@ -808,7 +836,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         }
     }
     int screen = DefaultScreen(dpy);
-    Visual *visual = DefaultVisual(dpy, screen);
+    Visual *visual = dock->visual ? dock->visual : DefaultVisual(dpy, screen);
 
     if (!dock->surface) {
         dock->surface = cairo_xlib_surface_create(dpy, dock->win, visual, dock->width, dock->height);
@@ -1191,7 +1219,7 @@ void dock_render_tooltip(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     XMapRaised(dpy, dock->tooltip_win);
 
     int screen = DefaultScreen(dpy);
-    Visual *visual = DefaultVisual(dpy, screen);
+    Visual *visual = dock->visual ? dock->visual : DefaultVisual(dpy, screen);
     if (!dock->tooltip_surface) {
         dock->tooltip_surface = cairo_xlib_surface_create(dpy, dock->tooltip_win, visual, tooltip_w, tooltip_h);
     } else {
