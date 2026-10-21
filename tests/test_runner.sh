@@ -17,6 +17,7 @@ make -s tests muzuwm
 ./test_menu
 ./test_compositor
 ./test_tint2_panel
+./test_config_rules
 echo "--> All Unit Tests Passed!"
 
 echo ""
