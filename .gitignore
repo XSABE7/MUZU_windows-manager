@@ -18,6 +18,10 @@ test_menu
 test_compositor
 test_tint2_panel
 gtk/
+for_imperment
 for_imperment/
+docs
+docs/
+MUZUwm.md
 *.d
 test_config_rules
