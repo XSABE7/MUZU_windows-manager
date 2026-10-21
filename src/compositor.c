@@ -91,14 +91,16 @@ static void compositor_ensure_config(void) {
         "\n"
         "# Rendering Backend\n"
         "backend = \"glx\";\n"
+        "glx-no-stencil = true;\n"
+        "glx-no-rebind-pixmap = true;\n"
         "vsync = true;\n"
         "\n"
         "# Dual-Kawase Frosted Glass Blur\n"
         "blur: {\n"
         "    method = \"dual_kawase\";\n"
-        "    strength = 6;\n"
+        "    strength = 5;\n"
         "    background = true;\n"
-        "    background-frame = true;\n"
+        "    background-frame = false;\n"
         "    background-fixed = false;\n"
         "};\n"
         "\n"
@@ -107,40 +109,26 @@ static void compositor_ensure_config(void) {
         "    \"_GTK_FRAME_EXTENTS@\"\n"
         "];\n"
         "\n"
-        "# Rounded Corners\n"
-        "corner-radius = 12;\n"
-        "rounded-corners-exclude = [\n"
-        "    \"window_type = 'desktop'\"\n"
-        "];\n"
-        "\n"
         "# Translucent Soft Shadows\n"
         "shadow = true;\n"
-        "shadow-radius = 12;\n"
-        "shadow-opacity = 0.55;\n"
-        "shadow-offset-x = -10;\n"
-        "shadow-offset-y = -10;\n"
+        "shadow-radius = 8;\n"
+        "shadow-opacity = 0.50;\n"
+        "shadow-offset-x = -8;\n"
+        "shadow-offset-y = -8;\n"
         "shadow-exclude = [\n"
-        "    \"window_type = 'desktop'\",\n"
+        "    \"name = 'MUZUwm Dock'\",\n"
+        "    \"_NET_WM_WINDOW_TYPE@:a *= 'DOCK'\",\n"
         "    \"_GTK_FRAME_EXTENTS@\"\n"
-        "];\n"
-        "\n"
-        "# Opacity Rules for MUZUwm UI Subsystems\n"
-        "opacity-rule = [\n"
-        "    \"94:name = 'MUZUwm Dock'\",\n"
-        "    \"94:window_type = 'dock'\",\n"
-        "    \"88:name = 'MUZUwm Titlebar'\",\n"
-        "    \"96:window_type = 'dialog'\"\n"
         "];\n"
         "\n"
         "# Fading\n"
         "fading = true;\n"
-        "fade-in-step = 0.05;\n"
-        "fade-out-step = 0.05;\n"
-        "fade-delta = 8;\n"
+        "fade-in-step = 0.08;\n"
+        "fade-out-step = 0.08;\n"
+        "fade-delta = 10;\n"
         "\n"
         "# Rules & Detection\n"
         "detect-client-opacity = true;\n"
-        "detect-rounded-corners = true;\n"
         "detect-transient = true;\n"
         "detect-client-leader = true;\n"
         "use-damage = true;\n"
@@ -162,31 +150,23 @@ void compositor_init(Display *dpy) {
         return; // Compositor already running
     }
 
-    const char *home = getenv("HOME");
-    if (!home) home = "/tmp";
-
-    // Check picom binary locations (~/.local/bin, /usr/bin, /usr/local/bin, PATH)
-    char picom_bin[1024] = {0};
-    char user_picom[1024];
-    snprintf(user_picom, sizeof(user_picom), "%s/.local/bin/picom", home);
-
-    if (access(user_picom, X_OK) == 0) {
-        snprintf(picom_bin, sizeof(picom_bin), "%s", user_picom);
-    } else if (access("/usr/bin/picom", X_OK) == 0) {
-        snprintf(picom_bin, sizeof(picom_bin), "%s", "/usr/bin/picom");
-    } else if (access("/usr/local/bin/picom", X_OK) == 0) {
-        snprintf(picom_bin, sizeof(picom_bin), "%s", "/usr/local/bin/picom");
+    // Check if picom binary is available in PATH or standard paths
+    int picom_available = 0;
+    if (access("/usr/bin/picom", X_OK) == 0 ||
+        access("/usr/local/bin/picom", X_OK) == 0) {
+        picom_available = 1;
     } else {
         const char *path_env = getenv("PATH");
         if (path_env) {
             char path_buf[1024];
-            snprintf(path_buf, sizeof(path_buf), "%s", path_env);
+            strncpy(path_buf, path_env, sizeof(path_buf) - 1);
+            path_buf[sizeof(path_buf) - 1] = '\0';
             char *token = strtok(path_buf, ":");
             while (token) {
                 char test_path[1024];
                 snprintf(test_path, sizeof(test_path), "%s/picom", token);
                 if (access(test_path, X_OK) == 0) {
-                    snprintf(picom_bin, sizeof(picom_bin), "%s", test_path);
+                    picom_available = 1;
                     break;
                 }
                 token = strtok(NULL, ":");
@@ -194,7 +174,7 @@ void compositor_init(Display *dpy) {
         }
     }
 
-    if (picom_bin[0] == '\0') {
+    if (!picom_available) {
         return;
     }
 
@@ -202,18 +182,7 @@ void compositor_init(Display *dpy) {
     if (pid == 0) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         setsid();
-
-        char path_env[2048];
-        const char *old_path = getenv("PATH");
-        snprintf(path_env, sizeof(path_env), "%s/.local/bin:%s", home, old_path ? old_path : "/usr/bin:/bin");
-        setenv("PATH", path_env, 1);
-
-        char lib_env[2048];
-        const char *old_lib = getenv("LD_LIBRARY_PATH");
-        snprintf(lib_env, sizeof(lib_env), "%s/.local/lib%s%s", home, old_lib ? ":" : "", old_lib ? old_lib : "");
-        setenv("LD_LIBRARY_PATH", lib_env, 1);
-
-        execl(picom_bin, "picom", "--config", compositor_get_config_path(), NULL);
+        execlp("picom", "picom", "--config", compositor_get_config_path(), NULL);
         _exit(0);
     } else if (pid > 0) {
         picom_pid = pid;

@@ -208,7 +208,7 @@ static void handle_menu_action(int action_id, void *userdata) {
             dock_set_position(dpy, dock, DOCK_LEFT, screen_w, screen_h);
             break;
         case DOCK_ACTION_POS_TOP:
-            dock_set_position(dpy, dock, DOCK_BOTTOM, screen_w, screen_h);
+            dock_set_position(dpy, dock, DOCK_TOP, screen_w, screen_h);
             break;
         case DOCK_ACTION_POS_RIGHT:
             dock_set_position(dpy, dock, DOCK_RIGHT, screen_w, screen_h);
@@ -423,16 +423,6 @@ static void reflow_all(Display *dpy, Client *clients, LayoutConfig *cfg) {
 
 static Client *focused_client = NULL;
 
-static void client_set_full_opacity(Display *dpy, Client *c, unsigned int opacity) {
-    if (!c || !dpy) return;
-    if (c->win != None) {
-        client_set_opacity(dpy, c->win, opacity);
-    }
-    if (c->frame != None) {
-        client_set_opacity(dpy, c->frame, opacity);
-    }
-}
-
 static void set_focused_client(Display *dpy, Client *c) {
     if (focused_client == c) {
         if (c && c->win) {
@@ -461,7 +451,7 @@ static void set_focused_client(Display *dpy, Client *c) {
         if (c->win != None) {
             XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
             if (c->is_ghost) {
-                client_set_full_opacity(dpy, c, 0xFFFFFFFF);
+                client_set_opacity(dpy, c->win, 0xFFFFFFFF);
                 c->is_ghost = 0;
             }
             XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
@@ -676,12 +666,6 @@ int main(int argc, char **argv) {
     }
     rofi_launcher_init(dpy, &rofi_launcher, screen_w, screen_h, &current_theme);
     dock_init(dpy, &dock, DOCK_BOTTOM, screen_w, screen_h, &current_theme);
-    if (dock.pos == DOCK_TOP) dock.pos = DOCK_BOTTOM;
-    dock_calculate_geometry(&dock, dock.pos, dock.is_hidden, screen_w, screen_h);
-    if (dock.win) {
-        XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
-        dock_render(dpy, &dock, screen_w, screen_h);
-    }
 
     Menu context_menu = {0};
     WmContext wm_ctx = {
@@ -1004,7 +988,6 @@ int main(int argc, char **argv) {
                 if (rofi_launcher.is_visible) {
                     rofi_launcher_handle_press(dpy, &rofi_launcher, ev.xbutton.button,
                                                ev.xbutton.x_root, ev.xbutton.y_root);
-                    XAllowEvents(dpy, AsyncPointer, CurrentTime);
                     break;
                 }
 
@@ -1088,6 +1071,7 @@ int main(int argc, char **argv) {
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
                         menu_add_item(&context_menu, "Position: Left", DOCK_ACTION_POS_LEFT);
+                        menu_add_item(&context_menu, "Position: Top", DOCK_ACTION_POS_TOP);
                         menu_add_item(&context_menu, "Position: Right", DOCK_ACTION_POS_RIGHT);
                         menu_add_separator(&context_menu);
                         menu_add_item(&context_menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);
@@ -1100,6 +1084,8 @@ int main(int argc, char **argv) {
                         int bound_h = screen_h;
                         if (dock.pos == DOCK_BOTTOM && dock.y > 200) {
                             bound_h = dock.y - 2;
+                        } else if (dock.pos == DOCK_TOP) {
+                            menu_y = dock.y + dock.height + 6;
                         } else if (dock.pos == DOCK_LEFT) {
                             menu_x = dock.x + dock.width + 6;
                         } else if (dock.pos == DOCK_RIGHT && dock.x > 250) {
@@ -1170,9 +1156,6 @@ int main(int argc, char **argv) {
                                 client_close(dpy, clicked_c->win);
                                 break;
                             } else if (action == TITLEBAR_CLICK_MINIMIZE) {
-                                if (clicked_c && !clicked_c->icon_surface) {
-                                    clicked_c->icon_surface = client_get_icon(dpy, clicked_c->win, clicked_c->title, 32);
-                                }
                                 if (dock_add_minimized(&dock, clicked_c)) {
                                     clicked_c->is_minimized = 1;
                                     Window target = clicked_c->frame ? clicked_c->frame : clicked_c->win;
@@ -1342,7 +1325,7 @@ int main(int argc, char **argv) {
                             o->is_hovered = 0;
                             if (o != focused_client && o->last_unfocus_time > 0 &&
                                 (time(NULL) - o->last_unfocus_time >= 20)) {
-                                client_set_full_opacity(dpy, o, 0xA6AAAAAA);
+                                client_set_opacity(dpy, o->win, 0xA6AAAAAA);
                                 o->is_ghost = 1;
                             }
                         }
@@ -1351,7 +1334,7 @@ int main(int argc, char **argv) {
                     if (!c->is_hovered) {
                         c->is_hovered = 1;
                         if (c->is_ghost) {
-                            client_set_full_opacity(dpy, c, 0xFFFFFFFF);
+                            client_set_opacity(dpy, c->win, 0xFFFFFFFF);
                         }
                     }
                 }
@@ -1393,7 +1376,7 @@ int main(int argc, char **argv) {
                             c->is_hovered = 0;
                             time_t now = time(NULL);
                             if (c->last_unfocus_time > 0 && (now - c->last_unfocus_time >= 20)) {
-                                client_set_full_opacity(dpy, c, 0xA6AAAAAA);
+                                client_set_opacity(dpy, c->win, 0xA6AAAAAA);
                                 c->is_ghost = 1;
                             }
                         }
@@ -1566,7 +1549,7 @@ int main(int argc, char **argv) {
                 if (curr != focused_client && !curr->is_minimized && !curr->is_hovered) {
                     if (curr->last_unfocus_time > 0 && (now - curr->last_unfocus_time >= 20)) {
                         if (!curr->is_ghost) {
-                            client_set_full_opacity(dpy, curr, 0xA6AAAAAA);
+                            client_set_opacity(dpy, curr->win, 0xA6AAAAAA);
                             curr->is_ghost = 1;
                         }
                     }

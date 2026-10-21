@@ -43,7 +43,6 @@ typedef struct {
     double mouse_pos;   // Cursor coordinate along dock axis
     int is_hovered;     // 1 if cursor is currently within dock bounds
     int apps_at_left;   // 0 = 3-dots Apps button at right corner (default), 1 = left corner
-    int top_offset;     // Top clearance offset (below panel/titlebar) when pos == DOCK_TOP
     int press_item;     // Index of item currently held by left-click (-1 if none)
     int press_x, press_y; // Initial press coordinates for reorder drag threshold
     int is_reordering;  // 1 if actively dragging an app to reorder
@@ -52,9 +51,6 @@ typedef struct {
     int minimized_count;
     DockMinimizedItem minimized[DOCK_MAX_MINIMIZED];
     int x, y, width, height;
-    Visual *visual;
-    int depth;
-    Colormap colormap;
     cairo_surface_t *surface;
     Window tooltip_win;
     cairo_surface_t *tooltip_surface;

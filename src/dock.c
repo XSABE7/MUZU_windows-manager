@@ -7,13 +7,10 @@
 #include <math.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xutil.h>
 #include "dock.h"
 #include "wm.h"
 #include "icon_fetcher.h"
 #include "rofi_launcher.h"
-#include "client_props.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -241,7 +238,6 @@ static void draw_prominent_divider(cairo_t *cr, double pos, int is_vertical, int
 void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int screen_w, int screen_h) {
     if (!dock) return;
     if (dock->size <= 0) dock->size = 48;
-    if (pos == DOCK_TOP) pos = DOCK_BOTTOM;
     dock->pos = pos;
     dock->is_hidden = is_hidden;
 
@@ -256,11 +252,16 @@ void dock_calculate_geometry(Dock *dock, DockPosition pos, int is_hidden, int sc
 
     switch (pos) {
         case DOCK_BOTTOM:
-        case DOCK_TOP:
             dock->width = content_len < (int)(screen_w * 0.85) ? content_len : (int)(screen_w * 0.85);
             dock->height = dock->size;
             dock->x = (screen_w - dock->width) / 2;
             dock->y = is_hidden ? screen_h - 4 : screen_h - dock->height - 6;
+            break;
+        case DOCK_TOP:
+            dock->width = content_len < (int)(screen_w * 0.85) ? content_len : (int)(screen_w * 0.85);
+            dock->height = dock->size;
+            dock->x = (screen_w - dock->width) / 2;
+            dock->y = is_hidden ? -dock->height + 4 : 6;
             break;
         case DOCK_LEFT:
             dock->width = dock->size;
@@ -345,9 +346,6 @@ int dock_add_minimized(Dock *dock, Client *c) {
         dock->minimized[idx].icon_surface = c->icon_surface;
     } else {
         c->icon_surface = icon_load_surface(c->title);
-        if (!c->icon_surface) {
-            c->icon_surface = icon_load_surface("application-x-executable");
-        }
         dock->minimized[idx].icon_surface = c->icon_surface;
     }
     dock->minimized_count++;
@@ -547,9 +545,6 @@ int dock_add_app(Dock *dock, const char *name, const char *exec, const char *ico
     safe_copy(dock->items[idx].icon_name, icon_name ? icon_name : "", sizeof(dock->items[idx].icon_name));
     dock->items[idx].is_running = 0;
     dock->items[idx].icon_surface = icon_load_surface(dock->items[idx].icon_name);
-    if (!dock->items[idx].icon_surface && name && name[0] != '\0') {
-        dock->items[idx].icon_surface = icon_load_surface(name);
-    }
     if (!dock->items[idx].icon_surface) {
         dock->items[idx].icon_surface = icon_load_surface("application-x-executable");
     }
@@ -645,9 +640,6 @@ void dock_save_settings(const Dock *dock) {
     fprintf(f, "position=%d\n", (int)dock->pos);
     fprintf(f, "size=%d\n", dock->size);
     fprintf(f, "apps_corner=%s\n", dock->apps_at_left ? "left" : "right");
-    if (dock->top_offset > 0) {
-        fprintf(f, "top_offset=%d\n", dock->top_offset);
-    }
     fclose(f);
 }
 
@@ -672,7 +664,7 @@ void dock_load_settings(Dock *dock) {
         } else if (sscanf(line, "magnification=%d", &val) == 1) {
             dock->magnification_enabled = (val != 0);
         } else if (sscanf(line, "position=%d", &val) == 1) {
-            if (val >= 0 && val <= 3) dock->pos = (val == DOCK_TOP) ? DOCK_BOTTOM : (DockPosition)val;
+            if (val >= 0 && val <= 3) dock->pos = (DockPosition)val;
         } else if (sscanf(line, "size=%d", &val) == 1) {
             if (val >= 24 && val <= 128) dock->size = val;
         } else if (sscanf(line, "apps_corner=%63s", str_val) == 1) {
@@ -684,8 +676,6 @@ void dock_load_settings(Dock *dock) {
             }
         } else if (sscanf(line, "apps_at_left=%d", &val) == 1) {
             dock->apps_at_left = (val != 0) ? 1 : 0;
-        } else if (sscanf(line, "top_offset=%d", &val) == 1) {
-            if (val > 0 && val < 500) dock->top_offset = val;
         }
     }
     fclose(f);
@@ -735,9 +725,6 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
     dock->surface = NULL;
     dock->tooltip_win = None;
     dock->tooltip_surface = NULL;
-    dock->visual = NULL;
-    dock->depth = 0;
-    dock->colormap = None;
     dock->theme = theme;
     dock->item_count = 0;
     dock->minimized_count = 0;
@@ -758,77 +745,26 @@ void dock_init(Display *dpy, Dock *dock, DockPosition pos, int screen_w, int scr
         int screen = DefaultScreen(dpy);
         Window root = RootWindow(dpy, screen);
 
-        XVisualInfo vinfo;
-        if (XMatchVisualInfo(dpy, screen, 32, TrueColor, &vinfo)) {
-            dock->visual = vinfo.visual;
-            dock->depth = vinfo.depth;
-            dock->colormap = XCreateColormap(dpy, root, vinfo.visual, AllocNone);
+        XSetWindowAttributes attrs;
+        attrs.override_redirect = True;
+        attrs.background_pixel = BlackPixel(dpy, screen);
+        attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
+                           ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
 
-            XSetWindowAttributes attrs;
-            attrs.override_redirect = True;
-            attrs.colormap = dock->colormap;
-            attrs.border_pixel = 0;
-            attrs.background_pixel = 0;
-            attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
-                               ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
+        dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
+                                  DefaultDepth(dpy, screen), InputOutput,
+                                  DefaultVisual(dpy, screen),
+                                  CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
 
-            dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
-                                      dock->depth, InputOutput,
-                                      dock->visual,
-                                      CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixel | CWEventMask,
-                                      &attrs);
-        } else {
-            dock->visual = DefaultVisual(dpy, screen);
-            dock->depth = DefaultDepth(dpy, screen);
-            dock->colormap = None;
+        XSetWindowAttributes tattrs;
+        tattrs.override_redirect = True;
+        tattrs.background_pixel = BlackPixel(dpy, screen);
+        tattrs.event_mask = ExposureMask;
 
-            XSetWindowAttributes attrs;
-            attrs.override_redirect = True;
-            attrs.background_pixel = BlackPixel(dpy, screen);
-            attrs.event_mask = ExposureMask | EnterWindowMask | LeaveWindowMask |
-                               ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
-
-            dock->win = XCreateWindow(dpy, root, dock->x, dock->y, dock->width, dock->height, 0,
-                                      dock->depth, InputOutput,
-                                      dock->visual,
-                                      CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
-            client_set_opacity(dpy, dock->win, 0xF0AAAAAA);
-        }
-
-        Atom net_wm_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
-        Atom net_wm_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
-        XChangeProperty(dpy, dock->win, net_wm_type, XA_ATOM, 32, PropModeReplace,
-                        (unsigned char *)&net_wm_dock, 1);
-
-        Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
-        XChangeProperty(dpy, dock->win, net_wm_name, XInternAtom(dpy, "UTF8_STRING", False), 8,
-                        PropModeReplace, (unsigned char *)"MUZUwm Dock", 11);
-        XStoreName(dpy, dock->win, "MUZUwm Dock");
-
-        if (dock->depth == 32 && dock->colormap != None) {
-            XSetWindowAttributes tattrs;
-            tattrs.override_redirect = True;
-            tattrs.colormap = dock->colormap;
-            tattrs.border_pixel = 0;
-            tattrs.background_pixel = 0;
-            tattrs.event_mask = ExposureMask;
-
-            dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
-                                              dock->depth, InputOutput,
-                                              dock->visual,
-                                              CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixel | CWEventMask,
-                                              &tattrs);
-        } else {
-            XSetWindowAttributes tattrs;
-            tattrs.override_redirect = True;
-            tattrs.background_pixel = BlackPixel(dpy, screen);
-            tattrs.event_mask = ExposureMask;
-
-            dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
-                                              DefaultDepth(dpy, screen), InputOutput,
-                                              DefaultVisual(dpy, screen),
-                                              CWOverrideRedirect | CWBackPixel | CWEventMask, &tattrs);
-        }
+        dock->tooltip_win = XCreateWindow(dpy, root, 0, 0, 10, 10, 0,
+                                          DefaultDepth(dpy, screen), InputOutput,
+                                          DefaultVisual(dpy, screen),
+                                          CWOverrideRedirect | CWBackPixel | CWEventMask, &tattrs);
 
         XMapRaised(dpy, dock->win);
         dock_render(dpy, dock, screen_w, screen_h);
@@ -851,7 +787,7 @@ void dock_render(Display *dpy, Dock *dock, int screen_w, int screen_h) {
         }
     }
     int screen = DefaultScreen(dpy);
-    Visual *visual = dock->visual ? dock->visual : DefaultVisual(dpy, screen);
+    Visual *visual = DefaultVisual(dpy, screen);
 
     if (!dock->surface) {
         dock->surface = cairo_xlib_surface_create(dpy, dock->win, visual, dock->width, dock->height);
@@ -1234,7 +1170,7 @@ void dock_render_tooltip(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     XMapRaised(dpy, dock->tooltip_win);
 
     int screen = DefaultScreen(dpy);
-    Visual *visual = dock->visual ? dock->visual : DefaultVisual(dpy, screen);
+    Visual *visual = DefaultVisual(dpy, screen);
     if (!dock->tooltip_surface) {
         dock->tooltip_surface = cairo_xlib_surface_create(dpy, dock->tooltip_win, visual, tooltip_w, tooltip_h);
     } else {
@@ -1305,6 +1241,7 @@ void dock_handle_motion(Display *dpy, Dock *dock, int x, int y, int screen_w, in
 
     int in_trigger = 0;
     if (dock->pos == DOCK_BOTTOM && y >= screen_h - dock->size - 10) in_trigger = 1;
+    else if (dock->pos == DOCK_TOP && y <= dock->size + 10) in_trigger = 1;
     else if (dock->pos == DOCK_LEFT && x <= dock->size + 10) in_trigger = 1;
     else if (dock->pos == DOCK_RIGHT && x >= screen_w - dock->size - 10) in_trigger = 1;
 
@@ -1414,7 +1351,8 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
     DockPosition next_pos;
     switch (dock->pos) {
         case DOCK_BOTTOM: next_pos = DOCK_LEFT; break;
-        case DOCK_LEFT:   next_pos = DOCK_RIGHT; break;
+        case DOCK_LEFT:   next_pos = DOCK_TOP; break;
+        case DOCK_TOP:    next_pos = DOCK_RIGHT; break;
         case DOCK_RIGHT:  next_pos = DOCK_BOTTOM; break;
         default:          next_pos = DOCK_BOTTOM; break;
     }
@@ -1423,12 +1361,17 @@ void dock_cycle_position(Display *dpy, Dock *dock, int screen_w, int screen_h) {
 
 DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_w, int screen_h) {
     int dist_bottom = screen_h - center_y;
+    int dist_top = center_y;
     int dist_left = center_x;
     int dist_right = screen_w - center_x;
 
     int min_dist = dist_bottom;
     DockPosition pos = DOCK_BOTTOM;
 
+    if (dist_top < min_dist) {
+        min_dist = dist_top;
+        pos = DOCK_TOP;
+    }
     if (dist_left < min_dist) {
         min_dist = dist_left;
         pos = DOCK_LEFT;

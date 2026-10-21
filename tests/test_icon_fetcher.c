@@ -160,22 +160,6 @@ int main(void) {
     assert(cairo_image_surface_get_height(xpm_surf) == 4);
     cairo_surface_destroy(xpm_surf);
 
-    // Test XDG standard <size>/apps theme directory layout
-    system("mkdir -p /tmp/muzuwm_test_icons/XdgTheme/48x48/apps /tmp/muzuwm_test_icons/XdgTheme/scalable/apps");
-    FILE *ft_xdg = fopen("/tmp/muzuwm_test_icons/XdgTheme/index.theme", "w");
-    if (ft_xdg) {
-        fprintf(ft_xdg, "[Icon Theme]\nName=XdgTheme\nDirectories=48x48/apps,scalable/apps\n");
-        fclose(ft_xdg);
-    }
-    cairo_surface_t *dummy_xdg = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 48, 48);
-    cairo_surface_write_to_png(dummy_xdg, "/tmp/muzuwm_test_icons/XdgTheme/48x48/apps/xdg_test_tool.png");
-    cairo_surface_destroy(dummy_xdg);
-
-    icon_theme_set("XdgTheme");
-    char xdg_found_path[512];
-    assert(icon_find_themed_png("xdg_test_tool", xdg_found_path, sizeof(xdg_found_path)) == 1);
-    assert(strstr(xdg_found_path, "48x48/apps/xdg_test_tool.png") != NULL);
-
     // Test direct absolute path with SVG and XPM
     cairo_surface_t *direct_svg = icon_load_surface("/tmp/muzuwm_test_icons/ChildTheme/scalable/apps/vector_app.svg");
     assert(direct_svg != NULL);

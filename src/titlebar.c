@@ -3,7 +3,6 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include "titlebar.h"
-#include "client_props.h"
 
 cairo_surface_t *titlebar_pre_render(Display *dpy, int width, int is_focused, const GtkTheme *theme) {
     (void)dpy;
@@ -66,13 +65,6 @@ Window titlebar_create(Display *dpy, Window client_win, int width) {
                                  DefaultDepth(dpy, screen), InputOutput,
                                  DefaultVisual(dpy, screen),
                                  CWBackPixel | CWEventMask, &attrs);
-
-    Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
-    XChangeProperty(dpy, frame, net_wm_name, XInternAtom(dpy, "UTF8_STRING", False), 8,
-                    PropModeReplace, (unsigned char *)"MUZUwm Titlebar", 15);
-    XStoreName(dpy, frame, "MUZUwm Titlebar");
-
-    client_set_opacity(dpy, frame, 0xEE000000);
 
     XReparentWindow(dpy, client_win, frame, 0, TITLEBAR_HEIGHT);
     XMapWindow(dpy, frame);
