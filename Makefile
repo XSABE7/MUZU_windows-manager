@@ -76,4 +76,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm
 	rm -f $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
 
-.PHONY: all tests clean asan install uninstall
+purge: uninstall
+	@rm -rf $(HOME)/.config/muzuwm
+
+.PHONY: all tests clean asan install uninstall purge

@@ -326,19 +326,29 @@ make asan
 ./muzuwm --wallpaper ~/Pictures/wallpaper.png
 ```
 
-### 3. Installing as a Display Manager Session
+### 3. Installing as a Display Manager Session (GNOME / GDM / LightDM)
 
 ```bash
-sudo cp muzuwm /usr/local/bin/
-
-sudo tee /usr/share/xsessions/muzuwm.desktop <<EOF
-[Desktop Entry]
-Name=MUZUwm
-Comment=Mouse UserZ Window Manager
-Exec=/usr/local/bin/muzuwm
-Type=Application
-EOF
+sudo ./install.sh
 ```
+*(or `sudo make install`)*
+
+This installs the binary to `/usr/local/bin/muzuwm` and registers `/usr/share/xsessions/muzuwm.desktop` so you can select **MUZUwm** directly from your login screen alongside GNOME.
+
+### 4. Uninstallation
+
+To remove MUZUwm from your system:
+
+```bash
+sudo ./uninstall.sh
+```
+
+The uninstaller will ask interactively whether you wish to delete your user configuration (`~/.config/muzuwm`) or keep it.
+
+You can also use flags for non-interactive execution:
+- `sudo ./uninstall.sh --keep-config` (removes binary & session, preserves `~/.config/muzuwm`)
+- `sudo ./uninstall.sh --purge` (removes binary & session and deletes `~/.config/muzuwm`)
+- Or run `sudo make uninstall`
 
 ---
 
