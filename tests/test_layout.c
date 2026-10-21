@@ -215,6 +215,18 @@ int main(void) {
     handle_titlebar_double_click(NULL, &fixed_client, &cfg);
     assert(fixed_client.mode == CLIENT_FLOATING);
 
+    // Auto-maximized client with uninitialized saved geometry restores to centered 60% size
+    Client auto_max = {0};
+    auto_max.is_maximized = 1;
+    auto_max.can_fullscreen = 1;
+    auto_max.width = cfg.screen_width;
+    auto_max.height = cfg.screen_height;
+    client_toggle_maximize(NULL, &auto_max, &cfg);
+    assert(auto_max.is_maximized == 0);
+    assert(auto_max.width == cfg.screen_width * 3 / 5);
+    assert(auto_max.height == cfg.screen_height * 3 / 5);
+    assert(auto_max.mode == CLIENT_FLOATING);
+
     // Test 11: Window Minimization & Dock Integration
     {
         Dock min_dock = {0};

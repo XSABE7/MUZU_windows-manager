@@ -129,18 +129,23 @@ int config_load_auto_allowlist_file(const char *path, char out_cmds[][256], int 
     return n;
 }
 
+void config_spawn_command(const char *cmd) {
+    if (!cmd || cmd[0] == '\0') return;
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        _exit(1);
+    }
+}
+
 void config_run_autostart(void) {
     char path[600];
     if (!config_path("auto_allowlist", path, sizeof(path))) return;
     char cmds[MAX_AUTOSTART_CMDS][256];
     int n = config_load_auto_allowlist_file(path, cmds, MAX_AUTOSTART_CMDS);
     for (int i = 0; i < n; i++) {
-        pid_t pid = fork();
-        if (pid == 0) {
-            setsid();
-            execl("/bin/sh", "sh", "-c", cmds[i], (char *)NULL);
-            _exit(1);
-        }
+        config_spawn_command(cmds[i]);
     }
 }
 
@@ -196,7 +201,8 @@ static int parse_combo(char *combo, unsigned int *mods, KeySym *sym) {
 
 static int parse_action(char *action, ShortcutActionType *type, char *cmd, size_t cmd_len) {
     cmd[0] = '\0';
-    if (strcmp(action, "tile_left") == 0) *type = SHORTCUT_ACT_TILE_LEFT;
+    if (strcasecmp(action, "none") == 0) *type = SHORTCUT_ACT_NONE;
+    else if (strcmp(action, "tile_left") == 0) *type = SHORTCUT_ACT_TILE_LEFT;
     else if (strcmp(action, "tile_right") == 0) *type = SHORTCUT_ACT_TILE_RIGHT;
     else if (strcmp(action, "fullscreen") == 0) *type = SHORTCUT_ACT_FULLSCREEN;
     else if (strcmp(action, "float") == 0) *type = SHORTCUT_ACT_FLOAT;
@@ -284,6 +290,7 @@ void shortcuts_grab_keys(Display *dpy, Window root, const ShortcutConfig *sc) {
     if (!dpy || !sc) return;
     const unsigned int locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
     for (int i = 0; i < sc->count; i++) {
+        if (sc->bindings[i].type == SHORTCUT_ACT_NONE) continue;
         KeyCode kc = XKeysymToKeycode(dpy, sc->bindings[i].keysym);
         if (kc == 0) continue;
         for (int l = 0; l < 4; l++) {

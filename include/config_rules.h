@@ -41,6 +41,9 @@ int config_client_in_fullscreen_allowlist(Display *dpy, Window win, const char *
 // Load startup commands (one per line, '#' comments and blank lines skipped); returns count
 int config_load_auto_allowlist_file(const char *path, char out_cmds[][256], int max_cmds);
 
+// Launch a shell command asynchronously in a detached session
+void config_spawn_command(const char *cmd);
+
 // Launch every command in ~/.config/muzuwm/auto_allowlist
 void config_run_autostart(void);
 

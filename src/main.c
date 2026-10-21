@@ -481,16 +481,6 @@ static void update_panel_state(Display *dpy, Client *clients, LayoutConfig *cfg)
     XFlush(dpy);
 }
 
-static void spawn_command(const char *cmd) {
-    if (!cmd || cmd[0] == '\0') return;
-    pid_t pid = fork();
-    if (pid == 0) {
-        setsid();
-        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
-        _exit(1);
-    }
-}
-
 // Tile a window to the left/right half. Windows that cannot go fullscreen ignore this.
 static void client_snap(Display *dpy, Client *clients, Client *c, LayoutConfig *cfg, SnapState snap) {
     if (!c || !c->can_fullscreen) return;
@@ -1156,7 +1146,7 @@ int main(int argc, char **argv) {
                         rofi_launcher_toggle(dpy, &rofi_launcher);
                         break;
                     case SHORTCUT_ACT_EXEC:
-                        spawn_command(sb->exec_cmd);
+                        config_spawn_command(sb->exec_cmd);
                         break;
                     case SHORTCUT_ACT_NONE:
                         break;
@@ -1192,6 +1182,7 @@ int main(int argc, char **argv) {
             }
 
             case ButtonPress: {
+                super_pending = 0;
                 if (context_menu.is_visible) {
                     if (ev.xbutton.window == context_menu.win) {
                         menu_handle_click(dpy, &context_menu, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
