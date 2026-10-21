@@ -54,6 +54,10 @@ typedef struct {
     cairo_surface_t *surface;
     Window tooltip_win;
     cairo_surface_t *tooltip_surface;
+    Display *dpy;
+    Visual *visual;
+    int depth;
+    Colormap colormap;
     const GtkTheme *theme;
 } Dock;
 

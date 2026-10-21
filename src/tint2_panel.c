@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xutil.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include "tint2_panel.h"
@@ -245,6 +246,10 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
     panel->current_workspace = 0;
     panel->hover_workspace = -1;
     panel->hover_power = 0;
+    panel->dpy = dpy;
+    panel->visual = NULL;
+    panel->depth = 0;
+    panel->colormap = None;
     panel->theme = theme;
     safe_copy(panel->active_title, "MUZUwm Desktop", sizeof(panel->active_title));
 
@@ -258,15 +263,37 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
         int screen_h = DisplayHeight(dpy, screen);
         int win_y = panel->is_top ? 0 : (screen_h - panel->height);
 
+        XVisualInfo vinfo;
+        if (XMatchVisualInfo(dpy, screen, 32, TrueColor, &vinfo)) {
+            panel->visual = vinfo.visual;
+            panel->depth = 32;
+            panel->colormap = XCreateColormap(dpy, root, panel->visual, AllocNone);
+        } else {
+            panel->visual = DefaultVisual(dpy, screen);
+            panel->depth = DefaultDepth(dpy, screen);
+            panel->colormap = None;
+        }
+
         XSetWindowAttributes attrs;
         attrs.override_redirect = True;
-        attrs.background_pixel = 0x101216;
         attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
                            PointerMotionMask | EnterWindowMask | LeaveWindowMask;
 
-        panel->win = XCreateWindow(dpy, root, 0, win_y, panel->width, panel->height, 0,
-                                   CopyFromParent, InputOutput, CopyFromParent,
-                                   CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+        if (panel->depth == 32 && panel->colormap != None) {
+            attrs.colormap = panel->colormap;
+            attrs.border_pixel = 0;
+            attrs.background_pixel = 0;
+            panel->win = XCreateWindow(dpy, root, 0, win_y, panel->width, panel->height, 0,
+                                       panel->depth, InputOutput,
+                                       panel->visual,
+                                       CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixel | CWEventMask,
+                                       &attrs);
+        } else {
+            attrs.background_pixel = 0x101216;
+            panel->win = XCreateWindow(dpy, root, 0, win_y, panel->width, panel->height, 0,
+                                       CopyFromParent, InputOutput, CopyFromParent,
+                                       CWOverrideRedirect | CWBackPixel | CWEventMask, &attrs);
+        }
 
         XStoreName(dpy, panel->win, "MUZUwm Panel");
 
@@ -276,7 +303,7 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
                         PropModeReplace, (unsigned char *)&net_wm_dock, 1);
 
         panel->surface = cairo_xlib_surface_create(dpy, panel->win,
-                                                   DefaultVisual(dpy, screen),
+                                                   panel->visual,
                                                    panel->width, panel->height);
         XMapRaised(dpy, panel->win);
         tint2_panel_render(dpy, panel);
@@ -289,6 +316,10 @@ void tint2_panel_cleanup(Tint2Panel *panel) {
         cairo_surface_finish(panel->surface);
         cairo_surface_destroy(panel->surface);
         panel->surface = NULL;
+    }
+    if (panel->colormap != None && panel->dpy) {
+        XFreeColormap(panel->dpy, panel->colormap);
+        panel->colormap = None;
     }
 }
 

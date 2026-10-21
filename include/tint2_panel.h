@@ -55,6 +55,10 @@ typedef struct {
     char time_str[64];
     char date_str[64];
     char active_title[128];
+    Display *dpy;
+    Visual *visual;
+    int depth;
+    Colormap colormap;
     const GtkTheme *theme;
 } Tint2Panel;
 

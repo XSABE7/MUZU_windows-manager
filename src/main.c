@@ -465,9 +465,11 @@ static void set_focused_client(Display *dpy, Client *c) {
         if (c && c->title[0] != '\0') {
             snprintf(g_panel->active_title, sizeof(g_panel->active_title), "%.127s", c->title);
         } else {
-            g_panel->active_title[0] = '\0';
+            snprintf(g_panel->active_title, sizeof(g_panel->active_title), "MUZUwm Desktop");
         }
         tint2_panel_render(dpy, g_panel);
+        XClearArea(dpy, g_panel->win, 0, 0, 1, 1, True);
+        XFlush(dpy);
     }
 }
 
@@ -476,6 +478,8 @@ static void update_panel_state(Display *dpy, Client *clients, LayoutConfig *cfg)
     tint2_panel_update_workspaces(g_panel, clients, cfg->current_workspace,
                                   focused_client ? focused_client->title : "");
     tint2_panel_render(dpy, g_panel);
+    XClearArea(dpy, g_panel->win, 0, 0, 1, 1, True);
+    XFlush(dpy);
 }
 
 static void switch_workspace(Display *dpy, Client *clients, LayoutConfig *cfg, Dock *dock, int target_ws) {
@@ -1203,13 +1207,6 @@ int main(int argc, char **argv) {
                             client_start_x = clicked_c->x;
                             client_start_y = clicked_c->y;
 
-                            // If tiled, detach to floating and reflow remaining tiled windows!
-                            if (clicked_c->mode == CLIENT_TILED) {
-                                clicked_c->mode = CLIENT_FLOATING;
-                                clicked_c->snap_state = SNAP_NONE;
-                                reflow_all(dpy, clients, &cfg);
-                            }
-
                             XGrabPointer(dpy, root, False,
                                          ButtonReleaseMask | PointerMotionMask,
                                          GrabModeAsync, GrabModeAsync,
@@ -1285,7 +1282,14 @@ int main(int argc, char **argv) {
                 if (drag_client) {
                     int dx = ev.xmotion.x_root - drag_start_x;
                     int dy = ev.xmotion.y_root - drag_start_y;
-                    handle_titlebar_drag(dpy, drag_client, client_start_x + dx, client_start_y + dy, screen_w, screen_h);
+                    if (abs(dx) > 4 || abs(dy) > 4) {
+                        if (drag_client->mode == CLIENT_TILED) {
+                            drag_client->mode = CLIENT_FLOATING;
+                            drag_client->snap_state = SNAP_NONE;
+                            reflow_all(dpy, clients, &cfg);
+                        }
+                        handle_titlebar_drag(dpy, drag_client, client_start_x + dx, client_start_y + dy, screen_w, screen_h);
+                    }
                 }
 
                 if (ev.xmotion.window == panel.win) {
@@ -1357,7 +1361,14 @@ int main(int argc, char **argv) {
                             dock_render(dpy, &dock, screen_w, screen_h);
                         }
                     }
-                    if (dock.autohide_enabled && !dock.is_hidden && !dock.is_dragging && !context_menu.is_visible) {
+                    int in_trigger = 0;
+                    int rx = ev.xcrossing.x_root;
+                    int ry = ev.xcrossing.y_root;
+                    if (dock.pos == DOCK_BOTTOM && ry >= screen_h - dock.size - 10) in_trigger = 1;
+                    else if (dock.pos == DOCK_LEFT && rx <= dock.size + 10) in_trigger = 1;
+                    else if (dock.pos == DOCK_RIGHT && rx >= screen_w - dock.size - 10) in_trigger = 1;
+
+                    if (!in_trigger && dock.autohide_enabled && !dock.is_hidden && !dock.is_dragging && !context_menu.is_visible) {
                         dock.is_hidden = 1;
                         dock_calculate_geometry(&dock, dock.pos, 1, screen_w, screen_h);
                         XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
@@ -1544,6 +1555,8 @@ int main(int argc, char **argv) {
             last_inactivity_check = now;
             tint2_panel_update_time(&panel, now);
             tint2_panel_render(dpy, &panel);
+            XClearArea(dpy, panel.win, 0, 0, 1, 1, True);
+            XFlush(dpy);
             for (Client *curr = clients; curr; curr = curr->next) {
                 if (curr != focused_client && !curr->is_minimized && !curr->is_hovered) {
                     if (curr->last_unfocus_time > 0 && (now - curr->last_unfocus_time >= 20)) {
