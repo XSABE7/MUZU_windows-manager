@@ -54,6 +54,16 @@ static void sanitize_app_name(const char *raw, char *out, size_t out_sz) {
 
 void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
     if (!at) return;
+
+    // Free previously owned icon surfaces
+    for (int i = 0; i < at->app_count; i++) {
+        if (at->apps[i].owns_icon_surface && at->apps[i].icon_surface) {
+            cairo_surface_finish(at->apps[i].icon_surface);
+            cairo_surface_destroy(at->apps[i].icon_surface);
+            at->apps[i].icon_surface = NULL;
+        }
+    }
+
     at->app_count = 0;
     at->selected_idx = 0;
 
@@ -105,8 +115,10 @@ void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
             app->win_count = 1;
             if (c->icon_surface) {
                 app->icon_surface = c->icon_surface;
+                app->owns_icon_surface = 0;
             } else if (dpy) {
                 app->icon_surface = icon_load_surface(cls);
+                app->owns_icon_surface = (app->icon_surface != NULL);
             }
             at->app_count++;
         }
@@ -299,6 +311,14 @@ void alttab_hide(Display *dpy, AltTab *at) {
 
 void alttab_cleanup(AltTab *at) {
     if (!at) return;
+    for (int i = 0; i < at->app_count; i++) {
+        if (at->apps[i].owns_icon_surface && at->apps[i].icon_surface) {
+            cairo_surface_finish(at->apps[i].icon_surface);
+            cairo_surface_destroy(at->apps[i].icon_surface);
+            at->apps[i].icon_surface = NULL;
+        }
+    }
+    at->app_count = 0;
     if (at->surface) {
         cairo_surface_finish(at->surface);
         cairo_surface_destroy(at->surface);

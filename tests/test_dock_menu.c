@@ -64,6 +64,39 @@ int main(void) {
     assert(!menu_has_action(&menu, DOCK_ACTION_KILL_APP));
     assert(!menu_has_action(&menu, DOCK_ACTION_REMOVE_APP));
 
+    // Test 3: Separator hit detection must return -1 (Review Focus 5)
+    Dock dock_sep = {0};
+    dock_sep.size = 64;
+    dock_sep.magnification_enabled = 1;
+    dock_sep.pos = DOCK_BOTTOM;
+    dock_sep.width = 600;
+    dock_sep.height = 64;
+    dock_add_app(&dock_sep, "Term", "terminal", "term");
+    dock_add_app(&dock_sep, "Web", "firefox", "web");
+    dock_add_app(&dock_sep, "Trash", "__TRASH__", "trash");
+
+    int icon_sz = 40;
+    int m = 8;
+    int reg_cnt = 2;
+    int l_len = 3 * (icon_sz + m) + 18;
+    int sx = (dock_sep.width - l_len) / 2;
+    int dpos = sx + m / 2 + reg_cnt * (icon_sz + m) + 9;
+
+    dock_sep.mouse_pos = (double)dpos;
+    dock_sep.is_hovered = 1;
+    assert(dock_get_item_at(&dock_sep, dpos, dock_sep.height / 2) == -1);
+    assert(dock_get_item_at(&dock_sep, dpos + 1, dock_sep.height / 2) == -1);
+    assert(dock_get_item_at(&dock_sep, dpos - 1, dock_sep.height / 2) == -1);
+
+    // Test 4: Minimized client right-click populates app actions (Finding 4)
+    DockItem min_item = {0};
+    strncpy(min_item.name, "MinimizedWindow", sizeof(min_item.name) - 1);
+    menu_clear(&menu);
+    dock_menu_populate_app(&menu, &min_item, 1);
+    assert(menu_has_action(&menu, DOCK_ACTION_LAUNCH_APP));
+    assert(menu_has_action(&menu, DOCK_ACTION_CLOSE_APP));
+    assert(!menu_has_action(&menu, DOCK_ACTION_TOGGLE_MAGNIFICATION));
+
     printf("test_dock_menu passed!\n");
     return 0;
 }

@@ -13,6 +13,7 @@ typedef struct {
     Client *client;
     char title[256];
     cairo_surface_t *icon;
+    int owns_icon;
     int x, y, w, h;
     int is_hovered;
 } MissionSlot;

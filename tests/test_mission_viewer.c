@@ -25,6 +25,17 @@ int main(void) {
     assert(mv.slots[0].x >= 0 && mv.slots[0].x + mv.slots[0].w <= screen_w);
     assert(mv.slots[0].y >= 0 && mv.slots[0].y + mv.slots[0].h <= screen_h);
 
+    // Test 1b: Workspace 0 isolation (Finding 5)
+    Client ws0_a = {.win = 11, .workspace = 0, .next = NULL};
+    Client ws0_b = {.win = 12, .workspace = 0, .next = NULL};
+    Client ws1_c = {.win = 13, .workspace = 1, .next = NULL};
+    ws0_a.next = &ws0_b;
+    ws0_b.next = &ws1_c;
+    mission_viewer_populate(NULL, &mv, &ws0_a, 0);
+    assert(mv.slot_count == 2);
+    assert(mv.slots[0].win == 11);
+    assert(mv.slots[1].win == 12);
+
     // Test 2: 4 windows (2x2 grid)
     Client clients[4];
     for (int i = 0; i < 4; i++) {

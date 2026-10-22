@@ -622,6 +622,37 @@ static void move_client_to_workspace(Display *dpy, Client *clients, Client *c, L
     XFlush(dpy);
 }
 
+static void client_activate_and_unminimize(Display *dpy, Client *c, Client *clients, LayoutConfig *cfg, Dock *dock, int screen_w, int screen_h) {
+    if (!c || !dpy || !cfg) return;
+
+    if (c->is_minimized) {
+        c->is_minimized = 0;
+        c->workspace = cfg->current_workspace;
+        Window target = c->frame ? c->frame : c->win;
+        XMapWindow(dpy, target);
+        if (c->frame && c->win) {
+            XMapWindow(dpy, c->win);
+        }
+        XRaiseWindow(dpy, target);
+        if (dock) {
+            dock_remove_minimized(dock, c);
+            dock_update_running(dock, clients);
+            dock_render(dpy, dock, screen_w, screen_h);
+        }
+    } else {
+        if (c->workspace != cfg->current_workspace) {
+            switch_workspace(dpy, clients, cfg, dock, c->workspace);
+        }
+        Window target = c->frame ? c->frame : c->win;
+        XRaiseWindow(dpy, target);
+    }
+
+    set_focused_client(dpy, c);
+    reflow_all(dpy, clients, cfg);
+    update_panel_state(dpy, clients, cfg);
+    raise_system_overlays(dpy);
+}
+
 static void client_teardown(Display *dpy, Client **clients, Window w, LayoutConfig *cfg,
                             Client **drag_client, Window *last_click_win, Dock *dock) {
     Client *c = client_find_by_any(*clients, w);
@@ -1226,15 +1257,7 @@ int main(int argc, char **argv) {
                         XUngrabKeyboard(dpy, CurrentTime);
                         mission_viewer_hide(dpy, &mission_viewer);
                         if (sel_c) {
-                            if (sel_c->is_minimized) sel_c->is_minimized = 0;
-                            if (sel_c->workspace != cfg.current_workspace) {
-                                switch_workspace(dpy, clients, &cfg, &dock, sel_c->workspace);
-                            }
-                            if (sel_c->frame) XRaiseWindow(dpy, sel_c->frame);
-                            else XRaiseWindow(dpy, sel_c->win);
-                            set_focused_client(dpy, sel_c);
-                            reflow_all(dpy, clients, &cfg);
-                            raise_system_overlays(dpy);
+                            client_activate_and_unminimize(dpy, sel_c, clients, &cfg, &dock, screen_w, screen_h);
                         }
                         break;
                     }
@@ -1358,15 +1381,7 @@ int main(int argc, char **argv) {
                     if (sel_win != None) {
                         Client *target_c = client_find_by_any(clients, sel_win);
                         if (target_c) {
-                            if (target_c->is_minimized) target_c->is_minimized = 0;
-                            if (target_c->workspace != cfg.current_workspace) {
-                                switch_workspace(dpy, clients, &cfg, &dock, target_c->workspace);
-                            }
-                            if (target_c->frame) XRaiseWindow(dpy, target_c->frame);
-                            else XRaiseWindow(dpy, target_c->win);
-                            set_focused_client(dpy, target_c);
-                            reflow_all(dpy, clients, &cfg);
-                            raise_system_overlays(dpy);
+                            client_activate_and_unminimize(dpy, target_c, clients, &cfg, &dock, screen_w, screen_h);
                         }
                     }
                     break;
@@ -1388,14 +1403,7 @@ int main(int argc, char **argv) {
                         if (slot_idx >= 0 && slot_idx < mission_viewer.slot_count) {
                             Client *c = mission_viewer.slots[slot_idx].client;
                             if (c) {
-                                if (c->is_minimized) c->is_minimized = 0;
-                                if (c->workspace != cfg.current_workspace) {
-                                    switch_workspace(dpy, clients, &cfg, &dock, c->workspace);
-                                }
-                                if (c->frame) XRaiseWindow(dpy, c->frame);
-                                else XRaiseWindow(dpy, c->win);
-                                set_focused_client(dpy, c);
-                                raise_system_overlays(dpy);
+                                client_activate_and_unminimize(dpy, c, clients, &cfg, &dock, screen_w, screen_h);
                             }
                         }
                     } else {
@@ -1457,6 +1465,7 @@ int main(int argc, char **argv) {
                 if (ev.xbutton.window == dock.win) {
                     if (ev.xbutton.button == Button3) {
                         int clicked_item = dock_get_item_at(&dock, ev.xbutton.x, ev.xbutton.y);
+                        Client *min_c = (clicked_item < 0) ? dock_get_minimized_at(&dock, ev.xbutton.x, ev.xbutton.y) : NULL;
                         wm_ctx.right_clicked_dock_item = clicked_item;
 
                         menu_clear(&context_menu);
@@ -1468,6 +1477,10 @@ int main(int argc, char **argv) {
                                 }
                             }
                             dock_menu_populate_app(&context_menu, &dock.items[clicked_item], matching_win_count);
+                        } else if (min_c) {
+                            DockItem temp_item = {0};
+                            snprintf(temp_item.name, sizeof(temp_item.name), "%.63s", min_c->title);
+                            dock_menu_populate_app(&context_menu, &temp_item, 1);
                         } else {
                             dock_menu_populate_settings(&context_menu, &dock);
                         }
@@ -1493,21 +1506,7 @@ int main(int argc, char **argv) {
                     if (ev.xbutton.button == Button1) {
                         Client *min_c = dock_get_minimized_at(&dock, ev.xbutton.x, ev.xbutton.y);
                         if (min_c) {
-                            min_c->is_minimized = 0;
-                            min_c->workspace = cfg.current_workspace;
-                            Window target = min_c->frame ? min_c->frame : min_c->win;
-                            XMapWindow(dpy, target);
-                            if (min_c->frame && min_c->win) {
-                                XMapWindow(dpy, min_c->win);
-                            }
-                            XRaiseWindow(dpy, target);
-                            raise_system_overlays(dpy);
-                            set_focused_client(dpy, min_c);
-                            dock_remove_minimized(&dock, min_c);
-                            reflow_all(dpy, clients, &cfg);
-                            dock_update_running(&dock, clients);
-                            dock_render(dpy, &dock, screen_w, screen_h);
-                            update_panel_state(dpy, clients, &cfg);
+                            client_activate_and_unminimize(dpy, min_c, clients, &cfg, &dock, screen_w, screen_h);
                         } else {
                             int item = dock_get_item_at(&dock, ev.xbutton.x, ev.xbutton.y);
                             if (item >= 0) {

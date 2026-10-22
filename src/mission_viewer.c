@@ -34,12 +34,22 @@ void mission_viewer_init(Display *dpy, MissionViewer *mv, const GtkTheme *theme)
 
 void mission_viewer_populate(Display *dpy, MissionViewer *mv, Client *clients, int current_workspace) {
     if (!mv) return;
+
+    // Free previously owned icon surfaces
+    for (int i = 0; i < mv->slot_count; i++) {
+        if (mv->slots[i].owns_icon && mv->slots[i].icon) {
+            cairo_surface_finish(mv->slots[i].icon);
+            cairo_surface_destroy(mv->slots[i].icon);
+            mv->slots[i].icon = NULL;
+        }
+    }
+
     mv->slot_count = 0;
     mv->selected_idx = 0;
     mv->hover_idx = -1;
 
     for (Client *c = clients; c; c = c->next) {
-        if (current_workspace > 0 && c->workspace != current_workspace) {
+        if (current_workspace >= 0 && c->workspace != current_workspace) {
             continue;
         }
         if (mv->slot_count >= MISSION_MAX_SLOTS) {
@@ -53,8 +63,10 @@ void mission_viewer_populate(Display *dpy, MissionViewer *mv, Client *clients, i
         snprintf(slot->title, sizeof(slot->title), "%s", c->title);
         if (c->icon_surface) {
             slot->icon = c->icon_surface;
+            slot->owns_icon = 0;
         } else if (dpy) {
             slot->icon = icon_load_surface(c->title);
+            slot->owns_icon = (slot->icon != NULL);
         }
         mv->slot_count++;
     }
@@ -290,6 +302,14 @@ void mission_viewer_hide(Display *dpy, MissionViewer *mv) {
 
 void mission_viewer_cleanup(MissionViewer *mv) {
     if (!mv) return;
+    for (int i = 0; i < mv->slot_count; i++) {
+        if (mv->slots[i].owns_icon && mv->slots[i].icon) {
+            cairo_surface_finish(mv->slots[i].icon);
+            cairo_surface_destroy(mv->slots[i].icon);
+            mv->slots[i].icon = NULL;
+        }
+    }
+    mv->slot_count = 0;
     if (mv->surface) {
         cairo_surface_finish(mv->surface);
         cairo_surface_destroy(mv->surface);

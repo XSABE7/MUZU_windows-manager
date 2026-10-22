@@ -18,6 +18,7 @@ typedef struct {
     char app_class[128];
     char app_name[128];
     cairo_surface_t *icon_surface;
+    int owns_icon_surface;
     Window wins[ALTTAB_MAX_WINS_PER_APP];
     int win_count;
 } AltTabApp;

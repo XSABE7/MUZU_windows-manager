@@ -296,6 +296,38 @@ double dock_get_magnification_scale(const Dock *dock, int item_center) {
     return 1.0 + 0.45 * (cosine * cosine); // Scales smoothly from 1.0 to 1.45
 }
 
+static int dock_is_separator_at(const Dock *dock, int pos, int start_pos, int icon_size, int margin, int launcher_len) {
+    int has_apps = 0, has_trash = 0, reg_count = 0;
+    for (int i = 0; i < dock->item_count; i++) {
+        if (is_apps_item(&dock->items[i])) has_apps = 1;
+        else if (is_trash_item(&dock->items[i])) has_trash = 1;
+        else reg_count++;
+    }
+
+    if (!dock->apps_at_left) {
+        if (reg_count > 0 && (has_apps || has_trash)) {
+            int div_pos = start_pos + margin / 2 + reg_count * (icon_size + margin) + 9;
+            if (abs(pos - div_pos) <= 4) return 1;
+        }
+    } else {
+        if (has_apps && reg_count > 0) {
+            int div1_pos = start_pos + margin / 2 + 1 * (icon_size + margin) + 9;
+            if (abs(pos - div1_pos) <= 4) return 1;
+        }
+        if (has_trash && reg_count > 0) {
+            int div2_pos = start_pos + margin / 2 + (dock->item_count - 1) * (icon_size + margin) + 18 + 9;
+            if (abs(pos - div2_pos) <= 4) return 1;
+        }
+    }
+
+    if (dock->minimized_count > 0) {
+        int sep_pos = start_pos + launcher_len + 9;
+        if (abs(pos - sep_pos) <= 4) return 1;
+    }
+
+    return 0;
+}
+
 int dock_get_item_at(const Dock *dock, int x, int y) {
     if (!dock || dock->item_count <= 0) return -1;
     int icon_size = dock_get_base_icon_size(dock);
@@ -307,6 +339,9 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     if (is_vertical) {
         int start_y = (dock->height - total_len) / 2;
         if (start_y < 4) start_y = 4;
+        if (dock_is_separator_at(dock, y, start_y, icon_size, margin, launcher_len)) {
+            return -1;
+        }
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
@@ -323,6 +358,9 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     } else {
         int start_x = (dock->width - total_len) / 2;
         if (start_x < 4) start_x = 4;
+        if (dock_is_separator_at(dock, x, start_x, icon_size, margin, launcher_len)) {
+            return -1;
+        }
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
