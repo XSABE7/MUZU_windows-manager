@@ -233,7 +233,7 @@ void tint2_panel_update_workspaces(Tint2Panel *panel, Client *clients, int curre
     if (focused_title && focused_title[0] != '\0') {
         safe_copy(panel->active_title, focused_title, sizeof(panel->active_title));
     } else {
-        safe_copy(panel->active_title, "MUZUwm Desktop", sizeof(panel->active_title));
+        panel->active_title[0] = '\0';
     }
 }
 
@@ -251,7 +251,7 @@ void tint2_panel_init(Display *dpy, Tint2Panel *panel, int screen_w, const GtkTh
     panel->depth = 0;
     panel->colormap = None;
     panel->theme = theme;
-    safe_copy(panel->active_title, "MUZUwm Desktop", sizeof(panel->active_title));
+    panel->active_title[0] = '\0';
 
     tint2_panel_ensure_config();
     tint2_panel_load_config(panel);
@@ -348,6 +348,12 @@ Tint2PanelAction tint2_panel_get_action_at(const Tint2Panel *panel, int x, int y
         return TINT2_ACTION_POWER;
     }
 
+    // Right: Keyboard layout indicator, left of the Power button
+    int lang_x = TINT2_LANG_X(panel->width);
+    if (panel->lang_str[0] != '\0' && x >= lang_x && x < lang_x + TINT2_LANG_W) {
+        return TINT2_ACTION_LANG;
+    }
+
     return TINT2_ACTION_NONE;
 }
 
@@ -357,22 +363,32 @@ int tint2_panel_handle_motion(Display *dpy, Tint2Panel *panel, int x, int y) {
 
     int new_hover_ws = -1;
     int new_hover_power = 0;
+    int new_hover_lang = 0;
 
     if (act >= TINT2_ACTION_WORKSPACE_1 && act <= TINT2_ACTION_WORKSPACE_4) {
         new_hover_ws = (int)(act - TINT2_ACTION_WORKSPACE_1);
     } else if (act == TINT2_ACTION_POWER) {
         new_hover_power = 1;
+    } else if (act == TINT2_ACTION_LANG) {
+        new_hover_lang = 1;
     }
 
-    if (new_hover_ws != panel->hover_workspace || new_hover_power != panel->hover_power) {
+    if (new_hover_ws != panel->hover_workspace || new_hover_power != panel->hover_power ||
+        new_hover_lang != panel->hover_lang) {
         panel->hover_workspace = new_hover_ws;
         panel->hover_power = new_hover_power;
+        panel->hover_lang = new_hover_lang;
         if (dpy) {
             tint2_panel_render(dpy, panel);
         }
         return 1;
     }
     return 0;
+}
+
+void tint2_panel_set_lang(Tint2Panel *panel, const char *short_name) {
+    if (!panel) return;
+    safe_copy(panel->lang_str, short_name ? short_name : "", sizeof(panel->lang_str));
 }
 
 void tint2_panel_render(Display *dpy, Tint2Panel *panel) {
@@ -549,6 +565,29 @@ void tint2_panel_render(Display *dpy, Tint2Panel *panel) {
     cairo_set_source_rgb(cr, 1.0, 0.94, 0.94);
     cairo_move_to(cr, px + 25.0, py + 14.0);
     cairo_show_text(cr, "Power");
+
+    // 5. Keyboard layout indicator (e.g. "EN" / "TH")
+    if (panel->lang_str[0] != '\0') {
+        double lx = TINT2_LANG_X(panel->width);
+        double ly = 4.0;
+        double lw = TINT2_LANG_W;
+        double lh = 20.0;
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, panel->hover_lang ? 0.20 : 0.08);
+        draw_rounded_rect(cr, lx, ly, lw, lh, 6.0);
+        cairo_fill(cr);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, panel->hover_lang ? 0.40 : 0.16);
+        cairo_set_line_width(cr, 1.0);
+        draw_rounded_rect(cr, lx + 0.5, ly + 0.5, lw - 1.0, lh - 1.0, 6.0);
+        cairo_stroke(cr);
+
+        cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 11.0);
+        cairo_text_extents_t lext;
+        cairo_text_extents(cr, panel->lang_str, &lext);
+        cairo_set_source_rgb(cr, 0.94, 0.96, 0.99);
+        cairo_move_to(cr, lx + (lw - lext.width) / 2.0 - lext.x_bearing, ly + 14.0);
+        cairo_show_text(cr, panel->lang_str);
+    }
 
     cairo_destroy(cr);
     cairo_surface_flush(panel->surface);

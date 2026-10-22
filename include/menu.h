@@ -38,7 +38,8 @@ typedef enum {
     DESKTOP_ACTION_WALLPAPER_BROWSE = 101,
     DESKTOP_ACTION_WALLPAPER_PATH,
     DESKTOP_ACTION_TERMINAL,
-    DESKTOP_ACTION_APPLICATIONS
+    DESKTOP_ACTION_APPLICATIONS,
+    DESKTOP_ACTION_SETTINGS
 } MenuActionId;
 
 typedef void (*MenuCallback)(int action_id, void *userdata);

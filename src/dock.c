@@ -296,6 +296,38 @@ double dock_get_magnification_scale(const Dock *dock, int item_center) {
     return 1.0 + 0.45 * (cosine * cosine); // Scales smoothly from 1.0 to 1.45
 }
 
+static int dock_is_separator_at(const Dock *dock, int pos, int start_pos, int icon_size, int margin, int launcher_len) {
+    int has_apps = 0, has_trash = 0, reg_count = 0;
+    for (int i = 0; i < dock->item_count; i++) {
+        if (is_apps_item(&dock->items[i])) has_apps = 1;
+        else if (is_trash_item(&dock->items[i])) has_trash = 1;
+        else reg_count++;
+    }
+
+    if (!dock->apps_at_left) {
+        if (reg_count > 0 && (has_apps || has_trash)) {
+            int div_pos = start_pos + margin / 2 + reg_count * (icon_size + margin) + 9;
+            if (abs(pos - div_pos) <= 4) return 1;
+        }
+    } else {
+        if (has_apps && reg_count > 0) {
+            int div1_pos = start_pos + margin / 2 + 1 * (icon_size + margin) + 9;
+            if (abs(pos - div1_pos) <= 4) return 1;
+        }
+        if (has_trash && reg_count > 0) {
+            int div2_pos = start_pos + margin / 2 + (dock->item_count - 1) * (icon_size + margin) + 18 + 9;
+            if (abs(pos - div2_pos) <= 4) return 1;
+        }
+    }
+
+    if (dock->minimized_count > 0) {
+        int sep_pos = start_pos + launcher_len + 9;
+        if (abs(pos - sep_pos) <= 4) return 1;
+    }
+
+    return 0;
+}
+
 int dock_get_item_at(const Dock *dock, int x, int y) {
     if (!dock || dock->item_count <= 0) return -1;
     int icon_size = dock_get_base_icon_size(dock);
@@ -307,6 +339,9 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     if (is_vertical) {
         int start_y = (dock->height - total_len) / 2;
         if (start_y < 4) start_y = 4;
+        if (dock_is_separator_at(dock, y, start_y, icon_size, margin, launcher_len)) {
+            return -1;
+        }
         int center_x = dock->width / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
@@ -323,6 +358,9 @@ int dock_get_item_at(const Dock *dock, int x, int y) {
     } else {
         int start_x = (dock->width - total_len) / 2;
         if (start_x < 4) start_x = 4;
+        if (dock_is_separator_at(dock, x, start_x, icon_size, margin, launcher_len)) {
+            return -1;
+        }
         int center_y = dock->height / 2;
 
         for (int i = 0; i < dock->item_count; i++) {
@@ -1527,4 +1565,52 @@ void dock_cleanup(Dock *dock) {
         XFreeColormap(dock->dpy, dock->colormap);
         dock->colormap = None;
     }
+}
+
+void dock_menu_populate_app(Menu *menu, const DockItem *item, int matching_win_count) {
+    if (!menu || !item) return;
+
+    if (strcmp(item->exec_cmd, "__TRASH__") == 0) {
+        menu_add_item(menu, "Empty Trash Bin", DOCK_ACTION_EMPTY_TRASH);
+        return;
+    }
+
+    if (strcmp(item->exec_cmd, "__ROFI__") == 0 || strcmp(item->exec_cmd, "__LAUNCHPAD__") == 0) {
+        menu_add_item(menu, "Applications Overview", DOCK_ACTION_LAUNCH_APP);
+        return;
+    }
+
+    menu_add_item(menu, "Open New Window", DOCK_ACTION_LAUNCH_APP);
+
+    if (matching_win_count > 0) {
+        menu_add_item(menu, "End App (Close)", DOCK_ACTION_CLOSE_APP);
+        menu_add_item(menu, "Force Kill App (kill -9)", DOCK_ACTION_KILL_APP);
+        if (matching_win_count > 1) {
+            char close_all_lbl[128];
+            snprintf(close_all_lbl, sizeof(close_all_lbl), "Close All Windows (%d)", matching_win_count);
+            menu_add_item(menu, close_all_lbl, DOCK_ACTION_CLOSE_ALL_WINDOWS);
+        }
+        menu_add_item(menu, "Detach Windows to Floating", DOCK_ACTION_DETACH_ALL_WINDOWS);
+    }
+
+    menu_add_separator(menu);
+    char remove_lbl[128];
+    snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", item->name);
+    menu_add_item(menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
+}
+
+void dock_menu_populate_settings(Menu *menu, const Dock *dock) {
+    if (!menu || !dock) return;
+
+    menu_add_item(menu, dock->magnification_enabled ? "Magnification: On ✓" : "Magnification: Off", DOCK_ACTION_TOGGLE_MAGNIFICATION);
+    menu_add_item(menu, dock->autohide_enabled ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
+    menu_add_item(menu, dock->apps_at_left ? "Apps Button: Left Corner ✓" : "Apps Button: Right Corner ✓", DOCK_ACTION_TOGGLE_APPS_CORNER);
+    menu_add_separator(menu);
+    menu_add_item(menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
+    menu_add_item(menu, "Position: Left", DOCK_ACTION_POS_LEFT);
+    menu_add_item(menu, "Position: Right", DOCK_ACTION_POS_RIGHT);
+    menu_add_separator(menu);
+    menu_add_item(menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);
+    menu_add_item(menu, "Size: Medium (48px)", DOCK_ACTION_SIZE_MEDIUM);
+    menu_add_item(menu, "Size: Large (64px)", DOCK_ACTION_SIZE_LARGE);
 }

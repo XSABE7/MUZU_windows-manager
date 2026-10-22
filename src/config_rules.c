@@ -73,6 +73,40 @@ void config_rules_ensure_files(void) {
         "Super+q = close_window\n");
 }
 
+int config_get_setting(const char *key, char *out, size_t out_len) {
+    if (!key || !out || out_len == 0) return 0;
+    out[0] = '\0';
+    char path[600];
+    if (!config_path("settings.conf", path, sizeof(path))) return 0;
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    int found = 0;
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        char *entry = trim(line);
+        if (entry[0] == '\0' || entry[0] == '#') continue;
+        char *eq = strchr(entry, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        if (strcmp(trim(entry), key) == 0) {
+            snprintf(out, out_len, "%s", trim(eq + 1));
+            found = 1;
+            break;
+        }
+    }
+    fclose(f);
+    return found;
+}
+
+int config_get_master_count(void) {
+    char value[32];
+    if (!config_get_setting("master_count", value, sizeof(value))) return 1;
+    char *end = NULL;
+    long count = strtol(value, &end, 10);
+    if (!end || *end != '\0' || count < 1 || count > 8) return 1;
+    return (int)count;
+}
+
 int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_name, const char *res_class, const char *title) {
     if (!path) return 0;
     FILE *f = fopen(path, "r");

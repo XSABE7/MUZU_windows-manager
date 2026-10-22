@@ -1,0 +1,154 @@
+#!/bin/sh
+# MUZUwm's simple graphical control centre.  It deliberately stores only
+# MUZUwm-owned preferences below ~/.config/muzuwm and never needs root access.
+
+set -u
+
+cfg_dir="$HOME/.config/muzuwm"
+mkdir -p "$cfg_dir"
+settings="$cfg_dir/settings.conf"
+dock_settings="$cfg_dir/dock_settings.ini"
+panel_settings="$cfg_dir/tint2rc"
+fullscreen="$cfg_dir/fullscreen_allowlist"
+autostart="$cfg_dir/auto_allowlist"
+shortcuts="$cfg_dir/shortcuts.conf"
+
+command -v zenity >/dev/null 2>&1 || {
+    printf '%s\n' 'MUZUwm Settings needs zenity. Install the zenity package and try again.' >&2
+    exit 1
+}
+
+touch "$settings" "$dock_settings" "$panel_settings" "$fullscreen" "$autostart" "$shortcuts"
+
+get_key() {
+    awk -F= -v key="$1" -v fallback="$2" '$1 == key { print substr($0, length(key) + 2); found=1; exit } END { if (!found) print fallback }' "$3"
+}
+
+set_key() {
+    file="$1" key="$2" value="$3"
+    tmp="${file}.tmp.$$"
+    awk -F= -v key="$key" -v value="$value" '
+        $1 == key { print key "=" value; found=1; next }
+        { print }
+        END { if (!found) print key "=" value }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
+reload_settings() {
+    xprop -root -format _MUZU_RELOAD_SETTINGS 32c -set _MUZU_RELOAD_SETTINGS 1 >/dev/null 2>&1 || true
+}
+
+edit_text_file() {
+    file="$1" title="$2" text="$3"
+    value=$(zenity --text-info --editable --title="$title" --width=720 --height=480 \
+        --filename="$file" 2>/dev/null) || return
+    printf '%s\n' "$value" > "$file"
+    reload_settings
+}
+
+while :; do
+    section=$(zenity --list --title='MUZUwm Settings' --width=620 --height=430 \
+        --text='Choose what you want to configure. Changes are saved automatically.' \
+        --column='Settings' --column='What you can change' \
+        'Keyboard & Language' 'Layouts used by Super + Space' \
+        'Dock' 'Position, size, auto-hide, magnification' \
+        'Top panel' 'Top/bottom position, height, clock format' \
+        'Window layout' 'Number of tiled master windows' \
+        'Fullscreen apps' 'Apps that should open maximized' \
+        'Autostart' 'Commands to run when MUZUwm starts' \
+        'Keyboard shortcuts' 'Edit all shortcut bindings' \
+        'Wallpaper' 'Choose a wallpaper image' \
+        'Close' 'Exit settings' 2>/dev/null) || exit 0
+
+    case "$section" in
+        'Keyboard & Language')
+            current=$(get_key keyboard_layouts '' "$settings")
+            [ -n "$current" ] || current=$(setxkbmap -query 2>/dev/null | awk '$1 == "layout:" { print $2 }')
+            layouts=$(zenity --entry --title='Keyboard & Language' \
+                --text='XKB layouts, separated by commas. Example: us,th,jp' \
+                --entry-text="$current" 2>/dev/null) || continue
+            case "$layouts" in
+                ''|*[![:alnum:],_\(\)-]*)
+                    zenity --error --text='Use XKB layout codes separated by commas, for example: us,th,jp.'
+                    ;;
+                *)
+                    if setxkbmap -layout "$layouts"; then
+                        set_key "$settings" keyboard_layouts "$layouts"
+                        zenity --info --text='Keyboard layouts saved. Use Super + Space to switch them.'
+                    else
+                        zenity --error --text='The layout list could not be applied.'
+                    fi
+                    ;;
+            esac
+            ;;
+        Dock)
+            pos=$(get_key position 0 "$dock_settings")
+            case "$pos" in 2) pos='Left' ;; 3) pos='Right' ;; *) pos='Bottom' ;; esac
+            size=$(get_key size 48 "$dock_settings")
+            hide=$(get_key autohide 0 "$dock_settings"); [ "$hide" = 1 ] && hide='On' || hide='Off'
+            mag=$(get_key magnification 1 "$dock_settings"); [ "$mag" = 1 ] && mag='On' || mag='Off'
+            corner=$(get_key apps_corner right "$dock_settings"); [ "$corner" = left ] && corner='Left' || corner='Right'
+            result=$(zenity --forms --title='Dock Settings' --width=520 \
+                --add-combo='Position' --combo-values="$pos|Bottom|Left|Right" \
+                --add-combo='Size' --combo-values="$size|36|48|64|80|96" \
+                --add-combo='Auto-hide' --combo-values="$hide|Off|On" \
+                --add-combo='Magnification' --combo-values="$mag|On|Off" \
+                --add-combo='Apps button corner' --combo-values="$corner|Right|Left" \
+                --separator='|' 2>/dev/null) || continue
+            IFS='|' read -r pos size hide mag corner <<EOF
+$result
+EOF
+            case "$pos" in Left) pos=2 ;; Right) pos=3 ;; *) pos=0 ;; esac
+            [ "$hide" = On ] && hide=1 || hide=0
+            [ "$mag" = On ] && mag=1 || mag=0
+            [ "$corner" = Left ] && corner=left || corner=right
+            set_key "$dock_settings" position "$pos"
+            set_key "$dock_settings" size "$size"
+            set_key "$dock_settings" autohide "$hide"
+            set_key "$dock_settings" magnification "$mag"
+            set_key "$dock_settings" apps_corner "$corner"
+            reload_settings
+            ;;
+        'Top panel')
+            position=$(get_key panel_position 'top center horizontal' "$panel_settings")
+            case "$position" in *bottom*) position='Bottom' ;; *) position='Top' ;; esac
+            height=$(awk '/^panel_size[[:space:]]*=/ { print $3; exit }' "$panel_settings")
+            [ -n "$height" ] || height=28
+            clock=$(get_key time1_format '%H:%M:%S' "$panel_settings")
+            result=$(zenity --forms --title='Top Panel Settings' --width=520 \
+                --add-combo='Position' --combo-values="$position|Top|Bottom" \
+                --add-combo='Height' --combo-values="$height|24|28|32|36|40" \
+                --add-entry='Clock format' --separator='|' 2>/dev/null) || continue
+            IFS='|' read -r position height clock <<EOF
+$result
+EOF
+            [ "$position" = Bottom ] && position='bottom center horizontal' || position='top center horizontal'
+            set_key "$panel_settings" panel_position "$position"
+            set_key "$panel_settings" panel_size "100% $height"
+            set_key "$panel_settings" time1_format "$clock"
+            zenity --info --text='Panel settings are saved. Restart MUZUwm to apply panel size or position.'
+            ;;
+        'Window layout')
+            masters=$(get_key master_count 1 "$settings")
+            masters=$(zenity --list --radiolist --title='Window Layout' --width=480 \
+                --text='How many tiled windows should use the master area?' \
+                --column='' --column='Master windows' \
+                "$( [ "$masters" = 1 ] && printf TRUE || printf FALSE )" '1' \
+                "$( [ "$masters" = 2 ] && printf TRUE || printf FALSE )" '2' \
+                FALSE '3' FALSE '4' 2>/dev/null) || continue
+            set_key "$settings" master_count "$masters"
+            reload_settings
+            ;;
+        'Fullscreen apps') edit_text_file "$fullscreen" 'Fullscreen apps' 'One WM_CLASS or exact app title per line. These apps open maximized.' ;;
+        Autostart) edit_text_file "$autostart" 'Autostart commands' 'One shell command per line. They run next time MUZUwm starts.' ;;
+        'Keyboard shortcuts') edit_text_file "$shortcuts" 'Keyboard shortcuts' 'Edit bindings. Restart MUZUwm for new key bindings to be grabbed.' ;;
+        Wallpaper)
+            image=$(zenity --file-selection --title='Choose Wallpaper' --file-filter='Images | *.png *.jpg *.jpeg *.bmp *.webp' 2>/dev/null) || continue
+            if [ -f "$image" ]; then
+                cp -f "$image" "$cfg_dir/wallpaper.png"
+                xprop -root -format _MUZU_RELOAD_WALLPAPER 32c -set _MUZU_RELOAD_WALLPAPER 1 >/dev/null 2>&1 || true
+            fi
+            ;;
+        Close) exit 0 ;;
+    esac
+done

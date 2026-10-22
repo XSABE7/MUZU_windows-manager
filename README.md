@@ -2,7 +2,6 @@
 
 ### Modern, Lightweight, Mouse-First Hybrid Floating &amp; Tiling X11 Window Manager
 
-> *"User ใช้ง่าย สบายมือ แต่คน Dev บอกเลยว่า ‘むず’ (Muzu / โคตรยาก)"*  
 > Intuitive, fluid one-handed desktop ergonomics for the user — engineered with pure low-level C11, Xlib, Xcursor, and Cairo graphics under the hood.
 
 ![Language](https://img.shields.io/badge/Language-C11-blue.svg)
@@ -88,8 +87,9 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 *Source:* `src/tint2_panel.c` | *Header:* `include/tint2_panel.h`
 
 - **4 Interactive Workspaces (`1`–`4`):** Left-click a workspace pill or scroll the mouse wheel on the panel to switch workspaces; right-click a workspace pill (or press `Alt/Super + Shift + 1..4`) to send the focused window to that workspace.
-- **Focused Window Title &amp; Real-Time Clock:** Displays the active window title in the center and a live clock with seconds (`HH:MM:SS` + date) synced every second.
-- **System Power Menu:** Click the power icon on the top-right to open a sleek menu for `Suspend`, `Restart / Reboot`, `Power Off`, `Lock Screen`, and `Log Out`.
+- **Focused Window Title &amp; Real-Time Clock:** Displays the active window title in the center and a live clock with seconds (`HH:MM:SS` + date) synced every second. No desktop branding is shown when nothing is focused.
+- **Keyboard Layout Menu:** The abbreviated current layout (for example `EN` or `TH`) appears at the top-right. Click it to choose an installed XKB layout; `Super + Space` cycles through the available layouts.
+- **System Power Menu:** Click the power icon on the top-right to open a sleek menu for `Suspend`, `Restart / Reboot`, `Power Off`, `Lock Screen`, and `Log Out`. Suspend, reboot, power off, and log out require explicit confirmation; `Esc` or **Cancel** safely dismisses the prompt.
 - **Dual-Path `tint2rc` Compatibility:** Reads custom panel height, position, and clock format from `~/.config/muzuwm/tint2rc` or `~/.config/i3/tint2/tint2rc`.
 
 ### 3. Native Animated Rofi-Style Application Launcher
@@ -159,6 +159,7 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 | `Super + Return` | `exec wezterm` | Launches `wezterm` (customizable in `shortcuts.conf`). |
 | `Super + b` | `exec google-chrome` | Launches `google-chrome` (customizable or set `= none` to unbind). |
 | `Super + q` | `close_window` | Gracefully closes the focused window. |
+| `Super + Space` | Cycle keyboard layout | Switches to the next configured XKB layout. |
 | `Super + 1..4` / `Alt + 1..4` | Switch Workspace | Switches active workspace (`1` to `4`). |
 | `Super + Shift + 1..4` | Move to Workspace | Moves the focused window to workspace `1` to `4`. |
 | `Alt + F1` | Toggle Launcher | Fallback hotkey for the application launcher. |
@@ -174,6 +175,11 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 | **Red / Yellow / Green Buttons** | Titlebar Top-Left | Close / Minimize to Dock / Toggle Maximize. |
 | **Left-Click &amp; Drag** | Dock Icons | Reorders pinned applications on the Dock. |
 | **Right-Click** | Dock | Opens app actions (`Launch`, `Pin/Unpin`, `Close`) and Dock settings (`Position: Bottom/Left/Right`, `Magnification`, `Auto-Hide`, `Apps Button Corner`). |
+| **Right-Click → Settings…** | Empty Desktop | Opens the graphical Settings centre. |
+
+### Settings centre
+
+Right-click an empty part of the desktop and choose **Settings…**. It provides one place to manage keyboard layouts, Dock position/size/auto-hide/magnification, top-panel format, tiled master-window count, fullscreen allowlist, autostart commands, shortcuts, and wallpaper. Settings are saved under `~/.config/muzuwm/`; Dock and layout changes apply immediately, while panel geometry and shortcuts apply after restarting MUZUwm.
 | **Mouse Wheel Up / Down** | Top Panel / Launcher | Cycles workspaces on Top Panel, or scrolls app list in Launcher. |
 
 ---

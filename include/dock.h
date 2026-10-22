@@ -4,6 +4,7 @@
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
 #include "gtk_theme.h"
+#include "menu.h"
 
 typedef struct RofiLauncher RofiLauncher;
 struct Client;       // Forward declaration
@@ -95,6 +96,8 @@ DockPosition dock_calculate_nearest_edge(int center_x, int center_y, int screen_
 void dock_handle_drag(Display *dpy, Dock *dock, int root_x, int root_y, int screen_w, int screen_h);
 void dock_end_drag(Display *dpy, Dock *dock, int screen_w, int screen_h);
 void dock_update_running(Dock *dock, const Client *clients);
+void dock_menu_populate_app(Menu *menu, const DockItem *item, int matching_win_count);
+void dock_menu_populate_settings(Menu *menu, const Dock *dock);
 void dock_cleanup(Dock *dock);
 
 #endif /* MUZU_DOCK_H */
