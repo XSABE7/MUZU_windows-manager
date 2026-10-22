@@ -13,7 +13,7 @@ OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_compositor test_tint2_panel test_config_rules test_x11_stress
+tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_compositor test_tint2_panel test_config_rules test_x11_stress
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -45,6 +45,9 @@ test_menu: tests/test_menu.c src/menu.c src/gtk_theme.c
 test_dock_menu: tests/test_dock_menu.c src/dock.c src/menu.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/wm.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+test_alttab: tests/test_alttab.c src/alttab.c src/gtk_theme.c src/icon_fetcher.c src/wm.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
 test_compositor: tests/test_compositor.c src/compositor.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
@@ -67,7 +70,7 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
+	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
 
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)
