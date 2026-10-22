@@ -1245,50 +1245,16 @@ int main(int argc, char **argv) {
 
                         menu_clear(&context_menu);
                         if (clicked_item >= 0 && clicked_item < dock.item_count) {
-                            const char *cmd = dock.items[clicked_item].exec_cmd;
-                            if (strcmp(cmd, "__TRASH__") == 0) {
-                                menu_add_item(&context_menu, "Empty Trash", DOCK_ACTION_EMPTY_TRASH);
-                                menu_add_separator(&context_menu);
-                            } else if (strcmp(cmd, "__ROFI__") != 0 && strcmp(cmd, "__LAUNCHPAD__") != 0) {
-                                int matching_win_count = 0;
-                                for (Client *c = clients; c; c = c->next) {
-                                    if (client_matches_dock_item(dpy, c, &dock.items[clicked_item])) {
-                                        matching_win_count++;
-                                    }
+                            int matching_win_count = 0;
+                            for (Client *c = clients; c; c = c->next) {
+                                if (client_matches_dock_item(dpy, c, &dock.items[clicked_item])) {
+                                    matching_win_count++;
                                 }
-
-                                menu_add_item(&context_menu, "Open New Window", DOCK_ACTION_LAUNCH_APP);
-
-                                if (matching_win_count > 0) {
-                                    menu_add_item(&context_menu, "End App (Close)", DOCK_ACTION_CLOSE_APP);
-                                    menu_add_item(&context_menu, "Force Kill App (kill -9)", DOCK_ACTION_KILL_APP);
-                                    if (matching_win_count > 1) {
-                                        char close_all_lbl[128];
-                                        snprintf(close_all_lbl, sizeof(close_all_lbl), "Close All Windows (%d)", matching_win_count);
-                                        menu_add_item(&context_menu, close_all_lbl, DOCK_ACTION_CLOSE_ALL_WINDOWS);
-                                    }
-                                    menu_add_item(&context_menu, "Detach Windows to Floating", DOCK_ACTION_DETACH_ALL_WINDOWS);
-                                }
-
-                                menu_add_separator(&context_menu);
-                                char remove_lbl[128];
-                                snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", dock.items[clicked_item].name);
-                                menu_add_item(&context_menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
-                                menu_add_separator(&context_menu);
                             }
+                            dock_menu_populate_app(&context_menu, &dock.items[clicked_item], matching_win_count);
+                        } else {
+                            dock_menu_populate_settings(&context_menu, &dock);
                         }
-
-                        menu_add_item(&context_menu, dock.magnification_enabled ? "Magnification: On ✓" : "Magnification: Off", DOCK_ACTION_TOGGLE_MAGNIFICATION);
-                        menu_add_item(&context_menu, dock.autohide_enabled ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
-                        menu_add_item(&context_menu, dock.apps_at_left ? "Apps Button: Left Corner ✓" : "Apps Button: Right Corner ✓", DOCK_ACTION_TOGGLE_APPS_CORNER);
-                        menu_add_separator(&context_menu);
-                        menu_add_item(&context_menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
-                        menu_add_item(&context_menu, "Position: Left", DOCK_ACTION_POS_LEFT);
-                        menu_add_item(&context_menu, "Position: Right", DOCK_ACTION_POS_RIGHT);
-                        menu_add_separator(&context_menu);
-                        menu_add_item(&context_menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);
-                        menu_add_item(&context_menu, "Size: Medium (48px)", DOCK_ACTION_SIZE_MEDIUM);
-                        menu_add_item(&context_menu, "Size: Large (64px)", DOCK_ACTION_SIZE_LARGE);
 
                         int menu_x = ev.xbutton.x_root;
                         int menu_y = ev.xbutton.y_root;

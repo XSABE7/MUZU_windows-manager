@@ -13,12 +13,12 @@ OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_compositor test_tint2_panel test_config_rules test_x11_stress
+tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_compositor test_tint2_panel test_config_rules test_x11_stress
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
-test_layout: tests/test_layout.c src/wm.c src/dock.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c
+test_layout: tests/test_layout.c src/wm.c src/dock.c src/menu.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_trigger: tests/test_trigger.c src/trigger.c
@@ -40,6 +40,9 @@ test_gtk_theme: tests/test_gtk_theme.c src/gtk_theme.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_menu: tests/test_menu.c src/menu.c src/gtk_theme.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+test_dock_menu: tests/test_dock_menu.c src/dock.c src/menu.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/wm.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_compositor: tests/test_compositor.c src/compositor.c
@@ -64,7 +67,7 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
+	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_compositor test_tint2_panel test_config_rules test_x11_stress muzuwm
 
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)

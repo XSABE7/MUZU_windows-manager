@@ -1528,3 +1528,51 @@ void dock_cleanup(Dock *dock) {
         dock->colormap = None;
     }
 }
+
+void dock_menu_populate_app(Menu *menu, const DockItem *item, int matching_win_count) {
+    if (!menu || !item) return;
+
+    if (strcmp(item->exec_cmd, "__TRASH__") == 0) {
+        menu_add_item(menu, "Empty Trash Bin", DOCK_ACTION_EMPTY_TRASH);
+        return;
+    }
+
+    if (strcmp(item->exec_cmd, "__ROFI__") == 0 || strcmp(item->exec_cmd, "__LAUNCHPAD__") == 0) {
+        menu_add_item(menu, "Applications Overview", DOCK_ACTION_LAUNCH_APP);
+        return;
+    }
+
+    menu_add_item(menu, "Open New Window", DOCK_ACTION_LAUNCH_APP);
+
+    if (matching_win_count > 0) {
+        menu_add_item(menu, "End App (Close)", DOCK_ACTION_CLOSE_APP);
+        menu_add_item(menu, "Force Kill App (kill -9)", DOCK_ACTION_KILL_APP);
+        if (matching_win_count > 1) {
+            char close_all_lbl[128];
+            snprintf(close_all_lbl, sizeof(close_all_lbl), "Close All Windows (%d)", matching_win_count);
+            menu_add_item(menu, close_all_lbl, DOCK_ACTION_CLOSE_ALL_WINDOWS);
+        }
+        menu_add_item(menu, "Detach Windows to Floating", DOCK_ACTION_DETACH_ALL_WINDOWS);
+    }
+
+    menu_add_separator(menu);
+    char remove_lbl[128];
+    snprintf(remove_lbl, sizeof(remove_lbl), "Remove '%s' from Dock", item->name);
+    menu_add_item(menu, remove_lbl, DOCK_ACTION_REMOVE_APP);
+}
+
+void dock_menu_populate_settings(Menu *menu, const Dock *dock) {
+    if (!menu || !dock) return;
+
+    menu_add_item(menu, dock->magnification_enabled ? "Magnification: On ✓" : "Magnification: Off", DOCK_ACTION_TOGGLE_MAGNIFICATION);
+    menu_add_item(menu, dock->autohide_enabled ? "Auto-Hide: On ✓" : "Auto-Hide: Off", DOCK_ACTION_TOGGLE_AUTOHIDE);
+    menu_add_item(menu, dock->apps_at_left ? "Apps Button: Left Corner ✓" : "Apps Button: Right Corner ✓", DOCK_ACTION_TOGGLE_APPS_CORNER);
+    menu_add_separator(menu);
+    menu_add_item(menu, "Position: Bottom", DOCK_ACTION_POS_BOTTOM);
+    menu_add_item(menu, "Position: Left", DOCK_ACTION_POS_LEFT);
+    menu_add_item(menu, "Position: Right", DOCK_ACTION_POS_RIGHT);
+    menu_add_separator(menu);
+    menu_add_item(menu, "Size: Small (36px)", DOCK_ACTION_SIZE_SMALL);
+    menu_add_item(menu, "Size: Medium (48px)", DOCK_ACTION_SIZE_MEDIUM);
+    menu_add_item(menu, "Size: Large (64px)", DOCK_ACTION_SIZE_LARGE);
+}
