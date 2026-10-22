@@ -1,48 +1,41 @@
 # MUZUwm (Mouse UserZ Window Manager)
 
-### Modern, Lightweight, Mouse-First Hybrid Floating &amp; Tiling X11 Window Manager
+### Modern, Lightweight, Mouse-First Hybrid Floating & Tiling X11 Window Manager
 
 > Intuitive, fluid one-handed desktop ergonomics for the user — engineered with pure low-level C11, Xlib, Xcursor, and Cairo graphics under the hood.
-
-
-
-
-
-
-
 
 ---
 
 ## Table of Contents
 
-- [Overview &amp; Philosophy](#overview--philosophy)
-- [Implemented Systems &amp; New Features](#implemented-systems--new-features)
-  - [1. Floating-by-Default Window Management, Allowlists &amp; Custom Shortcuts](#1-floating-by-default-window-management-allowlists--custom-shortcuts)
-  - [2. Liquid Glass Tint2-Compatible Top Panel &amp; 4-Workspace Switcher](#2-liquid-glass-tint2-compatible-top-panel--4-workspace-switcher)
+- [Overview & Philosophy](#overview--philosophy)
+- [Implemented Systems & New Features](#implemented-systems--new-features)
+  - [1. Floating-by-Default Window Management, Allowlists & Custom Shortcuts](#1-floating-by-default-window-management-allowlists--custom-shortcuts)
+  - [2. Liquid Glass Tint2-Compatible Top Panel & 4-Workspace Switcher](#2-liquid-glass-tint2-compatible-top-panel--4-workspace-switcher)
   - [3. Native Animated Rofi-Style Application Launcher](#3-native-animated-rofi-style-application-launcher)
-  - [4. Moveable &amp; Magnified Frosted-Glass Dock](#4-moveable--magnified-frosted-glass-dock)
-  - [5. macOS-Style Traffic Light Controls &amp; Smart Edge Snapping](#5-macos-style-traffic-light-controls--smart-edge-snapping)
-  - [6. Picom Compositor &amp; 32-Bit ARGB Frosted Glass](#6-picom-compositor--32-bit-argb-frosted-glass)
-  - [7. Automatic GTK Theme, Icon Theme &amp; Cursor Synchronization](#7-automatic-gtk-theme-icon-theme--cursor-synchronization)
-  - [8. Zero-Overhead Native Wallpaper Engine &amp; Context Menus](#8-zero-overhead-native-wallpaper-engine--context-menus)
+  - [4. Moveable & Magnified Frosted-Glass Dock](#4-moveable--magnified-frosted-glass-dock)
+  - [5. macOS-Style Traffic Light Controls & Smart Edge Snapping](#5-macos-style-traffic-light-controls--smart-edge-snapping)
+  - [6. Picom Compositor & 32-Bit ARGB Frosted Glass](#6-picom-compositor--32-bit-argb-frosted-glass)
+  - [7. Automatic GTK Theme, Icon Theme & Cursor Synchronization](#7-automatic-gtk-theme-icon-theme--cursor-synchronization)
+  - [8. Zero-Overhead Native Wallpaper Engine & Context Menus](#8-zero-overhead-native-wallpaper-engine--context-menus)
   - [9. Application-Grouped Alt-Tab HUD Switcher with Window Dots](#9-application-grouped-alt-tab-hud-switcher-with-window-dots)
   - [10. Mission Viewer / Mission Control Fullscreen Overview Overlay](#10-mission-viewer--mission-control-fullscreen-overview-overlay)
   - [11. Dock Context Menu Separation (App Actions vs Dock Configuration)](#11-dock-context-menu-separation-app-actions-vs-dock-configuration)
-  - [12. Unified GUI &amp; CLI Control Centre (muzuwm-settings)](#12-unified-gui--cli-control-centre-muzuwm-settings)
-- [Desktop Controls &amp; Shortcuts Cheat Sheet](#desktop-controls--shortcuts-cheat-sheet)
-- [Configuration &amp; Allowlist Files](#configuration--allowlist-files)
-- [Recommended Applications](#recommended-applications)
-- [Known Bugs &amp; Limitations](#known-bugs--limitations)
-- [System Architecture &amp; Codebase Map](#system-architecture--codebase-map)
-- [Prerequisites &amp; Build Instructions](#prerequisites--build-instructions)
-- [Running &amp; Testing](#running--testing)
-- [Test Suite &amp; Quality Assurance](#test-suite--quality-assurance)
+  - [12. Unified GUI & CLI Control Centre (muzuwm-settings)](#12-unified-gui--cli-control-centre-muzuwm-settings)
+- [Desktop Controls & Shortcuts Cheat Sheet](#desktop-controls--shortcuts-cheat-sheet)
+- [Configuration & Allowlist Files](#configuration--allowlist-files)
+- [Recommended Applications & Integrations](#recommended-applications--integrations)
+- [Known Bugs & Limitations](#known-bugs--limitations)
+- [System Architecture & Codebase Map](#system-architecture--codebase-map)
+- [Prerequisites & Build Instructions](#prerequisites--build-instructions)
+- [Running & Testing](#running--testing)
+- [Test Suite & Quality Assurance](#test-suite--quality-assurance)
 - [Roadmap](#roadmap)
 - [License](#license)
 
 ---
 
-## Overview &amp; Philosophy
+## Overview & Philosophy
 
 Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyboard efficiency but demand memorizing dozens of multi-key combinations and writing complex dotfiles. Conversely, full-featured desktop environments (`GNOME`, `KDE`) offer mouse navigation at the cost of heavy RAM consumption and background services.
 
@@ -54,7 +47,7 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 
 ---
 
-## Implemented Systems &amp; New Features
+## Implemented Systems & New Features
 
 ```
 +---------------------------------------------------------------------------------+
@@ -81,7 +74,7 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 +---------------------------------------------------------------------------------+
 ```
 
-### 1. Floating-by-Default Window Management, Allowlists &amp; Custom Shortcuts
+### 1. Floating-by-Default Window Management, Allowlists & Custom Shortcuts
 
 *Source:* `src/config_rules.c`, `src/client_props.c` | *Headers:* `include/config_rules.h`, `include/client_props.h`
 
@@ -91,12 +84,12 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 - **Fullscreen Capability Detection (`can_fullscreen`):** Inspects ICCCM `WM_NORMAL_HINTS` (`PMinSize`, `PMaxSize`) and dialog/transient state. Fixed-size windows (`min_width == max_width && min_height == max_height`), small-max windows (`< 800x600`), and dialogs set `can_fullscreen = 0` and safely ignore `Super + Arrow` tiling, double-click titlebar tiling, green maximize button clicks, and mouse edge-snapping.
 - **Custom Shortcuts (`~/.config/muzuwm/shortcuts.conf`):** Configurable keybindings with lock-key (`NumLock` / `CapsLock`) immunity and support for `none` to unbind any default shortcut.
 
-### 2. Liquid Glass Tint2-Compatible Top Panel &amp; 4-Workspace Switcher
+### 2. Liquid Glass Tint2-Compatible Top Panel & 4-Workspace Switcher
 
 *Source:* `src/tint2_panel.c` | *Header:* `include/tint2_panel.h`
 
 - **4 Interactive Workspaces (`1`–`4`):** Left-click a workspace pill or scroll the mouse wheel on the panel to switch workspaces; right-click a workspace pill (or press `Alt/Super + Shift + 1..4`) to send the focused window to that workspace.
-- **Focused Window Title &amp; Real-Time Clock:** Displays the active window title in the center and a live clock with seconds (`HH:MM:SS` + date) synced every second. No desktop branding is shown when nothing is focused.
+- **Focused Window Title & Real-Time Clock:** Displays the active window title in the center and a live clock with seconds (`HH:MM:SS` + date) synced every second. No desktop branding is shown when nothing is focused.
 - **Keyboard Layout Menu:** The abbreviated current layout (for example `EN` or `TH`) appears at the top-right. Click it to choose an installed XKB layout; `Super + Space` cycles through the available layouts.
 - **System Power Menu:** Click the power icon on the top-right to open a sleek menu for `Suspend`, `Restart / Reboot`, `Power Off`, `Lock Screen`, and `Log Out`. Suspend, reboot, power off, and log out require explicit confirmation dialog (`src/confirm_dialog.c`); `Esc` or **Cancel** safely dismisses the prompt.
 - **Dual-Path `tint2rc` Compatibility:** Reads custom panel height, position, and clock format from `~/.config/muzuwm/tint2rc` or `~/.config/i3/tint2/tint2rc`.
@@ -106,19 +99,19 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 *Source:* `src/rofi_launcher.c` | *Header:* `include/rofi_launcher.h`
 
 - **Tap-to-Open `Super` Key:** Tapping and releasing `Super` alone toggles the launcher without interfering with `Super + Arrow` or `Super + Return` combinations. Also accessible via `Alt + F1` or the Dock's 3-dots Apps icon.
-- **60fps Micro-Animation &amp; Mouse Wheel Scrolling:** Smoothly animates into view, supports live fuzzy search, keyboard navigation, mouse hover/click, mouse wheel scrolling, and drag-to-pin onto the Dock.
+- **60fps Micro-Animation & Mouse Wheel Scrolling:** Smoothly animates into view, supports live fuzzy search, keyboard navigation, mouse hover/click, mouse wheel scrolling, and drag-to-pin onto the Dock.
 - **Dual-Path `config.rasi` Parsing:** Reads font and prompt customizations from `~/.config/muzuwm/rofi/config.rasi` or `~/.config/i3/rofi/config.rasi`.
 
-### 4. Moveable &amp; Magnified Frosted-Glass Dock
+### 4. Moveable & Magnified Frosted-Glass Dock
 
 *Source:* `src/dock.c` | *Header:* `include/dock.h`
 
 - **macOS-Style Magnification Wave:** Smooth cosine-falloff icon magnification on hover with floating app-name tooltips.
-- **Bottom, Left &amp; Right Edge Positioning:** Position the dock at `Bottom`, `Left`, or `Right` via the Dock Context Menu (top edge is disabled so the dock never overlaps the top panel or window titlebars).
-- **Drag-to-Reorder &amp; Drag-to-Pin:** Reorder pinned icons with left-click drag, or drag apps from the launcher onto the dock (persisted in `~/.config/muzuwm/dock_apps.ini` and `~/.config/muzuwm/dock_settings.ini`).
-- **Built-in Trash Bin &amp; Apps Grid Icon:** Includes a vector Trash Bin icon (with `Empty Trash` action connected to `~/.local/share/Trash/files`) and a 3-dots Apps Launcher button configurable to either corner.
+- **Bottom, Left & Right Edge Positioning:** Position the dock at `Bottom`, `Left`, or `Right` via the Dock Context Menu (top edge is disabled so the dock never overlaps the top panel or window titlebars).
+- **Drag-to-Reorder & Drag-to-Pin:** Reorder pinned icons with left-click drag, or drag apps from the launcher onto the dock (persisted in `~/.config/muzuwm/dock_apps.ini` and `~/.config/muzuwm/dock_settings.ini`).
+- **Built-in Trash Bin & Apps Grid Icon:** Includes a vector Trash Bin icon (with `Empty Trash` action connected to `~/.local/share/Trash/files`) and a 3-dots Apps Launcher button configurable to either corner.
 
-### 5. macOS-Style Traffic Light Controls &amp; Smart Edge Snapping
+### 5. macOS-Style Traffic Light Controls & Smart Edge Snapping
 
 *Source:* `src/titlebar.c`, `src/wm.c` | *Headers:* `include/titlebar.h`, `include/wm.h`
 
@@ -126,18 +119,18 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
   - 🔴 **Red (`#FF5F56`):** Closes the window via `WM_DELETE_WINDOW` (or `XKillClient` fallback).
   - 🟡 **Yellow (`#FFBD2E`):** Minimizes the window into the Dock.
   - 🟢 **Green (`#27C93F`):** Toggles fullscreen/maximize (guarded by `can_fullscreen`).
-- **Keyboard &amp; Mouse Edge Snapping:** Tile windows left/right (`50/50`), maximize (`fullscreen`), or restore to centered floating (`float`) using `Super + Arrow` or mouse drag-to-edge.
+- **Keyboard & Mouse Edge Snapping:** Tile windows left/right (`50/50`), maximize (`fullscreen`), or restore to centered floating (`float`) using `Super + Arrow` or mouse drag-to-edge.
 - **CSD Auto-Detection:** Detects `_MOTIF_WM_HINTS` and `_GTK_FRAME_EXTENTS` so CSD windows (e.g. Audacious skins, GTK4 apps) are not double-decorated.
 - **Unfocused Window Ghost Opacity:** Unfocused windows automatically fade to 85% opacity (`_NET_WM_WINDOW_OPACITY`) after 30 seconds of inactivity and restore to 100% immediately on focus.
 
-### 6. Picom Compositor &amp; 32-Bit ARGB Frosted Glass
+### 6. Picom Compositor & 32-Bit ARGB Frosted Glass
 
 *Source:* `src/compositor.c` | *Header:* `include/compositor.h`
 
 - Automatically launches `picom` (searching both `$PATH` and `~/.local/bin/picom`) using `~/.config/muzuwm/picom.conf` or `~/.config/i3/picom.conf`.
 - Automatically detects nested `Xephyr` displays and switches to `--backend xrender --no-vsync` for glitch-free rendering in test environments.
 
-### 7. Automatic GTK Theme, Icon Theme &amp; Cursor Synchronization
+### 7. Automatic GTK Theme, Icon Theme & Cursor Synchronization
 
 *Source:* `src/gtk_theme.c`, `src/icon_fetcher.c` | *Headers:* `include/gtk_theme.h`, `include/icon_fetcher.h`
 
@@ -145,7 +138,7 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 - Exports `GTK_THEME`, `XCURSOR_THEME`, and `XCURSOR_SIZE` to child applications.
 - Uses `libXcursor` (`gtk_theme_apply_cursor`) to apply the GTK `left_ptr` arrow cursor directly onto the X11 root window, replacing the legacy X11 `X` cross cursor.
 
-### 8. Zero-Overhead Native Wallpaper Engine &amp; Context Menus
+### 8. Zero-Overhead Native Wallpaper Engine & Context Menus
 
 *Source:* `src/wallpaper.c`, `src/menu.c` | *Headers:* `include/wallpaper.h`, `include/menu.h`
 
@@ -179,30 +172,30 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
   - **Right-clicking on Empty Dock Space / Separator:** Strictly displays Dock preferences: *Position: Bottom / Left / Right*, *Icon Size*, *Auto-Hide*, *Magnification Wave*, and *Apps Button Corner (Left/Right)*.
   - **Right-clicking on Desktop Background:** Opens the master desktop menu for quick access to *Settings…*, *Terminal*, *Launcher*, *Reload Wallpaper*, and *Power Session*.
 
-### 12. Unified GUI &amp; CLI Control Centre (muzuwm-settings)
+### 12. Unified GUI & CLI Control Centre (muzuwm-settings)
 
 *Source:* `tools/muzuwm-settings`
 
 - **All-in-One Settings Hub:** An out-of-the-box Control Centre available via right-click desktop menu (*Settings…*), app launcher, or terminal command `muzuwm-settings`. Operates in a modern GTK 3 sidebar window or interactive terminal menu (`muzuwm-settings --cli`).
 - **Comprehensive Configuration Tabs:**
-  1. **Keyboard &amp; Language:** Switch between popular XKB layouts (`us,th`, `us,th(pat)`, `us`, `us,jp`, or custom), configure hotkeys (`Super+Space`, `Alt+Shift`, `Caps Lock`, `Tilde ~`), and test typing live in-window.
-  2. **Dock Settings &amp; Pinned Apps:** Configure edge position (Bottom/Left/Right), icon size (36–96px), auto-hide, magnification wave, apps button corner, add/remove/reorder pinned applications, and empty the Trash bin.
-  3. **Titlebar &amp; Window Controls:** Adjust titlebar height (24, 28, 32px), typography, title alignment, double-click behavior, and inactivity dimming timeout &amp; opacity.
+  1. **Keyboard & Language:** Switch between popular XKB layouts (`us,th`, `us,th(pat)`, `us`, `us,jp`, or custom), configure hotkeys (`Super+Space`, `Alt+Shift`, `Caps Lock`, `Tilde ~`), and test typing live in-window.
+  2. **Dock Settings & Pinned Apps:** Configure edge position (Bottom/Left/Right), icon size (36–96px), auto-hide, magnification wave, apps button corner, add/remove/reorder pinned applications, and empty the Trash bin.
+  3. **Titlebar & Window Controls:** Adjust titlebar height (24, 28, 32px), typography, title alignment, double-click behavior, and inactivity dimming timeout & opacity.
   4. **Fullscreen Allowlist:** Easily manage applications opening maximized automatically with 1-click presets for Chrome, Firefox, VLC, MPV, VS Code, LibreOffice, GIMP, and Steam.
   5. **Autostart Commands:** Manage startup daemons (`picom`, `dunst`, `nm-applet`, `volumeicon`, `redshift`) with toggle switches.
-  6. **Top Panel &amp; Shortcuts:** Customize panel geometry, clock format (`%H:%M:%S`), and configure keybindings for terminal, browser, and file manager.
-  7. **Appearance &amp; Wallpaper:** Choose and apply desktop wallpapers immediately (`_MUZU_RELOAD_WALLPAPER`) and synchronize GTK/icon themes.
-  8. **System, Backup &amp; Reset:** Create timestamped configuration archives, restore backups, factory reset defaults, and trigger live reloads (`_MUZU_RELOAD_SETTINGS`).
+  6. **Top Panel & Shortcuts:** Customize panel geometry, clock format (`%H:%M:%S`), and configure keybindings for terminal, browser, and file manager.
+  7. **Appearance & Wallpaper:** Choose and apply desktop wallpapers immediately (`_MUZU_RELOAD_WALLPAPER`) and synchronize GTK/icon themes.
+  8. **System, Backup & Reset:** Create timestamped configuration archives, restore backups, factory reset defaults, and trigger live reloads (`_MUZU_RELOAD_SETTINGS`).
 
 ---
 
-## Desktop Controls &amp; Shortcuts Cheat Sheet
+## Desktop Controls & Shortcuts Cheat Sheet
 
 ### Default Keyboard Shortcuts (`~/.config/muzuwm/shortcuts.conf`)
 
 | Shortcut | Default Action | Description |
 | :--- | :--- | :--- |
-| `Super` (Tap &amp; Release) | Toggle Launcher | Opens/closes the built-in animated Rofi application launcher. |
+| `Super` (Tap & Release) | Toggle Launcher | Opens/closes the built-in animated Rofi application launcher. |
 | `Alt + Tab` | Next Application | Cycles forward through open applications in the Alt-Tab HUD switcher. |
 | `Alt + Shift + Tab` | Previous Application | Cycles backward through open applications in the Alt-Tab HUD switcher. |
 | `Super + Tab` / `Super + w` | Mission Viewer | Opens Mission Control fullscreen window overview. |
@@ -223,12 +216,12 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 
 | Action | Target | Description |
 | :--- | :--- | :--- |
-| **Click &amp; Drag** | Window Titlebar | Moves floating window (detaches tiled/maximized windows automatically). |
+| **Click & Drag** | Window Titlebar | Moves floating window (detaches tiled/maximized windows automatically). |
 | **Drag to Left / Right Edge** | Screen Edges | Snaps resizable window to 50/50 split. |
 | **Drag to Top Edge** | Top Screen Edge | Maximizes resizable window. |
 | **Double-Click** | Window Titlebar | Toggles tiled/floating mode on resizable windows. |
 | **Red / Yellow / Green Buttons** | Titlebar Top-Left | Close / Minimize to Dock / Toggle Maximize. |
-| **Left-Click &amp; Drag** | Dock Icons | Reorders pinned applications on the Dock. |
+| **Left-Click & Drag** | Dock Icons | Reorders pinned applications on the Dock. |
 | **Right-Click on App Icon** | Dock App Icon | Opens app actions (`Launch New Instance`, `Pin/Unpin`, `Close`, `Kill`). |
 | **Right-Click on Dock Space** | Dock Blank Space | Opens Dock settings (`Position: Bottom/Left/Right`, `Magnification`, `Auto-Hide`, `Corner`). |
 | **Right-Click → Settings…** | Empty Desktop | Opens the comprehensive MUZUwm Control Centre. |
@@ -236,13 +229,13 @@ Traditional tiling window managers (`i3`, `bspwm`, `dwm`) deliver speed and keyb
 
 ---
 
-## Configuration &amp; Allowlist Files
+## Configuration & Allowlist Files
 
 All configuration files live in `~/.config/muzuwm/` and are automatically created with documented defaults on first launch:
 
 | Path | Purpose |
 | :--- | :--- |
-| `~/.config/muzuwm/settings.conf` | Core window manager &amp; desktop preferences (keyboard layouts, master count, titlebars). |
+| `~/.config/muzuwm/settings.conf` | Core window manager & desktop preferences (keyboard layouts, master count, titlebars). |
 | `~/.config/muzuwm/shortcuts.conf` | Custom keyboard shortcuts (`Combo = tile_left \| tile_right \| fullscreen \| float \| close_window \| launcher \| exec <cmd> \| none`). |
 | `~/.config/muzuwm/fullscreen_allowlist` | One `WM_CLASS` or window title per line. Only matching resizable windows auto-maximize on launch. |
 | `~/.config/muzuwm/auto_allowlist` | One shell command per line to auto-start when MUZUwm launches. |
@@ -252,29 +245,34 @@ All configuration files live in `~/.config/muzuwm/` and are automatically create
 | `~/.config/muzuwm/picom.conf` | Optional custom Picom compositor config. |
 | `~/.config/muzuwm/tint2rc` | Optional custom top panel config. |
 
-Example `~/.config/muzuwm/shortcuts.conf`:
-```ini
-Super+Left = tile_left
-Super+Right = tile_right
-Super+Up = fullscreen
-Super+Down = float
-Super+Return = exec wezterm
-Super+b = exec google-chrome
-Super+e = exec thunar
-Super+q = close_window
-```
+---
+
+## Recommended Applications & Integrations
+
+MUZUwm focuses strictly on window management, desktop ergonomics, and lightweight performance (~25 MB RSS). To build a complete desktop workflow that complements MUZUwm's macOS-style Server-Side Decorations (SSD) and GTK theme synchronization, the following curated applications are recommended:
+
+| Category | Recommended Tool | Command / Package | Description & Integration |
+| :--- | :--- | :--- | :--- |
+| **Terminal** | **WezTerm** | `wezterm` | GPU-accelerated terminal; default mapped to `Super + Return`. |
+| **File Manager** | **Thunar** | `thunar gvfs-backends` | Full SSD compatibility, syncs GTK themes, and links directly with the Dock's Trash bin. |
+| **Screenshots** | **Flameshot** | `flameshot` | Rich interactive GUI annotation tool. Bind `Print = exec flameshot gui`. |
+| | **maim + slop** | `maim slop xclip` | Minimalist CLI utility for instantaneous area clipping directly to clipboard. |
+| **Audio Applet** | **volumeicon** | `volumeicon-alsa` | Scroll-wheel volume adjustment in the top panel; place in `auto_allowlist`. |
+| **Audio GUI** | **pavucontrol** | `pavucontrol` | Per-application audio stream routing and PulseAudio/PipeWire mixer GUI. |
+| **Notifications** | **Dunst** | `dunst` | Low-latency notification daemon matching frosted-glass aesthetics. |
+| **Networking** | **nm-applet** | `network-manager-gnome` | Standard tray applet for Wi-Fi and Ethernet management. |
+| **Bluetooth** | **Blueman** | `blueman` | GTK applet for peripheral pairing and audio profiles (`blueman-applet &`). |
+| **Media Player** | **mpv** | `mpv` | High-performance, clean video player with hardware acceleration. |
+| **Audio Player** | **Audacious** | `audacious` | Classic Winamp-skin mode; docked geometry preserved natively by MUZUwm. |
+| **Image Viewer** | **Viewnior** | `viewnior` | Fast GTK image viewer respecting floating-by-default window sizes. |
+| **Document Reader**| **Zathura** | `zathura zathura-pdf-mupdf` | Minimalist document viewer with synctex and distraction-free viewing. |
+| **Clipboard** | **greenclip** | `greenclip` | Clipboard daemon integrating seamlessly with launcher fuzzy search. |
+| **Night Light** | **Redshift** | `redshift redshift-gtk` | Automatic sunrise/sunset color temperature adjustment (`redshift-gtk &`). |
+| **Screen Lock** | **betterlockscreen**| `betterlockscreen` | Frosted-glass lockscreen matching the desktop wallpaper (`Super + l`). |
 
 ---
 
-## Recommended Applications
-
-Because MUZUwm renders custom macOS-style Server-Side Decoration (SSD) titlebars and syncs GTK3/Xcursor themes:
-- **File Manager:** **Thunar** (`sudo apt install thunar thunar-archive-plugin gvfs-backends`), **PCManFM**, or **Nemo** (or **Yazi** inside `wezterm`). These integrate cleanly with MUZUwm's single titlebar, GTK theme variables, and the Dock's `~/.local/share/Trash` bin.
-- **Terminal:** **WezTerm** (`wezterm`, bound to `Super + Return` by default).
-
----
-
-## Known Bugs &amp; Limitations
+## Known Bugs & Limitations
 
 1. **GTK4 / Libadwaita Client-Side Headerbars (e.g., GNOME Files / `nautilus`):**
    - Applications built with GTK4/libadwaita enforce their own client-side headerbars and dark/light styling independently of standard X11 SSD frames and `GTK_THEME`. Using GTK3 SSD file managers like **Thunar**, **PCManFM**, or **Nemo** is recommended.
@@ -289,7 +287,7 @@ Because MUZUwm renders custom macOS-style Server-Side Decoration (SSD) titlebars
 
 ---
 
-## System Architecture &amp; Codebase Map
+## System Architecture & Codebase Map
 
 ```
 MUZUwm/
@@ -340,7 +338,7 @@ MUZUwm/
 
 ---
 
-## Prerequisites &amp; Build Instructions
+## Prerequisites & Build Instructions
 
 ### Dependencies
 
@@ -381,7 +379,7 @@ make asan
 
 ---
 
-## Running &amp; Testing
+## Running & Testing
 
 ### 1. Isolated Testing via Xephyr
 
@@ -421,7 +419,7 @@ You can also use flags for non-interactive execution:
 
 ---
 
-## Test Suite &amp; Quality Assurance
+## Test Suite & Quality Assurance
 
 Run the full automated unit test suite and 200 MB RAM ceiling benchmark:
 
@@ -458,7 +456,7 @@ Individual test binaries:
 - [x] Application-grouped Alt-Tab switcher HUD with dynamic window count dots.
 - [x] Mission Viewer (Mission Control) fullscreen overview overlay with interactive window cards.
 - [x] Dock context menu separation: app actions vs dock configuration.
-- [x] Unified GUI &amp; CLI Control Centre (`muzuwm-settings`) for language, dock, titlebar, allowlists, and themes.
+- [x] Unified GUI & CLI Control Centre (`muzuwm-settings`) for language, dock, titlebar, allowlists, and themes.
 - [ ] Multi-monitor support via X11 RandR / Xinerama.
 - [ ] Wayland compositor exploration (`wlroots`).
 
@@ -472,7 +470,7 @@ Individual test binaries:
 
 ## License
 
-**Acknowledgements &amp; Credits**
+**Acknowledgements & Credits**
 
 This project stands on the shoulders of giants. While architected to serve a custom workflow, parts of the codebase, internal logic, and core mechanics incorporate or derive from several outstanding open-source projects:
 
@@ -481,6 +479,6 @@ This project stands on the shoulders of giants. While architected to serve a cus
 * **Rofi** (Dave Davenport, Rasmus Steinke, and contributors) — Application launcher and dynamic menu design patterns.
 * **waypaper** (Anufriev Roman) — Wallpaper configuration compatibility.
 
-### Licensing &amp; Derivative Works
+### Licensing & Derivative Works
 
 In compliance with the licenses of the upstream projects—specifically the GNU General Public License (GPL) governing code derived from Openbox—this entire project is proudly licensed under the **GNU General Public License v3.0 (GPL-3.0)** (or later).
