@@ -63,6 +63,36 @@ int main(void) {
     assert(panel.hover_power == 0);
     assert(panel.hover_workspace == 1);
 
+    // Test 5b: No branding text when nothing is focused
+    tint2_panel_update_workspaces(&panel, clients, 2, "");
+    assert(panel.active_title[0] == '\0');
+    tint2_panel_update_workspaces(&panel, clients, 2, NULL);
+    assert(panel.active_title[0] == '\0');
+    Tint2Panel fresh = {0};
+    tint2_panel_init(NULL, &fresh, 1920, NULL);
+    assert(fresh.active_title[0] == '\0');
+
+    // Test 5c: Keyboard layout indicator left of the Power button
+    tint2_panel_set_lang(&panel, "TH");
+    assert(strcmp(panel.lang_str, "TH") == 0);
+    tint2_panel_set_lang(&panel, NULL);
+    assert(panel.lang_str[0] == '\0');
+    tint2_panel_set_lang(&panel, "EN");
+    int lx = TINT2_LANG_X(panel.width);
+    assert(tint2_panel_get_action_at(&panel, lx + TINT2_LANG_W / 2, 14) == TINT2_ACTION_LANG);
+    assert(tint2_panel_get_action_at(&panel, 1920 - 40, 14) == TINT2_ACTION_POWER);
+    changed = tint2_panel_handle_motion(NULL, &panel, lx + 4, 14);
+    assert(changed == 1);
+    assert(panel.hover_lang == 1);
+    assert(panel.hover_power == 0);
+    changed = tint2_panel_handle_motion(NULL, &panel, 1920 - 40, 14);
+    assert(changed == 1);
+    assert(panel.hover_lang == 0);
+    assert(panel.hover_power == 1);
+    // Without a layout string the indicator is hidden and not clickable
+    tint2_panel_set_lang(&panel, "");
+    assert(tint2_panel_get_action_at(&panel, lx + TINT2_LANG_W / 2, 14) == TINT2_ACTION_NONE);
+
     // Test 6: Per-workspace tiling with top_inset = TINT2_PANEL_HEIGHT
     LayoutConfig lcfg = {
         .screen_width = 1920,

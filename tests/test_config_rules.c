@@ -27,11 +27,25 @@ int main(void) {
     assert(access(auto_path, R_OK) == 0);
     assert(access(sc_path, R_OK) == 0);
 
+    // Settings app values: absent settings use a safe single master default.
+    char value[64];
+    assert(config_get_setting("keyboard_layouts", value, sizeof(value)) == 0);
+    assert(config_get_master_count() == 1);
+    char settings_path[512];
+    snprintf(settings_path, sizeof(settings_path), "%s/.config/muzuwm/settings.conf", tmp_dir);
+    FILE *f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "keyboard_layouts=us,th\nmaster_count=2\n");
+    fclose(f);
+    assert(config_get_setting("keyboard_layouts", value, sizeof(value)) == 1);
+    assert(strcmp(value, "us,th") == 0);
+    assert(config_get_master_count() == 2);
+
     // Default fullscreen_allowlist matches nothing
     assert(config_is_in_fullscreen_allowlist_file(fs_path, "wezterm", "WezTerm", "wezterm") == 0);
 
     // Populate fullscreen_allowlist with comments, blank lines, and entries
-    FILE *f = fopen(fs_path, "w");
+    f = fopen(fs_path, "w");
     assert(f != NULL);
     fprintf(f, "# Apps that open fullscreen automatically\n\n   \ngoogle-chrome\n  mpv  \n");
     fclose(f);

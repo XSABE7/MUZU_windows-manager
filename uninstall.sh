@@ -14,8 +14,10 @@ fi
 
 echo "==> Removing system files..."
 rm -f /usr/local/bin/muzuwm
+rm -f /usr/local/bin/muzuwm-settings
 rm -f /usr/share/xsessions/muzuwm.desktop
 echo "  - Removed /usr/local/bin/muzuwm"
+echo "  - Removed /usr/local/bin/muzuwm-settings"
 echo "  - Removed /usr/share/xsessions/muzuwm.desktop"
 
 # Detect real user running sudo to locate user config directory

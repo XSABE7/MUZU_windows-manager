@@ -10,6 +10,10 @@
 #define TINT2_PANEL_HEIGHT 28
 #define TINT2_NUM_WORKSPACES 4
 
+/* Keyboard layout indicator sits just left of the Power button */
+#define TINT2_LANG_W 36
+#define TINT2_LANG_X(panel_w) ((panel_w) - 88 - 6 - TINT2_LANG_W)
+
 typedef enum {
     TINT2_ACTION_NONE = 0,
     TINT2_ACTION_WORKSPACE_1 = 1,
@@ -17,7 +21,8 @@ typedef enum {
     TINT2_ACTION_WORKSPACE_3 = 3,
     TINT2_ACTION_WORKSPACE_4 = 4,
     TINT2_ACTION_CLOCK = 10,
-    TINT2_ACTION_POWER = 20
+    TINT2_ACTION_POWER = 20,
+    TINT2_ACTION_LANG = 30
 } Tint2PanelAction;
 
 typedef enum {
@@ -38,6 +43,8 @@ typedef struct {
     int workspace_window_count[TINT2_NUM_WORKSPACES];
     int hover_workspace;
     int hover_power;
+    int hover_lang;
+    char lang_str[8];
     char time1_format[64];
     char time2_format[64];
     int is_top;
@@ -72,5 +79,6 @@ void tint2_panel_render(Display *dpy, Tint2Panel *panel);
 Tint2PanelAction tint2_panel_get_action_at(const Tint2Panel *panel, int x, int y);
 int tint2_panel_handle_motion(Display *dpy, Tint2Panel *panel, int x, int y);
 const char *tint2_panel_get_config_path(void);
+void tint2_panel_set_lang(Tint2Panel *panel, const char *short_name);
 
 #endif /* MUZU_TINT2_PANEL_H */
