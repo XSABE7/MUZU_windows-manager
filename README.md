@@ -1,3 +1,7 @@
+# UNSTABLE USE ON YOUR OWN RISK
+# UNSTABLE USE ON YOUR OWN RISK
+# UNSTABLE USE ON YOUR OWN RISK
+
 # MUZUwm (Mouse UserZ Window Manager)
 
 ### Modern, Lightweight, Mouse-First Hybrid Floating & Tiling X11 Window Manager
