@@ -24,6 +24,8 @@
 #include "compositor.h"
 #include "tint2_panel.h"
 #include "config_rules.h"
+#include "alttab.h"
+#include "mission_viewer.h"
 
 static int running = 1;
 static GtkTheme current_theme;
@@ -386,6 +388,8 @@ static Dock *g_dock = NULL;
 static RofiLauncher *g_rofi = NULL;
 static Menu *g_menu = NULL;
 static Tint2Panel *g_panel = NULL;
+static AltTab *g_alttab = NULL;
+static MissionViewer *g_mission_viewer = NULL;
 
 static void raise_system_overlays(Display *dpy) {
     if (!dpy) return;
@@ -400,6 +404,12 @@ static void raise_system_overlays(Display *dpy) {
     }
     if (g_menu && g_menu->win && g_menu->is_visible) {
         XRaiseWindow(dpy, g_menu->win);
+    }
+    if (g_mission_viewer && g_mission_viewer->win && g_mission_viewer->is_visible) {
+        XRaiseWindow(dpy, g_mission_viewer->win);
+    }
+    if (g_alttab && g_alttab->win && g_alttab->is_visible) {
+        XRaiseWindow(dpy, g_alttab->win);
     }
 }
 
@@ -755,6 +765,14 @@ int main(int argc, char **argv) {
     g_rofi = &rofi_launcher;
     g_menu = &context_menu;
 
+    AltTab alttab = {0};
+    alttab_init(dpy, &alttab, &current_theme);
+    MissionViewer mission_viewer = {0};
+    mission_viewer_init(dpy, &mission_viewer, &current_theme);
+
+    g_alttab = &alttab;
+    g_mission_viewer = &mission_viewer;
+
     // Launch X11 Compositor (Picom with Dual-Kawase Frosted Glass Blur)
     compositor_init(dpy);
 
@@ -773,7 +791,8 @@ int main(int argc, char **argv) {
             for (int i = (int)nchildren - 1; i >= 0; i--) {
                 Window cw = children[i];
                 if (cw == rofi_launcher.win || cw == dock.win || cw == context_menu.win ||
-                    cw == panel.win || (dock.tooltip_win && cw == dock.tooltip_win)) {
+                    cw == panel.win || (dock.tooltip_win && cw == dock.tooltip_win) ||
+                    (alttab.win && cw == alttab.win) || (mission_viewer.win && cw == mission_viewer.win)) {
                     continue;
                 }
                 XWindowAttributes wa = {0};
@@ -805,6 +824,17 @@ int main(int argc, char **argv) {
     // Grab Alt+F1 as fallback trigger
     KeyCode alt_f1_kc = XKeysymToKeycode(dpy, XK_F1);
     XGrabKey(dpy, alt_f1_kc, Mod1Mask, root, True, GrabModeAsync, GrabModeAsync);
+
+    // Grab Alt+Tab and Alt+Shift+Tab for Alt-Tab Switcher, and Super+Tab for Mission Viewer
+    KeyCode tab_kc = XKeysymToKeycode(dpy, XK_Tab);
+    if (tab_kc != 0) {
+        const unsigned int lock_variants[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+        for (int i = 0; i < 4; i++) {
+            XGrabKey(dpy, tab_kc, Mod1Mask | lock_variants[i], root, True, GrabModeAsync, GrabModeAsync);
+            XGrabKey(dpy, tab_kc, Mod1Mask | ShiftMask | lock_variants[i], root, True, GrabModeAsync, GrabModeAsync);
+            XGrabKey(dpy, tab_kc, Mod4Mask | lock_variants[i], root, True, GrabModeAsync, GrabModeAsync);
+        }
+    }
 
     // Grab Workspace hotkeys (Alt+1..4 / Super+1..4 to switch, +Shift to move window)
     KeySym ws_syms[4] = { XK_1, XK_2, XK_3, XK_4 };
@@ -871,7 +901,9 @@ int main(int argc, char **argv) {
             switch (ev.type) {
             case MapRequest: {
                 Window w = ev.xmaprequest.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win || (dock.tooltip_win && w == dock.tooltip_win)) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win ||
+                    (dock.tooltip_win && w == dock.tooltip_win) ||
+                    (alttab.win && w == alttab.win) || (mission_viewer.win && w == mission_viewer.win)) {
                     XMapWindow(dpy, w);
                     break;
                 }
@@ -1081,7 +1113,9 @@ int main(int argc, char **argv) {
 
             case UnmapNotify: {
                 Window w = ev.xunmap.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win || (dock.tooltip_win && w == dock.tooltip_win)) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win ||
+                    (dock.tooltip_win && w == dock.tooltip_win) ||
+                    (alttab.win && w == alttab.win) || (mission_viewer.win && w == mission_viewer.win)) {
                     break;
                 }
                 Client *c = client_find_by_any(clients, w);
@@ -1089,19 +1123,123 @@ int main(int argc, char **argv) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
+                if (alttab.is_visible) {
+                    alttab_populate(dpy, &alttab, clients);
+                    if (alttab.app_count == 0) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        alttab_hide(dpy, &alttab);
+                    } else {
+                        alttab_render(dpy, &alttab);
+                    }
+                }
+                if (mission_viewer.is_visible) {
+                    mission_viewer_populate(dpy, &mission_viewer, clients, cfg.current_workspace);
+                    if (mission_viewer.slot_count == 0) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                    } else {
+                        mission_viewer_calculate_layout(&mission_viewer, screen_w, screen_h);
+                        mission_viewer_render(dpy, &mission_viewer);
+                    }
+                }
                 break;
             }
 
             case DestroyNotify: {
                 Window w = ev.xdestroywindow.window;
-                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win || (dock.tooltip_win && w == dock.tooltip_win)) {
+                if (w == rofi_launcher.win || w == dock.win || w == context_menu.win || w == panel.win ||
+                    (dock.tooltip_win && w == dock.tooltip_win) ||
+                    (alttab.win && w == alttab.win) || (mission_viewer.win && w == mission_viewer.win)) {
                     break;
                 }
                 client_teardown(dpy, &clients, w, &cfg, &drag_client, &last_titlebar_click_win, &dock);
+                if (alttab.is_visible) {
+                    alttab_populate(dpy, &alttab, clients);
+                    if (alttab.app_count == 0) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        alttab_hide(dpy, &alttab);
+                    } else {
+                        alttab_render(dpy, &alttab);
+                    }
+                }
+                if (mission_viewer.is_visible) {
+                    mission_viewer_populate(dpy, &mission_viewer, clients, cfg.current_workspace);
+                    if (mission_viewer.slot_count == 0) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                    } else {
+                        mission_viewer_calculate_layout(&mission_viewer, screen_w, screen_h);
+                        mission_viewer_render(dpy, &mission_viewer);
+                    }
+                }
                 break;
             }
 
             case KeyPress: {
+                if (alttab.is_visible) {
+                    KeySym sym = XLookupKeysym(&ev.xkey, 0);
+                    if (sym == XK_Escape) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        alttab_hide(dpy, &alttab);
+                        break;
+                    }
+                    if (sym == XK_Tab) {
+                        if (ev.xkey.state & ShiftMask) {
+                            alttab_select_prev(&alttab);
+                        } else {
+                            alttab_select_next(&alttab);
+                        }
+                        alttab_render(dpy, &alttab);
+                        break;
+                    }
+                    if (sym == XK_Left) {
+                        alttab_select_prev(&alttab);
+                        alttab_render(dpy, &alttab);
+                        break;
+                    }
+                    if (sym == XK_Right) {
+                        alttab_select_next(&alttab);
+                        alttab_render(dpy, &alttab);
+                        break;
+                    }
+                }
+
+                if (mission_viewer.is_visible) {
+                    KeySym sym = XLookupKeysym(&ev.xkey, 0);
+                    if (sym == XK_Escape) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                        break;
+                    }
+                    if (sym == XK_Tab || sym == XK_Right || sym == XK_Down) {
+                        mission_viewer_select_next(&mission_viewer);
+                        mission_viewer_render(dpy, &mission_viewer);
+                        break;
+                    }
+                    if (sym == XK_Left || sym == XK_Up) {
+                        mission_viewer_select_prev(&mission_viewer);
+                        mission_viewer_render(dpy, &mission_viewer);
+                        break;
+                    }
+                    if (sym == XK_Return || sym == XK_KP_Enter || sym == XK_space) {
+                        Client *sel_c = mission_viewer_get_selected(&mission_viewer);
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                        if (sel_c) {
+                            if (sel_c->is_minimized) sel_c->is_minimized = 0;
+                            if (sel_c->workspace != cfg.current_workspace) {
+                                switch_workspace(dpy, clients, &cfg, &dock, sel_c->workspace);
+                            }
+                            if (sel_c->frame) XRaiseWindow(dpy, sel_c->frame);
+                            else XRaiseWindow(dpy, sel_c->win);
+                            set_focused_client(dpy, sel_c);
+                            reflow_all(dpy, clients, &cfg);
+                            raise_system_overlays(dpy);
+                        }
+                        break;
+                    }
+                }
+
                 if (context_menu.is_visible) {
                     KeySym sym = XLookupKeysym(&ev.xkey, 0);
                     if (sym == XK_Escape) {
@@ -1116,6 +1254,39 @@ int main(int argc, char **argv) {
                 }
 
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
+
+                // Alt+Tab Switcher trigger
+                if (sym == XK_Tab && (ev.xkey.state & Mod1Mask)) {
+                    alttab_populate(dpy, &alttab, clients);
+                    if (alttab.app_count > 0) {
+                        alttab_show(dpy, &alttab, screen_w, screen_h);
+                        if (alttab.app_count > 1) {
+                            if (ev.xkey.state & ShiftMask) alttab_select_prev(&alttab);
+                            else alttab_select_next(&alttab);
+                        }
+                        alttab_render(dpy, &alttab);
+                        XGrabKeyboard(dpy, root, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+                        raise_system_overlays(dpy);
+                    }
+                    break;
+                }
+
+                // Super+Tab Mission Viewer trigger
+                if (sym == XK_Tab && (ev.xkey.state & Mod4Mask)) {
+                    if (!mission_viewer.is_visible) {
+                        mission_viewer_populate(dpy, &mission_viewer, clients, cfg.current_workspace);
+                        if (mission_viewer.slot_count > 0) {
+                            mission_viewer_show(dpy, &mission_viewer, screen_w, screen_h);
+                            XGrabKeyboard(dpy, mission_viewer.win, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+                            raise_system_overlays(dpy);
+                        }
+                    } else {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                    }
+                    break;
+                }
+
                 if (sym == XK_Super_L || sym == XK_Super_R) {
                     // Tapping Super alone opens the launcher on release (so Super+Arrow does not)
                     super_pending = 1;
@@ -1180,6 +1351,26 @@ int main(int argc, char **argv) {
 
             case KeyRelease: {
                 KeySym rsym = XLookupKeysym(&ev.xkey, 0);
+                if (alttab.is_visible && (rsym == XK_Alt_L || rsym == XK_Alt_R)) {
+                    XUngrabKeyboard(dpy, CurrentTime);
+                    Window sel_win = alttab_get_selected_window(&alttab);
+                    alttab_hide(dpy, &alttab);
+                    if (sel_win != None) {
+                        Client *target_c = client_find_by_any(clients, sel_win);
+                        if (target_c) {
+                            if (target_c->is_minimized) target_c->is_minimized = 0;
+                            if (target_c->workspace != cfg.current_workspace) {
+                                switch_workspace(dpy, clients, &cfg, &dock, target_c->workspace);
+                            }
+                            if (target_c->frame) XRaiseWindow(dpy, target_c->frame);
+                            else XRaiseWindow(dpy, target_c->win);
+                            set_focused_client(dpy, target_c);
+                            reflow_all(dpy, clients, &cfg);
+                            raise_system_overlays(dpy);
+                        }
+                    }
+                    break;
+                }
                 if ((rsym == XK_Super_L || rsym == XK_Super_R) && super_pending) {
                     super_pending = 0;
                     rofi_launcher_toggle(dpy, &rofi_launcher);
@@ -1189,6 +1380,31 @@ int main(int argc, char **argv) {
 
             case ButtonPress: {
                 super_pending = 0;
+                if (mission_viewer.is_visible) {
+                    if (ev.xbutton.window == mission_viewer.win) {
+                        int slot_idx = mission_viewer_get_slot_at(&mission_viewer, ev.xbutton.x, ev.xbutton.y);
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                        if (slot_idx >= 0 && slot_idx < mission_viewer.slot_count) {
+                            Client *c = mission_viewer.slots[slot_idx].client;
+                            if (c) {
+                                if (c->is_minimized) c->is_minimized = 0;
+                                if (c->workspace != cfg.current_workspace) {
+                                    switch_workspace(dpy, clients, &cfg, &dock, c->workspace);
+                                }
+                                if (c->frame) XRaiseWindow(dpy, c->frame);
+                                else XRaiseWindow(dpy, c->win);
+                                set_focused_client(dpy, c);
+                                raise_system_overlays(dpy);
+                            }
+                        }
+                    } else {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        mission_viewer_hide(dpy, &mission_viewer);
+                    }
+                    break;
+                }
+
                 if (context_menu.is_visible) {
                     if (ev.xbutton.window == context_menu.win) {
                         menu_handle_click(dpy, &context_menu, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
@@ -1401,6 +1617,15 @@ int main(int argc, char **argv) {
             }
 
             case MotionNotify: {
+                if (mission_viewer.is_visible && ev.xmotion.window == mission_viewer.win) {
+                    int slot_idx = mission_viewer_get_slot_at(&mission_viewer, ev.xmotion.x, ev.xmotion.y);
+                    if (slot_idx != mission_viewer.hover_idx) {
+                        mission_viewer.hover_idx = slot_idx;
+                        mission_viewer_render(dpy, &mission_viewer);
+                    }
+                    break;
+                }
+
                 if (context_menu.is_visible) {
                     menu_handle_motion(dpy, &context_menu,
                                        ev.xmotion.x_root - context_menu.x,
@@ -1675,7 +1900,11 @@ int main(int argc, char **argv) {
             }
 
             case Expose: {
-                if (ev.xexpose.window == context_menu.win) {
+                if (alttab.is_visible && ev.xexpose.window == alttab.win) {
+                    alttab_render(dpy, &alttab);
+                } else if (mission_viewer.is_visible && ev.xexpose.window == mission_viewer.win) {
+                    mission_viewer_render(dpy, &mission_viewer);
+                } else if (ev.xexpose.window == context_menu.win) {
                     menu_render(dpy, &context_menu);
                 } else if (ev.xexpose.window == panel.win) {
                     tint2_panel_render(dpy, &panel);
@@ -1758,6 +1987,8 @@ int main(int argc, char **argv) {
     }
     tint2_panel_cleanup(&panel);
     rofi_launcher_cleanup(&rofi_launcher);
+    alttab_cleanup(&alttab);
+    mission_viewer_cleanup(&mission_viewer);
     compositor_cleanup();
 
     while (XPending(dpy)) {
