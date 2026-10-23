@@ -2,6 +2,7 @@
 set -e
 
 echo "================================================================="
+echo "                We so sorry to see you go                        "
 echo "                  MUZUwm Uninstaller                             "
 echo "================================================================="
 
@@ -12,7 +13,7 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-echo "==> Removing system files..."
+echo "==> Removing WM files..."
 rm -f /usr/local/bin/muzuwm
 rm -f /usr/local/bin/muzuwm-settings
 rm -f /usr/share/xsessions/muzuwm.desktop
@@ -72,5 +73,6 @@ fi
 
 echo ""
 echo "================================================================="
-echo "  MUZUwm has been successfully uninstalled."
+echo "           MUZUwm has been successfully uninstalled.             "
+echo "                      See YA :)                                  "
 echo "================================================================="
