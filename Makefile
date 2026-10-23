@@ -8,12 +8,12 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext xcursor fontconfig gdk-pixbuf-2.0)
 LIBS = $(shell pkg-config --libs cairo x11 xext xcursor fontconfig gdk-pixbuf-2.0) -lm
 
-SRCS = src/wm.c src/titlebar.c src/trigger.c src/rofi_launcher.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/wallpaper.c src/menu.c src/compositor.c src/tint2_panel.c src/config_rules.c src/alttab.c src/mission_viewer.c src/kbd_layout.c src/confirm_dialog.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/trigger.c src/rofi_launcher.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/wallpaper.c src/menu.c src/compositor.c src/tint2_panel.c src/config_rules.c src/alttab.c src/kbd_layout.c src/confirm_dialog.c src/main.c
 OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_mission_viewer test_compositor test_tint2_panel test_config_rules test_kbd_layout test_confirm_dialog test_x11_stress
+tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_compositor test_tint2_panel test_config_rules test_kbd_layout test_confirm_dialog test_x11_stress
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -48,9 +48,6 @@ test_dock_menu: tests/test_dock_menu.c src/dock.c src/menu.c src/gtk_theme.c src
 test_alttab: tests/test_alttab.c src/alttab.c src/gtk_theme.c src/icon_fetcher.c src/wm.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_mission_viewer: tests/test_mission_viewer.c src/mission_viewer.c src/gtk_theme.c src/icon_fetcher.c src/wm.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
-
 test_compositor: tests/test_compositor.c src/compositor.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
@@ -79,7 +76,7 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_mission_viewer test_compositor test_tint2_panel test_config_rules test_kbd_layout test_confirm_dialog test_x11_stress muzuwm
+	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_compositor test_tint2_panel test_config_rules test_kbd_layout test_confirm_dialog test_x11_stress muzuwm
 
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)
