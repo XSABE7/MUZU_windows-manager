@@ -32,7 +32,7 @@
 - [Test Suite & Quality Assurance](#test-suite--quality-assurance)
 - [Roadmap](#roadmap)
 - [License](#license)
-- [13. communiy(#Suppoet and community)]
+- [Suppoet and community](#Suppoet-and-community)
 
 ---
 
