@@ -464,7 +464,12 @@ Individual test binaries:
 
 > Please don’t put your life in the hands  
 > Of a Rock ‘n’ Roll band  
-> Who’ll throw it all away  
+> Who’ll throw it all away
+
+
+# Suppoet and community
+
+https://discord.gg/jc3QngErz8
 
 ---
 
