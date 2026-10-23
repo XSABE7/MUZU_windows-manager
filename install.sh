@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-echo "==> Building MUZUwm..."
+echo "==> Building and Compile MUZUwm..."
 make muzuwm
 
 echo "==> Installing to /usr/local/bin and /usr/share/xsessions..."
@@ -15,7 +15,6 @@ install -m 644 muzuwm.desktop /usr/share/xsessions/muzuwm.desktop
 
 echo ""
 echo "================================================================="
-echo "  MUZUwm installed successfully!"
-echo "  You can now select MUZUwm on your login screen (GDM / LightDM)"
-echo "  alongside GNOME."
+echo "  MUZUwm installed successfully!                                 "
+echo "  You can now select MUZUwm on your login screen                 "
 echo "================================================================="
