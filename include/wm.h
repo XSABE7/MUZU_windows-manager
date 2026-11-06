@@ -39,6 +39,7 @@ typedef struct Client {
     int is_hovered;
     int is_focused;
     int can_fullscreen;
+    int slot;
     int workspace;
     struct Client *next;
 } Client;
@@ -57,6 +58,7 @@ void client_add(Client **head, Window win, ClientMode mode);
 void client_remove(Client **head, Window win);
 Client *client_find(Client *head, Window win);
 Client *client_find_by_any(Client *head, Window win);
+Client *client_find_by_slot(Client *head, int slot);
 int client_count_tiled(Client *head);
 
 #endif /* MUZU_WM_H */

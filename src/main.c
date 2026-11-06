@@ -69,6 +69,28 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
     XFlush(d);
 }
 
+static void client_call_back_slot(Display *d, Client *clients, LayoutConfig *cfg, int slot) {
+    if (!d || !clients || slot <= 0) return;
+    Client *target_c = client_find_by_slot(clients, slot);
+    if (!target_c) return;
+
+    if (target_c->is_minimized) {
+        target_c->is_minimized = 0;
+        Window target = target_c->frame != None ? target_c->frame : target_c->win;
+        XMapWindow(d, target);
+        if (target_c->frame != None && target_c->win != None) {
+            XMapWindow(d, target_c->win);
+        }
+        XRaiseWindow(d, target);
+        set_focused_client(d, target_c, clients);
+        reflow_all(d, clients, cfg);
+    } else {
+        Window target = target_c->frame != None ? target_c->frame : target_c->win;
+        XRaiseWindow(d, target);
+        set_focused_client(d, target_c, clients);
+    }
+}
+
 static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *cfg) {
     if (!d || w == None || client_find(*clients, w)) return;
 
@@ -214,6 +236,18 @@ int main(void) {
     shortcuts_load(&sc);
     shortcuts_grab_keys(dpy, root, &sc);
 
+    // Grab Super + 1..0 for calling back window slots 1-10
+    const KeySym num_keys[10] = { XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK_7, XK_8, XK_9, XK_0 };
+    const unsigned int num_locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+    for (int k = 0; k < 10; k++) {
+        KeyCode kc = XKeysymToKeycode(dpy, num_keys[k]);
+        if (kc != 0) {
+            for (int l = 0; l < 4; l++) {
+                XGrabKey(dpy, kc, Mod4Mask | num_locks[l], root, True, GrabModeAsync, GrabModeAsync);
+            }
+        }
+    }
+
     // Initial Workarea publish
     strut_apply_workarea(dpy, root, screen_w, screen_h, 0, 0, 0, 0, &cfg);
 
@@ -248,6 +282,22 @@ int main(void) {
         switch (ev.type) {
             case KeyPress: {
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
+                unsigned int mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
+
+                // Super + 1..0: Call back / focus window slot 1-10
+                if ((mods & Mod4Mask) && !(mods & (Mod1Mask | ControlMask | ShiftMask))) {
+                    int slot = 0;
+                    if (sym >= XK_1 && sym <= XK_9) {
+                        slot = (int)(sym - XK_1 + 1);
+                    } else if (sym == XK_0) {
+                        slot = 10;
+                    }
+                    if (slot > 0) {
+                        client_call_back_slot(dpy, clients, &cfg, slot);
+                        break;
+                    }
+                }
+
                 const ShortcutBinding *b = shortcuts_match_event(&sc, ev.xkey.state, sym);
                 Client *focused = NULL;
                 for (Client *c = clients; c; c = c->next) {
@@ -409,13 +459,29 @@ int main(void) {
                         TitlebarAction act = titlebar_get_action_for_client(ev.xbutton.x, c->width, c);
                         if (act == TITLEBAR_CLICK_CLOSE) {
                             client_close(dpy, c->win);
-                        } else if (act == TITLEBAR_CLICK_MINIMIZE) {
-                            c->is_minimized = 1;
-                            XUnmapWindow(dpy, c->frame);
-                            reflow_all(dpy, clients, &cfg);
                         } else if (act == TITLEBAR_CLICK_MAXIMIZE) {
                             client_toggle_maximize(dpy, c, &cfg);
                             titlebar_draw(dpy, c, NULL);
+                            reflow_all(dpy, clients, &cfg);
+                        } else if (act == TITLEBAR_CLICK_MINIMIZE) {
+                            // 'Z': Make window disappear
+                            c->is_minimized = 1;
+                            Window unmap_target = c->frame != None ? c->frame : c->win;
+                            XUnmapWindow(dpy, unmap_target);
+                            if (c->frame != None && c->win != None) {
+                                XUnmapWindow(dpy, c->win);
+                            }
+                            if (c->is_focused) {
+                                c->is_focused = 0;
+                                Client *next_focus = NULL;
+                                for (Client *curr = clients; curr; curr = curr->next) {
+                                    if (!curr->is_minimized) {
+                                        next_focus = curr;
+                                        break;
+                                    }
+                                }
+                                set_focused_client(dpy, next_focus, clients);
+                            }
                             reflow_all(dpy, clients, &cfg);
                         } else if (ev.xbutton.button == Button1) {
                             drag_client = c;

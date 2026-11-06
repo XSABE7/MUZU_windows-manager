@@ -73,6 +73,22 @@ int main(void) {
 
     free_clients(&head);
 
+    // Test 6: Slot assignment 1..10 for Super 1-0 recall
+    Client *slot_head = NULL;
+    client_add(&slot_head, 201, CLIENT_FLOATING);
+    assert(client_find(slot_head, 201)->slot == 1);
+    client_add(&slot_head, 202, CLIENT_FLOATING);
+    assert(client_find(slot_head, 202)->slot == 2);
+    assert(client_find_by_slot(slot_head, 1)->win == 201);
+    assert(client_find_by_slot(slot_head, 2)->win == 202);
+
+    // Slot reuse on window close
+    client_remove(&slot_head, 201);
+    client_add(&slot_head, 203, CLIENT_FLOATING);
+    assert(client_find(slot_head, 203)->slot == 1); // slot 1 reused
+
+    free_clients(&slot_head);
+
     printf("test_layout passed!\n");
     return 0;
 }

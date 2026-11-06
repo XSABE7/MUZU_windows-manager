@@ -32,6 +32,21 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->is_focused = 0;
     c->can_fullscreen = 1;
     c->workspace = 0;
+
+    int used_slots[16] = {0};
+    for (Client *curr = *head; curr; curr = curr->next) {
+        if (curr->slot >= 1 && curr->slot <= 10) {
+            used_slots[curr->slot] = 1;
+        }
+    }
+    c->slot = 1;
+    for (int s = 1; s <= 10; s++) {
+        if (!used_slots[s]) {
+            c->slot = s;
+            break;
+        }
+    }
+
     c->next = *head;
     *head = c;
 }
@@ -76,6 +91,18 @@ Client *client_find_by_any(Client *head, Window win) {
     if (win == None) return NULL;
     for (Client *curr = head; curr; curr = curr->next) {
         if (curr->win == win || (curr->frame != None && curr->frame == win)) return curr;
+    }
+    return NULL;
+}
+
+Client *client_find_by_slot(Client *head, int slot) {
+    if (slot <= 0) return NULL;
+    for (Client *curr = head; curr; curr = curr->next) {
+        if (curr->slot == slot) return curr;
+    }
+    int idx = 1;
+    for (Client *curr = head; curr; curr = curr->next, idx++) {
+        if (idx == slot) return curr;
     }
     return NULL;
 }
