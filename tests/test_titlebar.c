@@ -14,8 +14,12 @@ int main(void) {
     TitlebarAction act = titlebar_get_action_for_client(46, c.width, &c);
     assert(act == TITLEBAR_CLICK_MAXIMIZE);
 
+    cfg.top_inset = 30;
+    cfg.bottom_inset = 60;
     client_toggle_maximize(NULL, &c, &cfg);
     assert(c.is_maximized == 1);
+    assert(c.y == 30);
+    assert(c.height == (1080 - 30 - 60));
 
     // Test 2: Fixed-size / dialog window disables maximize - Review Focus #2
     Client dialog = {0};

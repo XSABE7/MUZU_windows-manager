@@ -266,7 +266,7 @@ int client_is_csd(Display *dpy, Window win) {
 int client_size_hints_allow_fullscreen(long flags, int min_w, int min_h, int max_w, int max_h, int is_dialog) {
     if (is_dialog) return 0;
     int has_max = (flags & PMaxSize) && max_w > 0 && max_h > 0;
-    if (has_max && (flags & PMinSize) && min_w == max_w && min_h == max_h) return 0;
+    if (has_max && (flags & PMinSize) && (min_w == max_w || min_h == max_h)) return 0;
     if (has_max && (max_w < 800 || max_h < 600)) return 0;
     return 1;
 }

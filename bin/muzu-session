@@ -29,6 +29,8 @@ if command -v picom >/dev/null 2>&1; then
     else
         picom -b
     fi
+else
+    echo "muzu-session: warning: picom compositor not found, running without compositing" >&2
 fi
 
 # 4. Status Bar / Panel (Tint2)
@@ -41,6 +43,8 @@ if command -v tint2 >/dev/null 2>&1; then
     else
         tint2 &
     fi
+else
+    echo "muzu-session: warning: tint2 panel not found" >&2
 fi
 
 # 5. Optional Dock (e.g. Plank)

@@ -127,6 +127,7 @@ static void client_teardown(Display *d, Client **clients, Window w, LayoutConfig
 
     if (drag_client && *drag_client == c) {
         *drag_client = NULL;
+        XUngrabPointer(d, CurrentTime);
         if (preview) snap_preview_hide(d, preview);
     }
 
@@ -224,6 +225,7 @@ int main(void) {
             StrutPartial sp;
             if (strut_read_window_property(dpy, children[i], &sp)) {
                 strut_list_add_or_update(&strut_list, children[i], &sp);
+                XSelectInput(dpy, children[i], PropertyChangeMask | StructureNotifyMask);
             } else {
                 XWindowAttributes wa;
                 if (XGetWindowAttributes(dpy, children[i], &wa) &&
@@ -303,6 +305,7 @@ int main(void) {
                 StrutPartial sp;
                 if (strut_read_window_property(dpy, w, &sp)) {
                     strut_list_add_or_update(&strut_list, w, &sp);
+                    XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask);
                     int l = 0, r = 0, t = 0, b = 0;
                     strut_calculate_insets(strut_list, screen_w, screen_h, &l, &r, &t, &b);
                     strut_apply_workarea(dpy, root, screen_w, screen_h, l, r, t, b, &cfg);
@@ -351,6 +354,9 @@ int main(void) {
                 Window w = (ev.type == DestroyNotify) ? ev.xdestroywindow.window : ev.xunmap.window;
                 Client *c = client_find_by_any(clients, w);
                 if (c) {
+                    if (ev.type == UnmapNotify && c->is_minimized) {
+                        break;
+                    }
                     client_teardown(dpy, &clients, w, &cfg, &drag_client, &snap_preview);
                 } else {
                     // Check if strut window unmapped/crashed - Review Focus #1
