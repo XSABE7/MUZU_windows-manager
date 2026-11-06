@@ -449,6 +449,11 @@ int main(void) {
             }
 
             case ButtonPress: {
+                if (ev.xbutton.window == root && ev.xbutton.button == Button3) {
+                    config_spawn_command("rofi -show drun || dmenu_run || x-terminal-emulator || wezterm");
+                    break;
+                }
+
                 Client *c = client_find_by_any(clients, ev.xbutton.window);
                 if (c) {
                     set_focused_client(dpy, c, clients);
