@@ -163,14 +163,20 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
         cairo_set_line_width(cr, 0.6);
         cairo_stroke(cr);
 
-        // 3. Green (Maximize)
+        // 3. Green (Maximize or Disabled Gray)
         cairo_new_path(cr);
-        cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
-        cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill_preserve(cr);
-        cairo_set_source_rgba(cr, 0.10, 0.55, 0.15, 0.8);
-        cairo_set_line_width(cr, 0.6);
-        cairo_stroke(cr);
+        if (c->can_fullscreen) {
+            cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
+            cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+            cairo_fill_preserve(cr);
+            cairo_set_source_rgba(cr, 0.10, 0.55, 0.15, 0.8);
+            cairo_set_line_width(cr, 0.6);
+            cairo_stroke(cr);
+        } else {
+            cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.45);
+            cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
+            cairo_fill(cr);
+        }
     }
 
     cairo_destroy(cr);
@@ -178,18 +184,25 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     if (dpy) XFlush(dpy);
 }
 
-TitlebarAction titlebar_get_action(int click_x, int width) {
+TitlebarAction titlebar_get_action_for_client(int click_x, int width, const Client *c) {
     (void)width;
     if (click_x < 0) return TITLEBAR_CLICK_NONE;
     if (click_x < 22) return TITLEBAR_CLICK_CLOSE;
     if (click_x < 38) return TITLEBAR_CLICK_MINIMIZE;
-    if (click_x < 56) return TITLEBAR_CLICK_MAXIMIZE;
+    if (click_x < 56) {
+        if (c && !c->can_fullscreen) return TITLEBAR_CLICK_NONE;
+        return TITLEBAR_CLICK_MAXIMIZE;
+    }
     return TITLEBAR_CLICK_DRAG;
+}
+
+TitlebarAction titlebar_get_action(int click_x, int width) {
+    return titlebar_get_action_for_client(click_x, width, NULL);
 }
 
 void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
     if (!c || !cfg) return;
-    if (!c->is_maximized && !c->can_fullscreen) return;
+    if (!c->can_fullscreen) return;
 
     if (!c->is_maximized) {
         c->saved_x = c->x;

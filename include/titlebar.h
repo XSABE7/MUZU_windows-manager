@@ -19,6 +19,7 @@ typedef enum {
 } TitlebarAction;
 
 TitlebarAction titlebar_get_action(int click_x, int width);
+TitlebarAction titlebar_get_action_for_client(int click_x, int width, const Client *c);
 void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg);
 void titlebar_cleanup(Client *c);
 void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int screen_w, int screen_h);
