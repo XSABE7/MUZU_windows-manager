@@ -71,6 +71,11 @@ void config_rules_ensure_files(void) {
         "Super+Return = exec wezterm\n"
         "Super+b = exec google-chrome\n"
         "Super+q = close_window\n");
+    write_default("settings.conf",
+        "# MUZUwm Core & Rice Settings\n"
+        "master_count = 1\n"
+        "enable_ricewm = 1\n"
+        "desktop_menu_mode = radial\n");
 }
 
 int config_get_setting(const char *key, char *out, size_t out_len) {
@@ -105,6 +110,23 @@ int config_get_master_count(void) {
     long count = strtol(value, &end, 10);
     if (!end || *end != '\0' || count < 1 || count > 8) return 1;
     return (int)count;
+}
+
+int config_is_ricewm_enabled(void) {
+    char val[32];
+    if (!config_get_setting("enable_ricewm", val, sizeof(val))) return 1;
+    if (strcasecmp(val, "0") == 0 || strcasecmp(val, "false") == 0 || strcasecmp(val, "no") == 0) {
+        return 0;
+    }
+    return 1;
+}
+
+int config_get_desktop_menu_mode(char *out, size_t out_len) {
+    if (!out || out_len == 0) return 0;
+    if (!config_get_setting("desktop_menu_mode", out, out_len)) {
+        snprintf(out, out_len, "radial");
+    }
+    return 1;
 }
 
 int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_name, const char *res_class, const char *title) {

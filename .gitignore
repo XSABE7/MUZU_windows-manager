@@ -25,3 +25,8 @@ docs/
 MUZUwm.md
 *.d
 test_config_rules
+test_ricemain
+test_alttab
+test_confirm_dialog
+test_dock_menu
+test_kbd_layout

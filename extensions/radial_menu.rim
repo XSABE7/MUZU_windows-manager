@@ -1,0 +1,49 @@
+# -*- coding: utf-8 -*-
+"""
+Radial Menu Extension for MUZUwm (.rim)
+Part of the RiceWM Extension System
+
+Provides quick access on right-click to:
+- Settings (muzuwm settings manager)
+- App Menu (rofi / applications launcher)
+- Terminal (default terminal emulator)
+"""
+
+import sys
+import os
+
+try:
+    import muzuwm
+    print("[radial_menu.rim] Initializing RiceWM radial menu extension...", file=sys.stderr)
+
+    # Clear any previous items and register the 3 required options
+    muzuwm.clear_radial_items()
+
+    muzuwm.add_radial_item(
+        id="settings",
+        title="Settings",
+        icon="preferences-system",
+        command="",
+        action_id=muzuwm.ACTION_SETTINGS
+    )
+
+    muzuwm.add_radial_item(
+        id="apps",
+        title="App Menu",
+        icon="system-run",
+        command="",
+        action_id=muzuwm.ACTION_APPLICATIONS
+    )
+
+    muzuwm.add_radial_item(
+        id="terminal",
+        title="Terminal",
+        icon="utilities-terminal",
+        command="",
+        action_id=muzuwm.ACTION_TERMINAL
+    )
+
+    print("[radial_menu.rim] Successfully registered Settings, App Menu, and Terminal.", file=sys.stderr)
+
+except ImportError:
+    print("[radial_menu.rim] Warning: muzuwm built-in module not found.", file=sys.stderr)

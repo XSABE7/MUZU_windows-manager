@@ -27,6 +27,7 @@
 #include "alttab.h"
 #include "kbd_layout.h"
 #include "confirm_dialog.h"
+#include "ricemain.h"
 
 static int running = 1;
 static GtkTheme current_theme;
@@ -402,6 +403,11 @@ static void handle_menu_action(int action_id, void *userdata) {
         default:
             break;
     }
+}
+
+static void handle_ricemain_action(int action_id, const char *cmd, void *userdata) {
+    (void)cmd;
+    handle_menu_action(action_id, userdata);
 }
 
 static void sig_handler(int sig) {
@@ -837,6 +843,7 @@ int main(int argc, char **argv) {
     wm_ctx.kbd = &kbd_layouts;
     wm_ctx.panel = &panel;
     menu_init(dpy, &context_menu, &current_theme, handle_menu_action, &wm_ctx);
+    ricemain_init(dpy, root, screen_w, screen_h, &current_theme, handle_ricemain_action, &wm_ctx);
 
     g_panel = &panel;
     g_dock = &dock;
@@ -980,6 +987,9 @@ int main(int argc, char **argv) {
     while (running) {
         while (running && XPending(dpy)) {
             XNextEvent(dpy, &ev);
+            if (ricemain_handle_event(dpy, &ev)) {
+                continue;
+            }
             if (kbd_layout_handle_event(dpy, &kbd_layouts, &ev)) {
                 tint2_panel_set_lang(&panel, kbd_layout_current_short(&kbd_layouts));
                 tint2_panel_render(dpy, &panel);
@@ -1552,6 +1562,9 @@ int main(int argc, char **argv) {
                 }
 
                 if (ev.xbutton.window == root && ev.xbutton.button == Button3) {
+                    if (ricemain_handle_root_click(dpy, ev.xbutton.button, ev.xbutton.x_root, ev.xbutton.y_root)) {
+                        break;
+                    }
                     menu_clear(&context_menu);
                     menu_add_item(&context_menu, "Choose Wallpaper (File Browser)...", DESKTOP_ACTION_WALLPAPER_BROWSE);
                     menu_add_item(&context_menu, "Set Wallpaper Path...", DESKTOP_ACTION_WALLPAPER_PATH);
@@ -1964,6 +1977,7 @@ int main(int argc, char **argv) {
                     XMoveResizeWindow(dpy, dock.win, dock.x, dock.y, dock.width, dock.height);
                     if (dock.surface) cairo_xlib_surface_set_size(dock.surface, dock.width, dock.height);
                     dock_render(dpy, &dock, screen_w, screen_h);
+                    ricemain_reload(dpy);
                     reflow_all(dpy, clients, &cfg);
                     break;
                 }
@@ -2015,6 +2029,7 @@ int main(int argc, char **argv) {
         client_teardown(dpy, &clients, clients->win, &cfg, &drag_client, &last_titlebar_click_win, &dock);
     }
     menu_cleanup(&context_menu);
+    ricemain_cleanup();
     confirm_dialog_cleanup(&confirm_dialog);
     dock_cleanup(&dock);
     if (dock.tooltip_win) {
