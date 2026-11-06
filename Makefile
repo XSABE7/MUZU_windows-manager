@@ -51,12 +51,15 @@ clean:
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 muzuwm $(DESTDIR)$(BINDIR)/muzuwm
-	[ -f bin/muzu-session ] && install -m 755 bin/muzu-session $(DESTDIR)$(BINDIR)/muzu-session || true
+	install -m 755 bin/muzu-session $(DESTDIR)$(BINDIR)/muzu-session
 	install -d $(DESTDIR)$(XSESSIONSDIR)
-	[ -f desktop/muzuwm.desktop ] && install -m 644 desktop/muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop || true
+	install -m 644 desktop/muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
 	install -d $(DESTDIR)/etc/muzuwm
-	[ -f config/muzuwm.conf ] && install -m 644 config/muzuwm.conf $(DESTDIR)/etc/muzuwm/muzuwm.conf || true
-	[ -f config/picom.conf ] && install -m 644 config/picom.conf $(DESTDIR)/etc/muzuwm/picom.conf || true
+	install -m 644 config/muzuwm.conf $(DESTDIR)/etc/muzuwm/muzuwm.conf
+	install -m 644 config/picom.conf $(DESTDIR)/etc/muzuwm/picom.conf
+	install -m 644 config/panel/tint2rc $(DESTDIR)/etc/muzuwm/tint2rc
+	install -d $(DESTDIR)/etc/muzuwm/rofi
+	install -m 644 config/rofi/config.rasi $(DESTDIR)/etc/muzuwm/rofi/config.rasi
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm

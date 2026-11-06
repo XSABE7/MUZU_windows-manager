@@ -1,0 +1,52 @@
+#!/bin/sh
+# MUZUwm Desktop Session Manager
+
+# 1. Environment & Cursor
+export XDG_CURRENT_DESKTOP=MUZUwm
+export XDG_SESSION_DESKTOP=muzuwm
+
+if command -v xsetroot >/dev/null 2>&1; then
+    xsetroot -cursor_name left_ptr
+fi
+
+# 2. Wallpaper
+WP_PATH="${HOME}/.config/muzuwm/wallpaper.png"
+if [ -f "$WP_PATH" ] && command -v feh >/dev/null 2>&1; then
+    feh --bg-fill "$WP_PATH" &
+elif [ -f "$WP_PATH" ] && command -v xwallpaper >/dev/null 2>&1; then
+    xwallpaper --zoom "$WP_PATH" &
+elif command -v xsetroot >/dev/null 2>&1; then
+    xsetroot -solid "#1e1e2e"
+fi
+
+# 3. Compositor (Picom)
+PICOM_CONF="${HOME}/.config/muzuwm/picom.conf"
+[ ! -f "$PICOM_CONF" ] && PICOM_CONF="/etc/muzuwm/picom.conf"
+
+if command -v picom >/dev/null 2>&1; then
+    if [ -f "$PICOM_CONF" ]; then
+        picom --config "$PICOM_CONF" -b
+    else
+        picom -b
+    fi
+fi
+
+# 4. Status Bar / Panel (Tint2)
+PANEL_CONF="${HOME}/.config/muzuwm/tint2rc"
+[ ! -f "$PANEL_CONF" ] && PANEL_CONF="/etc/muzuwm/tint2rc"
+
+if command -v tint2 >/dev/null 2>&1; then
+    if [ -f "$PANEL_CONF" ]; then
+        tint2 -c "$PANEL_CONF" &
+    else
+        tint2 &
+    fi
+fi
+
+# 5. Optional Dock (e.g. Plank)
+if command -v plank >/dev/null 2>&1; then
+    plank &
+fi
+
+# 6. Launch Core Window Manager
+exec muzuwm
