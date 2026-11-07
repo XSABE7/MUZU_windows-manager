@@ -71,6 +71,20 @@ int main(void) {
     menu_select_item(&menu, 4);
     assert(last_action == DOCK_ACTION_DETACH_ALL_WINDOWS);
 
+    // Test 8: Desktop right-click menu items (Terminal, Internet, App)
+    menu_clear(&menu);
+    menu_add_item(&menu, "Terminal", DESKTOP_ACTION_TERMINAL);
+    menu_add_item(&menu, "Internet", DESKTOP_ACTION_INTERNET);
+    menu_add_item(&menu, "App", DESKTOP_ACTION_APPLICATIONS);
+    assert(menu.item_count == 3);
+
+    menu_select_item(&menu, 0);
+    assert(last_action == DESKTOP_ACTION_TERMINAL);
+    menu_select_item(&menu, 1);
+    assert(last_action == DESKTOP_ACTION_INTERNET);
+    menu_select_item(&menu, 2);
+    assert(last_action == DESKTOP_ACTION_APPLICATIONS);
+
     menu_cleanup(&menu);
     printf("test_menu passed!\n");
     return 0;

@@ -33,3 +33,4 @@ test_kbd_layout
 test_struts
 test_titlebar
 test_snap_preview
+test_menu

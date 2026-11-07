@@ -13,6 +13,7 @@
 #include "config_rules.h"
 #include "struts.h"
 #include "snap_preview.h"
+#include "menu.h"
 
 static int running = 1;
 static Display *dpy = NULL;
@@ -26,6 +27,23 @@ static void sig_handler(int sig) {
 static int x_error_handler(Display *d, XErrorEvent *ee) {
     (void)d; (void)ee;
     return 0; // Ignore non-fatal X errors
+}
+
+static void desktop_menu_callback(int action_id, void *userdata) {
+    (void)userdata;
+    switch (action_id) {
+        case DESKTOP_ACTION_TERMINAL:
+            config_spawn_command("x-terminal-emulator || wezterm || alacritty || xterm");
+            break;
+        case DESKTOP_ACTION_INTERNET:
+            config_spawn_command("x-www-browser || firefox || google-chrome || chromium");
+            break;
+        case DESKTOP_ACTION_APPLICATIONS:
+            config_spawn_command("rofi -show drun || dmenu_run || x-terminal-emulator || wezterm");
+            break;
+        default:
+            break;
+    }
 }
 
 static void set_focused_client(Display *d, Client *c, Client *head) {
@@ -231,6 +249,12 @@ int main(void) {
     SnapPreview snap_preview;
     snap_preview_init(dpy, root, &snap_preview);
 
+    Menu desktop_menu;
+    menu_init(dpy, &desktop_menu, NULL, desktop_menu_callback, NULL);
+    menu_add_item(&desktop_menu, "Terminal", DESKTOP_ACTION_TERMINAL);
+    menu_add_item(&desktop_menu, "Internet", DESKTOP_ACTION_INTERNET);
+    menu_add_item(&desktop_menu, "App", DESKTOP_ACTION_APPLICATIONS);
+
     ShortcutConfig sc;
     config_rules_ensure_files();
     shortcuts_load(&sc);
@@ -281,6 +305,15 @@ int main(void) {
 
         switch (ev.type) {
             case KeyPress: {
+                if (desktop_menu.is_visible) {
+                    KeySym sym = XLookupKeysym(&ev.xkey, 0);
+                    if (sym == XK_Escape) {
+                        menu_hide(dpy, &desktop_menu);
+                        XUngrabPointer(dpy, CurrentTime);
+                        break;
+                    }
+                }
+
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
                 unsigned int mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
 
@@ -449,8 +482,27 @@ int main(void) {
             }
 
             case ButtonPress: {
+                if (desktop_menu.is_visible) {
+                    if (ev.xbutton.window == desktop_menu.win) {
+                        menu_handle_click(dpy, &desktop_menu, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
+                        XUngrabPointer(dpy, CurrentTime);
+                        break;
+                    } else {
+                        menu_hide(dpy, &desktop_menu);
+                        XUngrabPointer(dpy, CurrentTime);
+                        if (ev.xbutton.button == Button3) {
+                            menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
+                            XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
+                                         GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
+                            break;
+                        }
+                    }
+                }
+
                 if (ev.xbutton.window == root && ev.xbutton.button == Button3) {
-                    config_spawn_command("rofi -show drun || dmenu_run || x-terminal-emulator || wezterm");
+                    menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
+                    XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
+                                 GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
                     break;
                 }
 
@@ -507,6 +559,16 @@ int main(void) {
             }
 
             case MotionNotify: {
+                if (desktop_menu.is_visible) {
+                    if (ev.xmotion.window == desktop_menu.win) {
+                        menu_handle_motion(dpy, &desktop_menu, ev.xmotion.x, ev.xmotion.y);
+                    } else if (desktop_menu.hover_idx != -1) {
+                        desktop_menu.hover_idx = -1;
+                        menu_render(dpy, &desktop_menu);
+                    }
+                    break;
+                }
+
                 if (drag_client) {
                     int dx = ev.xmotion.x_root - drag_start_x;
                     int dy = ev.xmotion.y_root - drag_start_y;
@@ -536,6 +598,10 @@ int main(void) {
             }
 
             case ButtonRelease: {
+                if (desktop_menu.is_visible) {
+                    break;
+                }
+
                 if (drag_client) {
                     XUngrabPointer(dpy, CurrentTime);
                     SnapState snap = snap_preview.current_snap;
@@ -558,6 +624,11 @@ int main(void) {
             }
 
             case Expose: {
+                if (desktop_menu.is_visible && ev.xexpose.window == desktop_menu.win) {
+                    menu_render(dpy, &desktop_menu);
+                    break;
+                }
+
                 Client *c = client_find_by_any(clients, ev.xexpose.window);
                 if (c && c->frame != None && ev.xexpose.window == c->frame) {
                     titlebar_draw(dpy, c, NULL);
@@ -571,6 +642,11 @@ int main(void) {
     }
 
     // Teardown
+    menu_cleanup(&desktop_menu);
+    if (desktop_menu.win != None) {
+        XDestroyWindow(dpy, desktop_menu.win);
+        desktop_menu.win = None;
+    }
     snap_preview_destroy(dpy, &snap_preview);
     while (clients) {
         client_teardown(dpy, &clients, clients->win, &cfg, NULL, NULL);

@@ -13,6 +13,7 @@ make -s tests muzuwm
 ./test_layout
 ./test_client_props
 ./test_config_rules
+./test_menu
 bash tests/test_session_install.sh
 echo "--> All Unit Tests & Verification Passed!"
 
