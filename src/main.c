@@ -169,6 +169,27 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
     XFlush(d);
 }
 
+static void raise_client_with_transients(Display *d, Client *target_c, Client *clients) {
+    if (!d || !target_c) return;
+    Window target = target_c->frame != None ? target_c->frame : target_c->win;
+    XRaiseWindow(d, target);
+
+    for (Client *c = clients; c; c = c->next) {
+        if (c == target_c || c->is_minimized || c->workspace != target_c->workspace) continue;
+        if (c->transient_for == target_c->win) {
+            Window child_w = c->frame != None ? c->frame : c->win;
+            XRaiseWindow(d, child_w);
+            for (Client *gc = clients; gc; gc = gc->next) {
+                if (gc == c || gc == target_c || gc->is_minimized || gc->workspace != target_c->workspace) continue;
+                if (gc->transient_for == c->win) {
+                    Window gc_w = gc->frame != None ? gc->frame : gc->win;
+                    XRaiseWindow(d, gc_w);
+                }
+            }
+        }
+    }
+}
+
 static void activate_client(Display *d, Client *target_c, Client *clients, LayoutConfig *cfg) {
     if (!d || !target_c) return;
 
@@ -179,12 +200,11 @@ static void activate_client(Display *d, Client *target_c, Client *clients, Layou
         if (target_c->frame != None && target_c->win != None) {
             XMapWindow(d, target_c->win);
         }
-        XRaiseWindow(d, target);
+        raise_client_with_transients(d, target_c, clients);
         set_focused_client(d, target_c, clients);
         reflow_all(d, clients, cfg);
     } else {
-        Window target = target_c->frame != None ? target_c->frame : target_c->win;
-        XRaiseWindow(d, target);
+        raise_client_with_transients(d, target_c, clients);
         set_focused_client(d, target_c, clients);
     }
 }
@@ -237,15 +257,41 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
     XWindowAttributes wa;
     if (!XGetWindowAttributes(d, w, &wa) || wa.override_redirect) return;
 
+    WindowType wtype = client_get_window_type(d, w);
+    Window trans = client_get_transient_for(d, w);
+
+    if (!client_should_manage_as_normal(wtype)) {
+        XMapWindow(d, w);
+        if (wtype == WIN_TYPE_DESKTOP) {
+            XLowerWindow(d, w);
+        } else {
+            XRaiseWindow(d, w);
+        }
+        return;
+    }
+
     int is_csd = client_is_csd(d, w);
     int can_fs = client_supports_fullscreen(d, w);
+    if (wtype == WIN_TYPE_DIALOG || wtype == WIN_TYPE_UTILITY || wtype == WIN_TYPE_SPLASH) {
+        can_fs = 0;
+    }
+
+    Client *parent = (trans != None) ? client_find(*clients, trans) : NULL;
 
     int init_x = 0, init_y = cfg->top_inset, win_w = 600, win_h = 400;
-    client_resolve_initial_geometry(cfg->screen_width, cfg->screen_height,
-                                    cfg->top_inset, cfg->bottom_inset,
-                                    wa.x, wa.y, wa.width, wa.height,
-                                    1 /* borderless */,
-                                    &init_x, &init_y, &win_w, &win_h);
+    if (parent && ((wa.x == 0 && wa.y == 0) || wtype == WIN_TYPE_DIALOG)) {
+        int avail_h = cfg->screen_height - cfg->top_inset - cfg->bottom_inset;
+        client_center_over_parent(parent->x, parent->y, parent->width, parent->height,
+                                  0, cfg->top_inset, cfg->screen_width, avail_h,
+                                  wa.width, wa.height,
+                                  &init_x, &init_y, &win_w, &win_h);
+    } else {
+        client_resolve_initial_geometry(cfg->screen_width, cfg->screen_height,
+                                        cfg->top_inset, cfg->bottom_inset,
+                                        wa.x, wa.y, wa.width, wa.height,
+                                        1 /* borderless */,
+                                        &init_x, &init_y, &win_w, &win_h);
+    }
 
     client_add(clients, w, CLIENT_FLOATING);
     Client *c = client_find(*clients, w);
@@ -253,7 +299,8 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
 
     c->frame = None;
     c->is_csd = is_csd;
-    c->workspace = cfg->current_workspace;
+    c->workspace = parent ? parent->workspace : cfg->current_workspace;
+    c->transient_for = trans;
     c->x = init_x;
     c->y = init_y;
     c->width = win_w;
@@ -351,12 +398,22 @@ int main(void) {
     Atom net_workarea = XInternAtom(dpy, "_NET_WORKAREA", False);
     Atom net_active = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
     Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom net_wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom net_wm_type_desktop = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+    Atom net_wm_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    Atom net_wm_type_notify = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+    Atom net_wm_type_dialog = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+    Atom net_wm_type_splash = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_SPLASH", False);
+    Atom net_wm_type_utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
     Atom utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
     Atom muzu_reload_settings = XInternAtom(dpy, "_MUZU_RELOAD_SETTINGS", False);
 
     Atom supported[] = { net_supported, net_supporting_wm_check, net_client_list,
                          net_wm_strut, net_wm_strut_partial,
-                         net_workarea, net_active, net_wm_name };
+                         net_workarea, net_active, net_wm_name,
+                         net_wm_window_type, net_wm_type_desktop, net_wm_type_dock,
+                         net_wm_type_notify, net_wm_type_dialog, net_wm_type_splash,
+                         net_wm_type_utility };
     XChangeProperty(dpy, root, net_supported, XA_ATOM, 32, PropModeReplace,
                     (unsigned char *)supported, sizeof(supported) / sizeof(Atom));
 
@@ -823,8 +880,7 @@ int main(void) {
                 Client *c = client_find_by_any(clients, ev.xbutton.window);
                 if (c) {
                     set_focused_client(dpy, c, clients);
-                    Window target = c->frame != None ? c->frame : c->win;
-                    XRaiseWindow(dpy, target);
+                    raise_client_with_transients(dpy, c, clients);
 
                     if (c->frame != None && ev.xbutton.window == c->frame) {
                         TitlebarAction act = titlebar_get_action_for_client(ev.xbutton.x, c->width, c);

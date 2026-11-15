@@ -60,6 +60,7 @@ typedef struct Client {
     int can_fullscreen;
     int slot;
     int workspace;
+    Window transient_for;
     struct Client *next;
 } Client;
 

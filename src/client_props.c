@@ -172,40 +172,118 @@ void client_get_title(Display *dpy, Window win, char *out_buf, size_t maxlen) {
     client_sanitize_title(out_buf, maxlen, NULL);
 }
 
-int client_is_dialog(Display *dpy, Window win) {
-    if (!dpy || win == None) return 0;
+WindowType client_classify_window_type_atoms(const Atom *types, unsigned long nitems,
+                                             Atom a_desktop, Atom a_dock, Atom a_toolbar,
+                                             Atom a_menu, Atom a_utility, Atom a_splash,
+                                             Atom a_dialog, Atom a_notification, Atom a_normal,
+                                             int has_transient) {
+    (void)a_normal;
+    if (types && nitems > 0) {
+        // Priority 1: Desktop / Dock / Notification (never managed as regular tiled windows)
+        for (unsigned long i = 0; i < nitems; i++) {
+            if (a_desktop != None && types[i] == a_desktop) return WIN_TYPE_DESKTOP;
+            if (a_dock != None && types[i] == a_dock) return WIN_TYPE_DOCK;
+            if (a_notification != None && types[i] == a_notification) return WIN_TYPE_NOTIFICATION;
+        }
+        // Priority 2: Splash / Dialog
+        for (unsigned long i = 0; i < nitems; i++) {
+            if (a_splash != None && types[i] == a_splash) return WIN_TYPE_SPLASH;
+            if (a_dialog != None && types[i] == a_dialog) return WIN_TYPE_DIALOG;
+        }
+        // Priority 3: Utility / Toolbar / Menu
+        for (unsigned long i = 0; i < nitems; i++) {
+            if ((a_utility != None && types[i] == a_utility) ||
+                (a_toolbar != None && types[i] == a_toolbar) ||
+                (a_menu != None && types[i] == a_menu)) {
+                return WIN_TYPE_UTILITY;
+            }
+        }
+    }
+    return has_transient ? WIN_TYPE_DIALOG : WIN_TYPE_NORMAL;
+}
 
-    // 1. Check transient_for hint
+Window client_get_transient_for(Display *dpy, Window win) {
+    if (!dpy || win == None) return None;
     Window transient_for = None;
     if (XGetTransientForHint(dpy, win, &transient_for) && transient_for != None) {
-        return 1;
+        return transient_for;
     }
+    return None;
+}
 
-    // 2. Check _NET_WM_WINDOW_TYPE
+WindowType client_get_window_type(Display *dpy, Window win) {
+    if (!dpy || win == None) return WIN_TYPE_NORMAL;
+
+    int has_transient = (client_get_transient_for(dpy, win) != None);
+
     Atom net_wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
-    Atom dialog_atom = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
-    Atom splash_atom = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_SPLASH", False);
-    Atom util_atom = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+    Atom a_desktop = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+    Atom a_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    Atom a_toolbar = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLBAR", False);
+    Atom a_menu = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_MENU", False);
+    Atom a_utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+    Atom a_splash = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_SPLASH", False);
+    Atom a_dialog = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+    Atom a_notify = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+    Atom a_normal = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NORMAL", False);
 
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *prop = NULL;
+    WindowType result = has_transient ? WIN_TYPE_DIALOG : WIN_TYPE_NORMAL;
 
     if (XGetWindowProperty(dpy, win, net_wm_window_type, 0, (~0L), False,
                            XA_ATOM, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        Atom *types = (Atom *)prop;
-        for (unsigned long i = 0; i < nitems; i++) {
-            if (types[i] == dialog_atom || types[i] == splash_atom || types[i] == util_atom) {
-                XFree(prop);
-                return 1;
-            }
-        }
+        result = client_classify_window_type_atoms((const Atom *)prop, nitems,
+                                                   a_desktop, a_dock, a_toolbar, a_menu,
+                                                   a_utility, a_splash, a_dialog, a_notify,
+                                                   a_normal, has_transient);
         XFree(prop);
     }
 
-    return 0;
+    return result;
+}
+
+int client_should_manage_as_normal(WindowType wtype) {
+    return (wtype != WIN_TYPE_DOCK &&
+            wtype != WIN_TYPE_NOTIFICATION &&
+            wtype != WIN_TYPE_DESKTOP);
+}
+
+void client_center_over_parent(int parent_x, int parent_y, int parent_w, int parent_h,
+                               int mon_x, int mon_y, int mon_w, int mon_h,
+                               int win_w, int win_h,
+                               int *out_x, int *out_y, int *out_w, int *out_h) {
+    int w = (win_w > 0) ? win_w : 600;
+    int h = (win_h > 0) ? win_h : 400;
+
+    if (mon_w > 40 && w > mon_w - 20) w = mon_w - 20;
+    if (mon_h > 60 && h > mon_h - 20) h = mon_h - 20;
+    if (w < 10) w = 10;
+    if (h < 10) h = 10;
+
+    int x = parent_x + (parent_w - w) / 2;
+    int y = parent_y + (parent_h - h) / 2;
+
+    if (x < mon_x) x = mon_x;
+    if (y < mon_y) y = mon_y;
+    if (mon_w > 0 && x + w > mon_x + mon_w) x = mon_x + mon_w - w;
+    if (mon_h > 0 && y + h > mon_y + mon_h) y = mon_y + mon_h - h;
+    if (x < mon_x) x = mon_x;
+    if (y < mon_y) y = mon_y;
+
+    if (out_x) *out_x = x;
+    if (out_y) *out_y = y;
+    if (out_w) *out_w = w;
+    if (out_h) *out_h = h;
+}
+
+int client_is_dialog(Display *dpy, Window win) {
+    if (!dpy || win == None) return 0;
+    WindowType t = client_get_window_type(dpy, win);
+    return (t == WIN_TYPE_DIALOG || t == WIN_TYPE_SPLASH || t == WIN_TYPE_UTILITY);
 }
 
 int client_parse_motif_decorations(const unsigned long *hints, unsigned long nitems) {

@@ -142,6 +142,68 @@ int main(void) {
     assert(rx == (1280 - 325) / 2);
     assert(ry >= 28);
 
+    // Test 8: _NET_WM_WINDOW_TYPE classification & transient-for helpers
+    const Atom A_DESKTOP = 1, A_DOCK = 2, A_TOOLBAR = 3, A_MENU = 4;
+    const Atom A_UTILITY = 5, A_SPLASH = 6, A_DIALOG = 7, A_NOTIFY = 8, A_NORMAL = 9;
+
+    Atom t_dock[] = { A_DOCK };
+    assert(client_classify_window_type_atoms(t_dock, 1, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_DOCK);
+    Atom t_notify[] = { A_NOTIFY };
+    assert(client_classify_window_type_atoms(t_notify, 1, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_NOTIFICATION);
+    Atom t_desktop[] = { A_DESKTOP };
+    assert(client_classify_window_type_atoms(t_desktop, 1, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_DESKTOP);
+    Atom t_splash[] = { A_SPLASH };
+    assert(client_classify_window_type_atoms(t_splash, 1, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_SPLASH);
+    Atom t_dialog[] = { A_DIALOG };
+    assert(client_classify_window_type_atoms(t_dialog, 1, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_DIALOG);
+    Atom t_util[] = { A_UTILITY };
+    assert(client_classify_window_type_atoms(t_util, 1, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_UTILITY);
+
+    // Transient without special type becomes DIALOG; empty without transient becomes NORMAL
+    assert(client_classify_window_type_atoms(NULL, 0, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 1) == WIN_TYPE_DIALOG);
+    assert(client_classify_window_type_atoms(NULL, 0, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_NORMAL);
+
+    // Priority order: DOCK/DESKTOP/NOTIFY beat NORMAL; DIALOG beats UTILITY
+    Atom t_prio1[] = { A_NORMAL, A_NOTIFY };
+    assert(client_classify_window_type_atoms(t_prio1, 2, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_NOTIFICATION);
+    Atom t_prio2[] = { A_UTILITY, A_DIALOG };
+    assert(client_classify_window_type_atoms(t_prio2, 2, A_DESKTOP, A_DOCK, A_TOOLBAR, A_MENU,
+                                             A_UTILITY, A_SPLASH, A_DIALOG, A_NOTIFY, A_NORMAL, 0) == WIN_TYPE_DIALOG);
+
+    assert(client_should_manage_as_normal(WIN_TYPE_DOCK) == 0);
+    assert(client_should_manage_as_normal(WIN_TYPE_NOTIFICATION) == 0);
+    assert(client_should_manage_as_normal(WIN_TYPE_DESKTOP) == 0);
+    assert(client_should_manage_as_normal(WIN_TYPE_NORMAL) == 1);
+    assert(client_should_manage_as_normal(WIN_TYPE_DIALOG) == 1);
+    assert(client_should_manage_as_normal(WIN_TYPE_UTILITY) == 1);
+    assert(client_should_manage_as_normal(WIN_TYPE_SPLASH) == 1);
+
+    assert(client_get_window_type(NULL, None) == WIN_TYPE_NORMAL);
+    assert(client_get_transient_for(NULL, None) == None);
+
+    // Test 9: Centering transient/dialog over parent within monitor bounds
+    int cx = 0, cy = 0, cw = 0, ch = 0;
+    client_center_over_parent(100, 100, 800, 600, 0, 0, 1920, 1080, 400, 200, &cx, &cy, &cw, &ch);
+    assert(cx == 300 && cy == 300 && cw == 400 && ch == 200);
+
+    // Clamps when parent is partially off-screen at top-left
+    client_center_over_parent(-200, -100, 300, 200, 0, 28, 1920, 1052, 400, 200, &cx, &cy, &cw, &ch);
+    assert(cx >= 0 && cy >= 28 && cx + cw <= 1920 && cy + ch <= 28 + 1052);
+
+    // Uninitialized (0, 0) dialog gets safe default inside small monitor
+    client_center_over_parent(50, 50, 500, 400, 0, 0, 800, 600, 0, 0, &cx, &cy, &cw, &ch);
+    assert(cw == 600 && ch == 400);
+    assert(cx >= 0 && cy >= 0 && cx + cw <= 800 && cy + ch <= 600);
+
     printf("test_client_props passed!\n");
     return 0;
 }

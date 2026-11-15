@@ -35,6 +35,38 @@ void client_get_title(Display *dpy, Window win, char *out_buf, size_t maxlen);
 // Determine if window is transient or dialog (_NET_WM_WINDOW_TYPE)
 int client_is_dialog(Display *dpy, Window win);
 
+typedef enum {
+    WIN_TYPE_NORMAL = 0,
+    WIN_TYPE_DIALOG,
+    WIN_TYPE_UTILITY,
+    WIN_TYPE_SPLASH,
+    WIN_TYPE_DOCK,
+    WIN_TYPE_NOTIFICATION,
+    WIN_TYPE_DESKTOP
+} WindowType;
+
+// Pure classifier mapping _NET_WM_WINDOW_TYPE atoms and transient hint to WindowType
+WindowType client_classify_window_type_atoms(const Atom *types, unsigned long nitems,
+                                             Atom a_desktop, Atom a_dock, Atom a_toolbar,
+                                             Atom a_menu, Atom a_utility, Atom a_splash,
+                                             Atom a_dialog, Atom a_notification, Atom a_normal,
+                                             int has_transient);
+
+// Query _NET_WM_WINDOW_TYPE and WM_TRANSIENT_FOR to classify a window
+WindowType client_get_window_type(Display *dpy, Window win);
+
+// Returns 1 for normal/dialog/utility/splash clients, 0 for desktop/dock/notification
+int client_should_manage_as_normal(WindowType wtype);
+
+// Return WM_TRANSIENT_FOR parent window or None
+Window client_get_transient_for(Display *dpy, Window win);
+
+// Center a dialog/transient over its parent and clamp inside the monitor workarea
+void client_center_over_parent(int parent_x, int parent_y, int parent_w, int parent_h,
+                               int mon_x, int mon_y, int mon_w, int mon_h,
+                               int win_w, int win_h,
+                               int *out_x, int *out_y, int *out_w, int *out_h);
+
 // Parse Motif WM hints decorations flag (returns 0 if decorations explicitly disabled, 1 otherwise)
 int client_parse_motif_decorations(const unsigned long *hints, unsigned long nitems);
 
