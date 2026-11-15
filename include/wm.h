@@ -5,6 +5,25 @@
 #include <cairo/cairo.h>
 #include <time.h>
 
+typedef struct {
+    double r, g, b, a;
+} ColorRGBA;
+
+typedef struct {
+    char theme_name[128];
+    char icon_theme_name[128];
+    char cursor_theme_name[128];
+    int cursor_theme_size;
+    char font_family[64];
+    double font_size;
+    int is_dark;
+    ColorRGBA bg_titlebar;
+    ColorRGBA fg_titlebar;
+    ColorRGBA accent_color;
+    ColorRGBA bg_surface;
+    ColorRGBA border_color;
+} GtkTheme;
+
 typedef enum {
     CLIENT_TILED,
     CLIENT_FLOATING
@@ -39,6 +58,7 @@ typedef struct Client {
     int is_hovered;
     int is_focused;
     int can_fullscreen;
+    int slot;
     int workspace;
     struct Client *next;
 } Client;
@@ -57,6 +77,7 @@ void client_add(Client **head, Window win, ClientMode mode);
 void client_remove(Client **head, Window win);
 Client *client_find(Client *head, Window win);
 Client *client_find_by_any(Client *head, Window win);
+Client *client_find_by_slot(Client *head, int slot);
 int client_count_tiled(Client *head);
 
 #endif /* MUZU_WM_H */

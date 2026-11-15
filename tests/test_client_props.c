@@ -119,6 +119,7 @@ int main(void) {
     assert(client_size_hints_allow_fullscreen(PMinSize, 200, 150, 0, 0, 0) == 1);
     assert(client_size_hints_allow_fullscreen(0, 0, 0, 0, 0, 1) == 0);
     assert(client_size_hints_allow_fullscreen(PMinSize | PMaxSize, 400, 300, 400, 300, 0) == 0);
+    assert(client_size_hints_allow_fullscreen(PMinSize | PMaxSize, 1200, 200, 1200, 900, 0) == 0);
     assert(client_size_hints_allow_fullscreen(PMaxSize, 100, 100, 500, 400, 0) == 0);
     assert(client_size_hints_allow_fullscreen(PMinSize | PMaxSize, 200, 150, 1920, 1080, 0) == 1);
     assert(client_supports_fullscreen(NULL, None) == 1);

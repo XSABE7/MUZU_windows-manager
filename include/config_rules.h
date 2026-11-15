@@ -14,6 +14,7 @@ typedef enum {
     SHORTCUT_ACT_FULLSCREEN,
     SHORTCUT_ACT_FLOAT,
     SHORTCUT_ACT_CLOSE,
+    SHORTCUT_ACT_MINIMIZE,
     SHORTCUT_ACT_LAUNCHER,
     SHORTCUT_ACT_EXEC
 } ShortcutActionType;
@@ -36,6 +37,9 @@ void config_rules_ensure_files(void);
 /* Values managed by the Settings app in ~/.config/muzuwm/settings.conf. */
 int config_get_setting(const char *key, char *out, size_t out_len);
 int config_get_master_count(void);
+int config_is_ricewm_enabled(void);
+int config_is_alttab_enabled(void);
+int config_get_desktop_menu_mode(char *out, size_t out_len);
 
 // Returns 1 if any non-empty entry in `path` equals (case-insensitive) res_name, res_class or title
 int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_name, const char *res_class, const char *title);

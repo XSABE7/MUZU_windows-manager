@@ -31,15 +31,42 @@ int main(void) {
     char value[64];
     assert(config_get_setting("keyboard_layouts", value, sizeof(value)) == 0);
     assert(config_get_master_count() == 1);
+    assert(config_is_alttab_enabled() == 1);
     char settings_path[512];
     snprintf(settings_path, sizeof(settings_path), "%s/.config/muzuwm/settings.conf", tmp_dir);
     FILE *f = fopen(settings_path, "w");
     assert(f != NULL);
-    fprintf(f, "keyboard_layouts=us,th\nmaster_count=2\n");
+    fprintf(f, "keyboard_layouts=us,th\nmaster_count=2\nenable_alttab=0\n");
     fclose(f);
     assert(config_get_setting("keyboard_layouts", value, sizeof(value)) == 1);
     assert(strcmp(value, "us,th") == 0);
     assert(config_get_master_count() == 2);
+    assert(config_is_alttab_enabled() == 0);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "enable_alttab=off\n");
+    fclose(f);
+    assert(config_is_alttab_enabled() == 0);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "enable_alttab=1\n");
+    fclose(f);
+    assert(config_is_alttab_enabled() == 1);
+
+    // Fallback to muzuwm.conf when key is absent in settings.conf
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "master_count=1\n");
+    fclose(f);
+    char muzuwm_conf_path[512];
+    snprintf(muzuwm_conf_path, sizeof(muzuwm_conf_path), "%s/.config/muzuwm/muzuwm.conf", tmp_dir);
+    f = fopen(muzuwm_conf_path, "w");
+    assert(f != NULL);
+    fprintf(f, "enable_alttab = false\n");
+    fclose(f);
+    assert(config_is_alttab_enabled() == 0);
 
     // Default fullscreen_allowlist matches nothing
     assert(config_is_in_fullscreen_allowlist_file(fs_path, "wezterm", "WezTerm", "wezterm") == 0);
@@ -96,6 +123,15 @@ int main(void) {
     const ShortcutBinding *b_browser = shortcuts_match_event(&sc, Mod4Mask, XK_b);
     assert(b_browser && b_browser->type == SHORTCUT_ACT_EXEC);
     assert(strstr(b_browser->exec_cmd, "chrome") != NULL);
+
+    const ShortcutBinding *b_x = shortcuts_match_event(&sc, Mod4Mask, XK_x);
+    assert(b_x && b_x->type == SHORTCUT_ACT_CLOSE);
+
+    const ShortcutBinding *b_m = shortcuts_match_event(&sc, Mod4Mask, XK_m);
+    assert(b_m && b_m->type == SHORTCUT_ACT_FULLSCREEN);
+
+    const ShortcutBinding *b_z = shortcuts_match_event(&sc, Mod4Mask, XK_z);
+    assert(b_z && b_z->type == SHORTCUT_ACT_MINIMIZE);
 
     // Unbound combination matches nothing
     assert(shortcuts_match_event(&sc, Mod4Mask | ShiftMask, XK_Left) == NULL);

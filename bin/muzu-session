@@ -1,0 +1,28 @@
+#!/bin/sh
+# MUZUwm Desktop Session Manager
+
+# 1. Environment & Cursor
+export XDG_CURRENT_DESKTOP=MUZUwm
+export XDG_SESSION_DESKTOP=muzuwm
+
+if command -v xsetroot >/dev/null 2>&1; then
+    xsetroot -cursor_name left_ptr
+fi
+
+# 2. Wallpaper
+WP_PATH="${HOME}/.config/muzuwm/wallpaper.png"
+if [ -f "$WP_PATH" ] && command -v feh >/dev/null 2>&1; then
+    feh --bg-fill "$WP_PATH" &
+elif [ -f "$WP_PATH" ] && command -v xwallpaper >/dev/null 2>&1; then
+    xwallpaper --zoom "$WP_PATH" &
+elif command -v xsetroot >/dev/null 2>&1; then
+    xsetroot -solid "#1e1e2e"
+fi
+
+# 3. Desktop Shell (MZshell - optional / future)
+if command -v mzshell >/dev/null 2>&1; then
+    mzshell &
+fi
+
+# 4. Launch Core Window Manager
+exec muzuwm

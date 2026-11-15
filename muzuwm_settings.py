@@ -20,7 +20,6 @@ PANEL_FILE = os.path.join(CONFIG_DIR, "tint2rc")
 FULLSCREEN_FILE = os.path.join(CONFIG_DIR, "fullscreen_allowlist")
 AUTOSTART_FILE = os.path.join(CONFIG_DIR, "auto_allowlist")
 SHORTCUTS_FILE = os.path.join(CONFIG_DIR, "shortcuts.conf")
-PICOM_FILE = os.path.join(CONFIG_DIR, "picom.conf")
 WALLPAPER_FILE = os.path.join(CONFIG_DIR, "wallpaper.png")
 BACKUP_DIR = os.path.join(CONFIG_DIR, "backups")
 
@@ -146,6 +145,16 @@ class ConfigManager:
             )
         except Exception:
             pass
+
+    @staticmethod
+    def get_alttab_enabled():
+        val = ConfigManager.get_key(SETTINGS_FILE, "enable_alttab", "1").strip().lower()
+        return val not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def set_alttab_enabled(enabled):
+        ConfigManager.set_key(SETTINGS_FILE, "enable_alttab", "1" if enabled else "0")
+        ConfigManager.reload_muzuwm_settings()
 
     # 1. Keyboard & Language Management
     @staticmethod
@@ -469,7 +478,10 @@ class ConfigManager:
             "Super+Return = exec wezterm",
             "Super+b = exec google-chrome",
             "Super+e = exec thunar",
-            "Super+q = close_window"
+            "Super+q = close_window",
+            "Super+x = close_window",
+            "Super+m = fullscreen",
+            "Super+z = minimize"
         ])
         # Reset default dock settings
         ConfigManager.write_lines(DOCK_SETTINGS_FILE, [
@@ -508,7 +520,6 @@ class ConfigManager:
         # Reset default autostart
         ConfigManager.write_lines(AUTOSTART_FILE, [
             "# Commands that launch when MUZUwm starts",
-            "picom -b",
             "# dunst &",
             "# nm-applet &",
             "# volumeicon &"
@@ -518,6 +529,7 @@ class ConfigManager:
             "keyboard_layouts=us,th",
             "layout_switch_option=super_space",
             "master_count=1",
+            "enable_alttab=1",
             "titlebar_height=24",
             "titlebar_font=sans-serif",
             "titlebar_font_size=11",
@@ -548,11 +560,13 @@ def run_cli_menu():
         print("9.  📐 การจัดเรียงหน้าต่าง (Window Layout & Tiling)")
         print("10. 💾 สำรองข้อมูลและรีเซ็ตค่าเดิม (Backup & Reset)")
         print("11. 🔄 รีโหลดการตั้งค่าทันที (Reload Settings)")
+        alttab_state = "เปิด (ON)" if ConfigManager.get_alttab_enabled() else "ปิด (OFF)"
+        print(f"12. 🔀 สลับ Alt+Tab Switcher [{alttab_state}]")
         print("0.  ❌ ออกจากโปรแกรม (Exit)")
         print("-" * 55)
 
         try:
-            choice = input("เลือกเมนู (0-11): ").strip()
+            choice = input("เลือกเมนู (0-12): ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nBye!")
             break
@@ -583,6 +597,10 @@ def run_cli_menu():
             ConfigManager.reload_muzuwm_settings()
             ConfigManager.reload_muzuwm_wallpaper()
             print("✓ ส่งคำสั่งรีโหลดการตั้งค่าไปยัง MUZUwm แล้ว!")
+        elif choice == "12":
+            new_state = not ConfigManager.get_alttab_enabled()
+            ConfigManager.set_alttab_enabled(new_state)
+            print(f"✓ Alt+Tab Switcher: {'เปิด (ON)' if new_state else 'ปิด (OFF)'}")
         else:
             print("ตัวเลือกไม่ถูกต้อง กรุณาลองใหม่")
 
@@ -807,18 +825,16 @@ def cli_autostart_menu():
             print("✓ อัปเดตสถานะแล้ว")
     elif c == "2":
         print("คำสั่งแนะนำ:")
-        print("1) picom -b         (เปิด Picom Compositor)")
-        print("2) dunst &          (ระบบแจ้งเตือน Notification)")
-        print("3) nm-applet &      (ไอคอนเน็ตเวิร์ก Network Manager)")
-        print("4) volumeicon &     (ไอคอนปรับเสียง)")
-        print("5) redshift &       (ตัวตัดแสงสีฟ้า)")
+        print("1) dunst &          (ระบบแจ้งเตือน Notification)")
+        print("2) nm-applet &      (ไอคอนเน็ตเวิร์ก Network Manager)")
+        print("3) volumeicon &     (ไอคอนปรับเสียง)")
+        print("4) redshift &       (ตัวตัดแสงสีฟ้า)")
         p = input("เลือก: ").strip()
         mapping = {
-            "1": "picom -b",
-            "2": "dunst &",
-            "3": "nm-applet &",
-            "4": "volumeicon &",
-            "5": "redshift &"
+            "1": "dunst &",
+            "2": "nm-applet &",
+            "3": "volumeicon &",
+            "4": "redshift &"
         }
         if p in mapping:
             entries.append({"command": mapping[p], "enabled": True})
@@ -1558,7 +1574,6 @@ def run_gtk_gui():
             flowbox.set_selection_mode(Gtk.SelectionMode.NONE)
 
             daemons = [
-                ("picom -b", "Compositor (Picom)"),
                 ("dunst &", "Notifications (Dunst)"),
                 ("nm-applet &", "Network Manager Tray"),
                 ("volumeicon &", "Volume Tray Icon"),
@@ -1879,29 +1894,482 @@ def run_gtk_gui():
 
 
 # ==============================================================================
+# Classic Retro Terminal TUI (DOS / BIOS Setup Style)
+# ==============================================================================
+
+def run_tui_menu():
+    import curses
+    import locale
+    locale.setlocale(locale.LC_ALL, "")
+    ConfigManager.ensure_dirs()
+
+    def init_colors():
+        if not curses.has_colors():
+            return False
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)    # Backdrop
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_WHITE)   # Classic dialog panel
+        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_CYAN)    # Selected item
+        curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLUE)   # Title / header
+        curses.init_pair(5, curses.COLOR_BLACK, curses.COLOR_CYAN)    # Status bar
+        curses.init_pair(6, curses.COLOR_BLUE, curses.COLOR_WHITE)    # Dialog accent
+        curses.init_pair(7, curses.COLOR_RED, curses.COLOR_WHITE)     # Disabled / warning
+        return True
+
+    def safe_addstr(win, y, x, text, attr=0):
+        h, w = win.getmaxyx()
+        if y < 0 or y >= h or x >= w:
+            return
+        max_len = max(0, w - x - 1)
+        if max_len <= 0:
+            return
+        try:
+            win.addnstr(y, x, text, max_len, attr)
+        except curses.error:
+            pass
+
+    def draw_backdrop(stdscr, title, footer, has_color):
+        stdscr.erase()
+        h, w = stdscr.getmaxyx()
+        bg_attr = curses.color_pair(1) if has_color else 0
+        hdr_attr = (curses.color_pair(4) | curses.A_BOLD) if has_color else curses.A_BOLD
+        bar_attr = curses.color_pair(5) if has_color else curses.A_REVERSE
+        stdscr.bkgd(" ", bg_attr)
+        safe_addstr(stdscr, 0, 0, (" " + title).ljust(max(1, w - 1)), hdr_attr)
+        if h > 1:
+            safe_addstr(stdscr, 1, 0, ("=" * max(1, w - 1)), bg_attr)
+        if h > 2:
+            safe_addstr(stdscr, h - 1, 0, (" " + footer).ljust(max(1, w - 1)), bar_attr)
+        stdscr.refresh()
+
+    def make_panel(stdscr, req_h, req_w, title, has_color):
+        sh, sw = stdscr.getmaxyx()
+        ph = min(req_h, max(8, sh - 4))
+        pw = min(req_w, max(30, sw - 4))
+        py = max(2, (sh - ph) // 2)
+        px = max(2, (sw - pw) // 2)
+        win = curses.newwin(ph, pw, py, px)
+        win.keypad(True)
+        panel_attr = curses.color_pair(2) if has_color else 0
+        accent_attr = (curses.color_pair(6) | curses.A_BOLD) if has_color else curses.A_BOLD
+        win.bkgd(" ", panel_attr)
+        win.erase()
+        win.border("|", "|", "-", "-", "+", "+", "+", "+")
+        hdr = f"[ {title} ]"
+        safe_addstr(win, 0, max(2, (pw - len(hdr)) // 2), hdr, accent_attr)
+        return win
+
+    def tui_message(stdscr, title, lines, has_color):
+        draw_backdrop(stdscr, "MUZUwm SETUP UTILITY (CLASSIC)", "[Enter/Space/Esc] OK", has_color)
+        win = make_panel(stdscr, len(lines) + 7, 62, title, has_color)
+        ph, pw = win.getmaxyx()
+        sel_attr = (curses.color_pair(3) | curses.A_BOLD) if has_color else curses.A_REVERSE
+        for idx, line in enumerate(lines[:max(1, ph - 5)]):
+            safe_addstr(win, 2 + idx, 3, line)
+        ok_lbl = "<   OK   >"
+        safe_addstr(win, ph - 2, max(2, (pw - len(ok_lbl)) // 2), ok_lbl, sel_attr)
+        win.refresh()
+        while True:
+            ch = win.getch()
+            if ch in (10, 13, 27, ord(" "), ord("q"), ord("Q")):
+                break
+
+    def tui_confirm(stdscr, title, question, has_color):
+        draw_backdrop(stdscr, "MUZUwm SETUP UTILITY (CLASSIC)", "[Left/Right] Choice  [Enter] Confirm  [Esc] Cancel", has_color)
+        win = make_panel(stdscr, 9, 60, title, has_color)
+        ph, pw = win.getmaxyx()
+        sel_attr = (curses.color_pair(3) | curses.A_BOLD) if has_color else curses.A_REVERSE
+        safe_addstr(win, 2, 3, question)
+        choice = 1  # Default No
+        while True:
+            yes_attr = sel_attr if choice == 0 else 0
+            no_attr = sel_attr if choice == 1 else 0
+            safe_addstr(win, ph - 2, pw // 2 - 12, "< YES >", yes_attr)
+            safe_addstr(win, ph - 2, pw // 2 + 4, "<  NO >", no_attr)
+            win.refresh()
+            ch = win.getch()
+            if ch in (curses.KEY_LEFT, curses.KEY_RIGHT, 9):
+                choice = 1 - choice
+            elif ch in (ord("y"), ord("Y")):
+                return True
+            elif ch in (ord("n"), ord("N"), 27, ord("q"), ord("Q")):
+                return False
+            elif ch in (10, 13):
+                return choice == 0
+
+    def tui_input(stdscr, title, prompt, initial, has_color):
+        draw_backdrop(stdscr, "MUZUwm SETUP UTILITY (CLASSIC)", "[Enter] Save  [Esc] Cancel", has_color)
+        win = make_panel(stdscr, 9, 68, title, has_color)
+        ph, pw = win.getmaxyx()
+        box_attr = curses.color_pair(1) if has_color else curses.A_REVERSE
+        safe_addstr(win, 2, 3, prompt)
+        buf = list(initial or "")
+        curses.curs_set(1)
+        try:
+            while True:
+                field_w = max(10, pw - 8)
+                text = "".join(buf)
+                view = text[-field_w:] if len(text) > field_w else text
+                safe_addstr(win, 4, 3, (" " + view).ljust(field_w), box_attr)
+                win.move(4, min(pw - 3, 4 + len(view)))
+                win.refresh()
+                ch = win.get_wch()
+                if ch in ("\n", "\r"):
+                    return "".join(buf).strip()
+                if ch == "\x1b":
+                    return None
+                if ch in ("\b", "\x7f") or ch == curses.KEY_BACKSPACE:
+                    if buf:
+                        buf.pop()
+                elif isinstance(ch, str) and ch.isprintable():
+                    buf.append(ch)
+        finally:
+            curses.curs_set(0)
+
+    def tui_list_menu(stdscr, title, subtitle, items, has_color, footer="[Up/Down] Move  [Enter] Select  [Esc/Q] Back"):
+        idx = 0
+        scroll = 0
+        while True:
+            draw_backdrop(stdscr, "MUZUwm SETUP UTILITY (CLASSIC)", footer, has_color)
+            win = make_panel(stdscr, max(14, min(22, len(items) + 7)), 74, title, has_color)
+            ph, pw = win.getmaxyx()
+            accent_attr = (curses.color_pair(6) | curses.A_BOLD) if has_color else curses.A_BOLD
+            sel_attr = (curses.color_pair(3) | curses.A_BOLD) if has_color else curses.A_REVERSE
+            safe_addstr(win, 2, 3, subtitle, accent_attr)
+            safe_addstr(win, 3, 2, "-" * (pw - 4))
+            vis_rows = max(1, ph - 6)
+            if idx >= len(items):
+                idx = max(0, len(items) - 1)
+            if idx < scroll:
+                scroll = idx
+            elif idx >= scroll + vis_rows:
+                scroll = idx - vis_rows + 1
+            for row in range(vis_rows):
+                item_i = scroll + row
+                if item_i >= len(items):
+                    break
+                label = items[item_i]
+                line_text = (" " + label).ljust(pw - 6)
+                safe_addstr(win, 4 + row, 3, line_text, sel_attr if item_i == idx else 0)
+            win.refresh()
+            ch = win.getch()
+            if ch in (curses.KEY_UP, ord("k")):
+                if items:
+                    idx = (idx - 1) % len(items)
+            elif ch in (curses.KEY_DOWN, ord("j")):
+                if items:
+                    idx = (idx + 1) % len(items)
+            elif ch in (27, ord("q"), ord("Q")):
+                return -1, None
+            elif ch in (10, 13, ord(" ")):
+                return idx, ch
+
+    def tui_shortcuts_sub(stdscr, has_color):
+        while True:
+            sc = ConfigManager.get_shortcuts()
+            items = [f"[{i + 1:2d}] {s['combo']:<18} = {s['action']}" for i, s in enumerate(sc)]
+            items.extend([
+                "+ Add new shortcut binding",
+                "* Reset shortcuts to defaults",
+                "< Back"
+            ])
+            idx, _ = tui_list_menu(stdscr, "KEYBOARD SHORTCUTS", "Edit ~/.config/muzuwm/shortcuts.conf (Enter to modify)", items, has_color)
+            if idx < 0 or idx == len(items) - 1:
+                return
+            if idx < len(sc):
+                act = tui_input(stdscr, "EDIT SHORTCUT", f"Action for {sc[idx]['combo']} (or 'delete'):", sc[idx]["action"], has_color)
+                if act is not None:
+                    if act.lower() == "delete":
+                        sc.pop(idx)
+                    elif act:
+                        sc[idx]["action"] = act
+                    ConfigManager.save_shortcuts(sc)
+            elif idx == len(sc):
+                combo = tui_input(stdscr, "NEW SHORTCUT", "Key combo (e.g. Super+t, Alt+Tab):", "", has_color)
+                if combo:
+                    act = tui_input(stdscr, "NEW ACTION", f"Action for {combo} (e.g. exec xterm, close_window):", "", has_color)
+                    if act:
+                        sc.append({"combo": combo, "action": act})
+                        ConfigManager.save_shortcuts(sc)
+            else:
+                if tui_confirm(stdscr, "RESET SHORTCUTS", "Reset shortcuts.conf to MUZUwm defaults?", has_color):
+                    ConfigManager.save_shortcuts([
+                        {"combo": "Super+Left", "action": "tile_left"},
+                        {"combo": "Super+Right", "action": "tile_right"},
+                        {"combo": "Super+Up", "action": "fullscreen"},
+                        {"combo": "Super+Down", "action": "float"},
+                        {"combo": "Super+Return", "action": "exec wezterm"},
+                        {"combo": "Super+b", "action": "exec google-chrome"},
+                        {"combo": "Super+q", "action": "close_window"},
+                        {"combo": "Super+x", "action": "close_window"},
+                        {"combo": "Super+m", "action": "fullscreen"},
+                        {"combo": "Super+z", "action": "minimize"},
+                    ])
+
+    def tui_allowlist_sub(stdscr, has_color):
+        while True:
+            apps = ConfigManager.get_fullscreen_allowlist()
+            items = [f"[{i + 1:2d}] {app}" for i, app in enumerate(apps)]
+            items.extend(["+ Add app WM_CLASS / title", "< Back"])
+            idx, _ = tui_list_menu(stdscr, "FULLSCREEN ALLOWLIST", "Select an entry to remove, or add a new app:", items, has_color)
+            if idx < 0 or idx == len(items) - 1:
+                return
+            if idx < len(apps):
+                if tui_confirm(stdscr, "REMOVE APP", f"Remove '{apps[idx]}' from fullscreen allowlist?", has_color):
+                    ConfigManager.remove_fullscreen_allow(apps[idx])
+            else:
+                app = tui_input(stdscr, "ADD FULLSCREEN APP", "WM_CLASS or exact window title (e.g. mpv):", "", has_color)
+                if app:
+                    ConfigManager.add_fullscreen_allow(app)
+
+    def tui_autostart_sub(stdscr, has_color):
+        while True:
+            entries = ConfigManager.get_autostart_entries()
+            items = [f"[{'ON ' if e['enabled'] else 'OFF'}] {e['command']}" for e in entries]
+            items.extend(["+ Add startup command", "< Back"])
+            idx, ch = tui_list_menu(stdscr, "AUTOSTART COMMANDS", "[Space/Enter] Toggle ON/OFF, or add new command:", items, has_color)
+            if idx < 0 or idx == len(items) - 1:
+                return
+            if idx < len(entries):
+                if ch == ord(" "):
+                    entries[idx]["enabled"] = not entries[idx]["enabled"]
+                    ConfigManager.save_autostart_entries(entries)
+                else:
+                    act_idx, _ = tui_list_menu(stdscr, "ENTRY ACTION", entries[idx]["command"], ["Toggle ON / OFF", "Delete command", "< Back"], has_color)
+                    if act_idx == 0:
+                        entries[idx]["enabled"] = not entries[idx]["enabled"]
+                        ConfigManager.save_autostart_entries(entries)
+                    elif act_idx == 1:
+                        entries.pop(idx)
+                        ConfigManager.save_autostart_entries(entries)
+            else:
+                cmd = tui_input(stdscr, "ADD AUTOSTART", "Shell command (e.g. dunst &):", "", has_color)
+                if cmd:
+                    entries.append({"command": cmd, "enabled": True})
+                    ConfigManager.save_autostart_entries(entries)
+
+    def tui_keyboard_sub(stdscr, has_color):
+        while True:
+            curr_l, curr_o = ConfigManager.get_keyboard_settings()
+            items = [
+                f"Layout Preset : us,th         (US + Thai Kedmanee)",
+                f"Layout Preset : us,th(pat)    (US + Thai Pattachote)",
+                f"Layout Preset : us            (US English only)",
+                f"Layout Preset : custom        (Current: {curr_l})",
+                f"Switch Option : super_space   (Super + Space)",
+                f"Switch Option : alt_shift     (Alt + Shift)",
+                f"Switch Option : caps_toggle   (Caps Lock)",
+                "< Back"
+            ]
+            idx, _ = tui_list_menu(stdscr, "KEYBOARD & LANGUAGE", f"Active: layout={curr_l}  option={curr_o}", items, has_color)
+            if idx < 0 or idx == len(items) - 1:
+                return
+            new_l, new_o = curr_l, curr_o
+            if idx == 0:
+                new_l = "us,th"
+            elif idx == 1:
+                new_l = "us,th(pat)"
+            elif idx == 2:
+                new_l = "us"
+            elif idx == 3:
+                val = tui_input(stdscr, "CUSTOM LAYOUTS", "Comma-separated XKB layouts:", curr_l, has_color)
+                if val is None or not val:
+                    continue
+                new_l = val
+            elif idx == 4:
+                new_o = "super_space"
+            elif idx == 5:
+                new_o = "grp:alt_shift_toggle"
+            elif idx == 6:
+                new_o = "grp:caps_toggle"
+            ConfigManager.apply_keyboard_settings(new_l, new_o)
+
+    def tui_panel_sub(stdscr, has_color):
+        while True:
+            panel = ConfigManager.get_panel_settings()
+            items = [
+                f"Position    : {panel['position']} (Toggle Top / Bottom)",
+                f"Height      : {panel['height']} px",
+                f"Time Format : {panel['time1_format']}",
+                "< Back"
+            ]
+            idx, _ = tui_list_menu(stdscr, "TOP PANEL (TINT2RC)", "Configure panel settings:", items, has_color)
+            if idx < 0 or idx == len(items) - 1:
+                return
+            if idx == 0:
+                panel["position"] = "Bottom" if panel["position"] == "Top" else "Top"
+                ConfigManager.save_panel_settings(panel)
+            elif idx == 1:
+                val = tui_input(stdscr, "PANEL HEIGHT", "Height in px (24, 28, 32, 36):", panel["height"], has_color)
+                if val and val.isdigit():
+                    panel["height"] = val
+                    ConfigManager.save_panel_settings(panel)
+            elif idx == 2:
+                val = tui_input(stdscr, "TIME FORMAT", "strftime format (e.g. %H:%M or %H:%M:%S):", panel["time1_format"], has_color)
+                if val:
+                    panel["time1_format"] = val
+                    ConfigManager.save_panel_settings(panel)
+
+    def tui_backup_sub(stdscr, has_color):
+        while True:
+            backups = ConfigManager.list_backups()
+            items = [
+                "Create Backup Archive Now",
+                f"Restore Latest Backup ({os.path.basename(backups[0]) if backups else 'none'})",
+                "Factory Reset All Configs",
+                "< Back"
+            ]
+            idx, _ = tui_list_menu(stdscr, "BACKUP & RESET", f"Stored in {BACKUP_DIR}", items, has_color)
+            if idx < 0 or idx == len(items) - 1:
+                return
+            if idx == 0:
+                arc = ConfigManager.backup_configs()
+                tui_message(stdscr, "BACKUP CREATED", ["Backup archive saved:", os.path.basename(arc)], has_color)
+            elif idx == 1:
+                if not backups:
+                    tui_message(stdscr, "NO BACKUP", ["No backup archives found."], has_color)
+                elif tui_confirm(stdscr, "RESTORE BACKUP", f"Restore {os.path.basename(backups[0])}?", has_color):
+                    ConfigManager.restore_backup(backups[0])
+                    tui_message(stdscr, "RESTORED", ["Settings restored and reloaded."], has_color)
+            elif idx == 2:
+                if tui_confirm(stdscr, "FACTORY RESET", "Reset all MUZUwm configs to factory defaults?", has_color):
+                    ConfigManager.reset_factory_defaults()
+                    tui_message(stdscr, "RESET COMPLETE", ["All settings reset to defaults."], has_color)
+
+    def _tui_main(stdscr):
+        curses.curs_set(0)
+        stdscr.keypad(True)
+        has_color = init_colors()
+        sel = 0
+        while True:
+            alttab_on = ConfigManager.get_alttab_enabled()
+            masters = ConfigManager.get_key(SETTINGS_FILE, "master_count", "1")
+            layouts, switch_opt = ConfigManager.get_keyboard_settings()
+            shortcuts = ConfigManager.get_shortcuts()
+            fs_apps = ConfigManager.get_fullscreen_allowlist()
+            auto_entries = ConfigManager.get_autostart_entries()
+            auto_active = sum(1 for e in auto_entries if e["enabled"])
+            wall_state = "SET" if os.path.exists(WALLPAPER_FILE) else "NONE"
+            backups = ConfigManager.list_backups()
+
+            menu_items = [
+                f"1. Alt+Tab Switcher     : [{'ENABLED ' if alttab_on else 'DISABLED'}]",
+                f"2. Window Layout        : Master Count = {masters}",
+                f"3. Keyboard & Language  : {layouts} ({switch_opt})",
+                f"4. Keyboard Shortcuts   : {len(shortcuts)} bindings",
+                f"5. Fullscreen Allowlist : {len(fs_apps)} apps",
+                f"6. Autostart Commands   : {auto_active}/{len(auto_entries)} enabled",
+                f"7. Wallpaper Image      : {wall_state}",
+                f"8. Backup & Reset       : {len(backups)} archives",
+                "R. Reload MUZUwm Config : Apply changes now",
+                "Q. Exit Setup Utility"
+            ]
+
+            draw_backdrop(
+                stdscr,
+                "MUZUwm SETUP UTILITY v1.0 - CLASSIC TERMINAL MODE",
+                "[Up/Down] Move  [Enter] Select  [Space] Toggle Alt+Tab  [R] Reload  [Q] Quit",
+                has_color
+            )
+            win = make_panel(stdscr, 18, 74, "MAIN CONFIGURATION MENU", has_color)
+            ph, pw = win.getmaxyx()
+            accent_attr = (curses.color_pair(6) | curses.A_BOLD) if has_color else curses.A_BOLD
+            sel_attr = (curses.color_pair(3) | curses.A_BOLD) if has_color else curses.A_REVERSE
+            warn_attr = (curses.color_pair(7) | curses.A_BOLD) if has_color else curses.A_DIM
+
+            safe_addstr(win, 2, 3, f"Config Dir : {CONFIG_DIR}", accent_attr)
+            safe_addstr(win, 3, 2, "-" * (pw - 4))
+            for i, label in enumerate(menu_items):
+                if 4 + i >= ph - 2:
+                    break
+                attr = sel_attr if i == sel else (warn_attr if (i == 0 and not alttab_on) else 0)
+                safe_addstr(win, 4 + i, 3, (" " + label).ljust(pw - 6), attr)
+            safe_addstr(win, ph - 2, 3, "Tip: Press Space on item 1 or edit settings.conf (enable_alttab=0/1)", accent_attr)
+            win.refresh()
+
+            ch = win.getch()
+            if ch in (curses.KEY_UP, ord("k")):
+                sel = (sel - 1) % len(menu_items)
+            elif ch in (curses.KEY_DOWN, ord("j")):
+                sel = (sel + 1) % len(menu_items)
+            elif ch in (ord("q"), ord("Q"), 27):
+                break
+            elif ch in (ord("r"), ord("R")):
+                ConfigManager.reload_muzuwm_settings()
+                ConfigManager.reload_muzuwm_wallpaper()
+                tui_message(stdscr, "RELOAD", ["Sent _MUZU_RELOAD_SETTINGS to MUZUwm."], has_color)
+            elif ch == ord(" ") and sel == 0:
+                ConfigManager.set_alttab_enabled(not alttab_on)
+            elif ord("1") <= ch <= ord("8"):
+                sel = ch - ord("1")
+                ch = 10
+
+            if ch in (10, 13):
+                if sel == 0:
+                    ConfigManager.set_alttab_enabled(not alttab_on)
+                elif sel == 1:
+                    val = tui_input(stdscr, "MASTER WINDOWS", "Number of master windows (1 - 4):", masters, has_color)
+                    if val in ("1", "2", "3", "4"):
+                        ConfigManager.set_key(SETTINGS_FILE, "master_count", val)
+                        ConfigManager.reload_muzuwm_settings()
+                elif sel == 2:
+                    tui_keyboard_sub(stdscr, has_color)
+                elif sel == 3:
+                    tui_shortcuts_sub(stdscr, has_color)
+                elif sel == 4:
+                    tui_allowlist_sub(stdscr, has_color)
+                elif sel == 5:
+                    tui_autostart_sub(stdscr, has_color)
+                elif sel == 6:
+                    path = tui_input(stdscr, "WALLPAPER", "Path to wallpaper image (.png/.jpg):", "", has_color)
+                    if path:
+                        expanded = os.path.expanduser(path)
+                        if os.path.isfile(expanded):
+                            ConfigManager.set_wallpaper_image(expanded)
+                            tui_message(stdscr, "WALLPAPER UPDATED", ["Copied and applied:", expanded], has_color)
+                        else:
+                            tui_message(stdscr, "FILE NOT FOUND", ["Image file does not exist:", expanded], has_color)
+                elif sel == 7:
+                    tui_backup_sub(stdscr, has_color)
+                elif sel == 8:
+                    ConfigManager.reload_muzuwm_settings()
+                    ConfigManager.reload_muzuwm_wallpaper()
+                    tui_message(stdscr, "RELOAD", ["Sent _MUZU_RELOAD_SETTINGS to MUZUwm."], has_color)
+                elif sel == 9:
+                    break
+
+    curses.wrapper(_tui_main)
+
+
+# ==============================================================================
 # Main Entry Point with Automatic Interface Detection
 # ==============================================================================
 
 def main():
-    # Flags handling
-    if "--cli" in sys.argv:
+    if "--cli" in sys.argv or "--plain" in sys.argv:
         run_cli_menu()
         return
 
-    # Check if GUI is available
-    display = os.environ.get("DISPLAY")
-    if display:
+    if "--gui" in sys.argv:
+        display = os.environ.get("DISPLAY")
+        if display:
+            try:
+                import gi
+                gi.require_version("Gtk", "3.0")
+                from gi.repository import Gtk
+                if Gtk.init_check()[0]:
+                    run_gtk_gui()
+                    return
+            except Exception:
+                pass
+
+    if sys.stdin.isatty() and sys.stdout.isatty():
         try:
-            import gi
-            gi.require_version("Gtk", "3.0")
-            from gi.repository import Gtk
-            if Gtk.init_check()[0]:
-                run_gtk_gui()
-                return
+            run_tui_menu()
+            return
         except Exception:
             pass
 
-    # Fallback to CLI menu if headless or GTK unavailable
     run_cli_menu()
 
 
