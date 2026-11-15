@@ -119,20 +119,45 @@ int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut
     return 0;
 }
 
-void strut_apply_workarea_rect(Display *dpy, Window root, int wa_x, int wa_y, int wa_w, int wa_h) {
-    if (!dpy || root == None) return;
+int strut_build_workarea_array(int wa_x, int wa_y, int wa_w, int wa_h,
+                               int num_desktops, unsigned long *out_buf, int max_elems) {
+    if (!out_buf || max_elems < 4) return 0;
     if (wa_w < 100) wa_w = 100;
     if (wa_h < 100) wa_h = 100;
+    int count = (num_desktops > 0) ? num_desktops : 1;
+    int max_desktops = max_elems / 4;
+    if (count > max_desktops) count = max_desktops;
+
+    unsigned long x = (unsigned long)(wa_x > 0 ? wa_x : 0);
+    unsigned long y = (unsigned long)(wa_y > 0 ? wa_y : 0);
+    unsigned long w = (unsigned long)wa_w;
+    unsigned long h = (unsigned long)wa_h;
+
+    for (int i = 0; i < count; i++) {
+        out_buf[i * 4 + 0] = x;
+        out_buf[i * 4 + 1] = y;
+        out_buf[i * 4 + 2] = w;
+        out_buf[i * 4 + 3] = h;
+    }
+    return count * 4;
+}
+
+void strut_apply_workarea_rect_desktops(Display *dpy, Window root,
+                                        int wa_x, int wa_y, int wa_w, int wa_h,
+                                        int num_desktops) {
+    if (!dpy || root == None) return;
 
     Atom net_workarea = XInternAtom(dpy, "_NET_WORKAREA", False);
-    unsigned long workarea[4] = {
-        (unsigned long)(wa_x > 0 ? wa_x : 0),
-        (unsigned long)(wa_y > 0 ? wa_y : 0),
-        (unsigned long)wa_w,
-        (unsigned long)wa_h
-    };
-    XChangeProperty(dpy, root, net_workarea, XA_CARDINAL, 32,
-                    PropModeReplace, (unsigned char *)workarea, 4);
+    unsigned long workarea[64];
+    int nelems = strut_build_workarea_array(wa_x, wa_y, wa_w, wa_h, num_desktops, workarea, 64);
+    if (nelems > 0) {
+        XChangeProperty(dpy, root, net_workarea, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char *)workarea, nelems);
+    }
+}
+
+void strut_apply_workarea_rect(Display *dpy, Window root, int wa_x, int wa_y, int wa_w, int wa_h) {
+    strut_apply_workarea_rect_desktops(dpy, root, wa_x, wa_y, wa_w, wa_h, 1);
 }
 
 void strut_apply_workarea(Display *dpy, Window root, int screen_w, int screen_h,

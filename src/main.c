@@ -146,14 +146,13 @@ static void set_focused_client(Display *d, Client *c, Client *head) {
             titlebar_draw(d, curr, NULL);
         }
     }
-    if (c) {
+    Window active_win = ewmh_resolve_active_window(c);
+    if (c && active_win != None) {
         XSetInputFocus(d, c->win, RevertToPointerRoot, CurrentTime);
-        Atom net_active = XInternAtom(d, "_NET_ACTIVE_WINDOW", False);
-        XChangeProperty(d, root, net_active, XA_WINDOW, 32, PropModeReplace,
-                        (unsigned char *)&c->win, 1);
     } else {
         XSetInputFocus(d, root, RevertToPointerRoot, CurrentTime);
     }
+    ewmh_set_active_window(d, root, active_win);
 }
 
 static void refresh_struts_and_workarea(Display *d, StrutList *strut_list, LayoutConfig *cfg) {
@@ -169,11 +168,16 @@ static void refresh_struts_and_workarea(Display *d, StrutList *strut_list, Layou
         int wa_y = monitors[prim].y + monitors[prim].top_inset;
         int wa_w = monitors[prim].width - monitors[prim].left_inset - monitors[prim].right_inset;
         int wa_h = monitors[prim].height - monitors[prim].top_inset - monitors[prim].bottom_inset;
-        strut_apply_workarea_rect(d, root, wa_x, wa_y, wa_w, wa_h);
+        strut_apply_workarea_rect_desktops(d, root, wa_x, wa_y, wa_w, wa_h, num_workspaces);
     } else {
         int l = 0, r = 0, t = 0, b = 0;
         strut_calculate_insets(strut_list, total_screen_w, total_screen_h, &l, &r, &t, &b);
-        strut_apply_workarea(d, root, total_screen_w, total_screen_h, l, r, t, b, cfg);
+        cfg->top_inset = t;
+        cfg->bottom_inset = b;
+        strut_apply_workarea_rect_desktops(d, root, l, t,
+                                           total_screen_w - l - r,
+                                           total_screen_h - t - b,
+                                           num_workspaces);
     }
 }
 
@@ -1022,6 +1026,7 @@ int main(void) {
                         } else {
                             workspace_publish_ewmh(dpy, root, num_workspaces, cfg.current_workspace);
                         }
+                        refresh_struts_and_workarea(dpy, strut_list, &cfg);
                     }
                     int new_alttab = config_is_alttab_enabled();
                     if (new_alttab != alttab_enabled) {

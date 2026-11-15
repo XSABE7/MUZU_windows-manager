@@ -40,6 +40,20 @@ int main(void) {
     assert(top <= 1080 && bottom <= 1080);
     strut_list_remove(&list, 9999);
 
+    // Test 6: _NET_WORKAREA array for multiple desktops
+    unsigned long wa_buf[40];
+    int count = strut_build_workarea_array(10, 32, 1900, 1000, 4, wa_buf, 40);
+    assert(count == 16);
+    for (int i = 0; i < 4; i++) {
+        assert(wa_buf[i * 4 + 0] == 10);
+        assert(wa_buf[i * 4 + 1] == 32);
+        assert(wa_buf[i * 4 + 2] == 1900);
+        assert(wa_buf[i * 4 + 3] == 1000);
+    }
+    assert(strut_build_workarea_array(-5, -2, 50, 40, 0, wa_buf, 40) == 4);
+    assert(wa_buf[0] == 0 && wa_buf[1] == 0 && wa_buf[2] == 100 && wa_buf[3] == 100);
+    assert(strut_build_workarea_array(0, 0, 800, 600, 4, wa_buf, 10) == 8);
+
     printf("test_struts passed!\n");
     return 0;
 }

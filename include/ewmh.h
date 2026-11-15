@@ -24,6 +24,12 @@ void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_
 // Check whether a client window already has _NET_WM_STATE_FULLSCREEN set prior to mapping
 int ewmh_window_has_fullscreen_state(Display *dpy, Window win);
 
+// Resolve the _NET_ACTIVE_WINDOW target for a focused client (or None if hidden/NULL)
+Window ewmh_resolve_active_window(const Client *c);
+
+// Publish _NET_ACTIVE_WINDOW on root (passing None clears active window cleanly)
+void ewmh_set_active_window(Display *dpy, Window root, Window win);
+
 // Enter or exit true fullscreen on the active monitor while preserving prior geometry/mode
 void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enable);
 

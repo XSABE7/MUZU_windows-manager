@@ -130,3 +130,15 @@ void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enabl
         }
     }
 }
+
+Window ewmh_resolve_active_window(const Client *c) {
+    if (!c || c->is_minimized || c->ws_hidden) return None;
+    return c->win;
+}
+
+void ewmh_set_active_window(Display *dpy, Window root, Window win) {
+    if (!dpy || root == None) return;
+    Atom net_active = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+    XChangeProperty(dpy, root, net_active, XA_WINDOW, 32, PropModeReplace,
+                    (unsigned char *)&win, 1);
+}

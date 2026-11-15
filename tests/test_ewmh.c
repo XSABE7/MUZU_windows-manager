@@ -77,8 +77,18 @@ int main(void) {
     assert(c->snap_state == SNAP_TOP);
     assert(c->y == 32 && c->height == 1000);
 
-    // Test 5: Null-safe EWMH property sync
+    // Test 5: Null-safe EWMH property sync & _NET_ACTIVE_WINDOW resolution
     ewmh_sync_client_state(NULL, None, 1, 0, 0);
+    assert(ewmh_resolve_active_window(NULL) == None);
+    c->is_minimized = 0;
+    c->ws_hidden = 0;
+    assert(ewmh_resolve_active_window(c) == 501);
+    c->ws_hidden = 1;
+    assert(ewmh_resolve_active_window(c) == None);
+    c->ws_hidden = 0;
+    c->is_minimized = 1;
+    assert(ewmh_resolve_active_window(c) == None);
+    ewmh_set_active_window(NULL, None, None);
 
     client_remove(&head, 501);
     printf("test_ewmh passed!\n");
