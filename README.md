@@ -115,6 +115,12 @@ bash tests/test_runner.sh
 
 ---
 
+## Support & Community
+
+- Discord: https://discord.gg/jc3QngErz8
+
+---
+
 ## License
 
 Licensed under the **GNU General Public License v3.0 (GPL-3.0)** — see [LICENSE](LICENSE). Based on concepts from **tinywm** and **Openbox**.
