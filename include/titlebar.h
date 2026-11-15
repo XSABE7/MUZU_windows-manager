@@ -3,7 +3,6 @@
 
 #include <X11/Xlib.h>
 #include "wm.h"
-#include "gtk_theme.h"
 
 #define TITLEBAR_HEIGHT 24
 

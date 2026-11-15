@@ -4,7 +4,6 @@
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
 #include "wm.h"
-#include "gtk_theme.h"
 
 #define ALTTAB_MAX_APPS 32
 #define ALTTAB_MAX_WINS_PER_APP 32

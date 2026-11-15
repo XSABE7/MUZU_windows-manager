@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=MUZUwm
-Comment=Mouse UserZ Window Manager (Lean & Out-of-the-Box Session)
-Exec=muzu-session
-TryExec=muzu-session
-Icon=preferences-system-windows
-Type=Application
-DesktopNames=MUZUwm
-Keywords=wm;tiling;floating;windowmanager;window;manager;desktop;

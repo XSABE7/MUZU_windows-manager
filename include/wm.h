@@ -5,6 +5,25 @@
 #include <cairo/cairo.h>
 #include <time.h>
 
+typedef struct {
+    double r, g, b, a;
+} ColorRGBA;
+
+typedef struct {
+    char theme_name[128];
+    char icon_theme_name[128];
+    char cursor_theme_name[128];
+    int cursor_theme_size;
+    char font_family[64];
+    double font_size;
+    int is_dark;
+    ColorRGBA bg_titlebar;
+    ColorRGBA fg_titlebar;
+    ColorRGBA accent_color;
+    ColorRGBA bg_surface;
+    ColorRGBA border_color;
+} GtkTheme;
+
 typedef enum {
     CLIENT_TILED,
     CLIENT_FLOATING

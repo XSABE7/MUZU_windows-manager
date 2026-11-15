@@ -1,6 +1,6 @@
 # MUZUwm
 
-> **Status:** `unstable` — lightweight, floating-by-default X11 Window Manager written in C11 (`Xlib`, `Xext`, `Xcursor`, `Cairo`).
+Lightweight, floating-by-default X11 Window Manager written in C11 (`Xlib`, `Xext`, `Xcursor`, `Cairo`).
 
 MUZUwm focuses strictly on core window management, EWMH/ICCCM compliance, edge snapping, and external shell/panel interoperability (`_NET_WM_STRUT_PARTIAL`, `_NET_WORKAREA`, `_NET_CLIENT_LIST`). Desktop panels, app launchers, docks, and compositors are intentionally kept out of the WM core.
 
