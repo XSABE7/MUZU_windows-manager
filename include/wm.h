@@ -70,14 +70,19 @@ typedef struct Client {
 } Client;
 
 typedef struct {
+    int mon_x;
+    int mon_y;
     int screen_width;
     int screen_height;
     int master_count;
+    int left_inset;
+    int right_inset;
     int top_inset;
     int bottom_inset;
     int current_workspace;
 } LayoutConfig;
 
+void layout_calculate_clients(const LayoutConfig *cfg, Client **tiled, int tiled_count);
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count);
 void client_add(Client **head, Window win, ClientMode mode);
 void client_remove(Client **head, Window win);

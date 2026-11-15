@@ -40,6 +40,21 @@ int main(void) {
     snap_preview_hide(NULL, &sp);
     assert(sp.is_visible == 0 && sp.current_snap == SNAP_NONE);
 
+    // Test 6: Secondary monitor snap detection and rect calculation (1920, 0, 1920, 1080)
+    assert(snap_preview_detect_zone_in_monitor(1930, 500, 1920, 0, 1920, 1080, 30, SNAP_THRESHOLD) == SNAP_LEFT);
+    assert(snap_preview_detect_zone_in_monitor(3830, 500, 1920, 0, 1920, 1080, 30, SNAP_THRESHOLD) == SNAP_RIGHT);
+    assert(snap_preview_detect_zone_in_monitor(2500, 35, 1920, 0, 1920, 1080, 30, SNAP_THRESHOLD) == SNAP_TOP);
+    assert(snap_preview_detect_zone_in_monitor(2500, 500, 1920, 0, 1920, 1080, 30, SNAP_THRESHOLD) == SNAP_NONE);
+
+    snap_preview_calculate_rect_in_monitor(SNAP_LEFT, 1920, 0, 1920, 1080, 0, 0, 30, 0, &x, &y, &w, &h);
+    assert(x == 1920 && y == 30 && w == 960 && h == 1050);
+
+    snap_preview_calculate_rect_in_monitor(SNAP_RIGHT, 1920, 0, 1920, 1080, 0, 0, 30, 0, &x, &y, &w, &h);
+    assert(x == 2880 && y == 30 && w == 960 && h == 1050);
+
+    snap_preview_calculate_rect_in_monitor(SNAP_TOP, 1920, 0, 1920, 1080, 0, 0, 30, 0, &x, &y, &w, &h);
+    assert(x == 1920 && y == 30 && w == 1920 && h == 1050);
+
     printf("test_snap_preview passed!\n");
     return 0;
 }

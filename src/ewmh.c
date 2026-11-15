@@ -91,8 +91,8 @@ void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enabl
         c->is_fullscreen = 1;
         c->mode = CLIENT_FLOATING;
         c->snap_state = SNAP_NONE;
-        c->x = 0;
-        c->y = 0;
+        c->x = cfg->mon_x;
+        c->y = cfg->mon_y;
         c->width = cfg->screen_width;
         c->height = cfg->screen_height;
 

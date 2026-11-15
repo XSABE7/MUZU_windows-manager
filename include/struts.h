@@ -24,6 +24,7 @@ void strut_list_remove(StrutList **head, Window win);
 void strut_calculate_insets(const StrutList *head, int screen_w, int screen_h,
                             int *left, int *right, int *top, int *bottom);
 int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut);
+void strut_apply_workarea_rect(Display *dpy, Window root, int wa_x, int wa_y, int wa_w, int wa_h);
 void strut_apply_workarea(Display *dpy, Window root, int screen_w, int screen_h,
                           int left, int right, int top, int bottom,
                           LayoutConfig *cfg);

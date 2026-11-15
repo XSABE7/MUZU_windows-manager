@@ -7,10 +7,12 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
+#include <X11/extensions/Xrandr.h>
 #include "wm.h"
 #include "titlebar.h"
 #include "client_props.h"
 #include "ewmh.h"
+#include "monitors.h"
 #include "config_rules.h"
 #include "struts.h"
 #include "snap_preview.h"
@@ -20,6 +22,10 @@
 static int running = 1;
 static Display *dpy = NULL;
 static Window root = None;
+static Monitor monitors[MAX_MONITORS];
+static int monitor_count = 0;
+static int total_screen_w = 0;
+static int total_screen_h = 0;
 
 static void sig_handler(int sig) {
     (void)sig;
@@ -148,10 +154,79 @@ static void set_focused_client(Display *d, Client *c, Client *head) {
     }
 }
 
+static void refresh_struts_and_workarea(Display *d, StrutList *strut_list, LayoutConfig *cfg) {
+    if (!d || !cfg) return;
+    if (monitor_count > 0) {
+        monitor_apply_struts(monitors, monitor_count, strut_list, total_screen_w, total_screen_h);
+        int prim = 0;
+        for (int i = 0; i < monitor_count; i++) {
+            if (monitors[i].primary) { prim = i; break; }
+        }
+        monitor_to_layout_config(&monitors[prim], cfg->master_count, cfg->current_workspace, cfg);
+        int wa_x = monitors[prim].x + monitors[prim].left_inset;
+        int wa_y = monitors[prim].y + monitors[prim].top_inset;
+        int wa_w = monitors[prim].width - monitors[prim].left_inset - monitors[prim].right_inset;
+        int wa_h = monitors[prim].height - monitors[prim].top_inset - monitors[prim].bottom_inset;
+        strut_apply_workarea_rect(d, root, wa_x, wa_y, wa_w, wa_h);
+    } else {
+        int l = 0, r = 0, t = 0, b = 0;
+        strut_calculate_insets(strut_list, total_screen_w, total_screen_h, &l, &r, &t, &b);
+        strut_apply_workarea(d, root, total_screen_w, total_screen_h, l, r, t, b, cfg);
+    }
+}
+
+static int get_pointer_monitor(Display *d, int *out_px, int *out_py) {
+    int rx = 0, ry = 0, wx = 0, wy = 0;
+    Window rr = None, cr = None;
+    unsigned int mask = 0;
+    if (d && root != None && XQueryPointer(d, root, &rr, &cr, &rx, &ry, &wx, &wy, &mask)) {
+        if (out_px) *out_px = rx;
+        if (out_py) *out_py = ry;
+        return monitor_find_for_point(monitors, monitor_count, rx, ry);
+    }
+    if (out_px) *out_px = 0;
+    if (out_py) *out_py = 0;
+    return 0;
+}
+
+static void monitor_layout_for_client(const Client *c, const LayoutConfig *base_cfg, LayoutConfig *out_cfg) {
+    if (!out_cfg || !base_cfg) return;
+    if (c && monitor_count > 0) {
+        int m = monitor_find_for_rect(monitors, monitor_count, c->x, c->y, c->width, c->height);
+        monitor_to_layout_config(&monitors[m], base_cfg->master_count, base_cfg->current_workspace, out_cfg);
+    } else {
+        *out_cfg = *base_cfg;
+    }
+}
+
 static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
     if (!d || !cfg) return;
-    int count = client_count_tiled(clients);
-    layout_calculate(cfg, clients, count);
+    if (monitor_count <= 0) {
+        int count = client_count_tiled(clients);
+        layout_calculate(cfg, clients, count);
+    } else {
+        for (int m = 0; m < monitor_count; m++) {
+            LayoutConfig mon_cfg;
+            monitor_to_layout_config(&monitors[m], cfg->master_count, cfg->current_workspace, &mon_cfg);
+            Client *tiled[128];
+            int idx = 0;
+            for (Client *curr = clients; curr && idx < 128; curr = curr->next) {
+                if (curr->mode == CLIENT_TILED && !curr->is_minimized && !curr->is_fullscreen &&
+                    curr->workspace == cfg->current_workspace &&
+                    monitor_find_for_rect(monitors, monitor_count, curr->x, curr->y, curr->width, curr->height) == m) {
+                    tiled[idx++] = curr;
+                }
+            }
+            if (idx > 0) {
+                for (int i = 0; i < idx / 2; i++) {
+                    Client *tmp = tiled[i];
+                    tiled[i] = tiled[idx - 1 - i];
+                    tiled[idx - 1 - i] = tmp;
+                }
+                layout_calculate_clients(&mon_cfg, tiled, idx);
+            }
+        }
+    }
 
     for (Client *c = clients; c; c = c->next) {
         if (c->is_minimized || c->is_fullscreen || c->workspace != cfg->current_workspace) continue;
@@ -304,19 +379,39 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
 
     Client *parent = (trans != None) ? client_find(*clients, trans) : NULL;
 
-    int init_x = 0, init_y = cfg->top_inset, win_w = 600, win_h = 400;
+    int mon_idx = 0;
+    if (parent && monitor_count > 0) {
+        mon_idx = monitor_find_for_rect(monitors, monitor_count, parent->x, parent->y, parent->width, parent->height);
+    } else if (monitor_count > 0) {
+        mon_idx = get_pointer_monitor(d, NULL, NULL);
+    }
+    LayoutConfig mon_cfg = *cfg;
+    if (monitor_count > 0) {
+        monitor_to_layout_config(&monitors[mon_idx], cfg->master_count, cfg->current_workspace, &mon_cfg);
+    }
+
+    int init_x = mon_cfg.mon_x + mon_cfg.left_inset;
+    int init_y = mon_cfg.mon_y + mon_cfg.top_inset;
+    int win_w = 600, win_h = 400;
+    int avail_w = mon_cfg.screen_width - mon_cfg.left_inset - mon_cfg.right_inset;
+    int avail_h = mon_cfg.screen_height - mon_cfg.top_inset - mon_cfg.bottom_inset;
+
     if (parent && ((wa.x == 0 && wa.y == 0) || wtype == WIN_TYPE_DIALOG)) {
-        int avail_h = cfg->screen_height - cfg->top_inset - cfg->bottom_inset;
         client_center_over_parent(parent->x, parent->y, parent->width, parent->height,
-                                  0, cfg->top_inset, cfg->screen_width, avail_h,
+                                  mon_cfg.mon_x + mon_cfg.left_inset, mon_cfg.mon_y + mon_cfg.top_inset,
+                                  avail_w, avail_h,
                                   wa.width, wa.height,
                                   &init_x, &init_y, &win_w, &win_h);
     } else {
-        client_resolve_initial_geometry(cfg->screen_width, cfg->screen_height,
-                                        cfg->top_inset, cfg->bottom_inset,
-                                        wa.x, wa.y, wa.width, wa.height,
+        int rel_x = (wa.x > 0 || wa.y > 0) ? (wa.x - mon_cfg.mon_x - mon_cfg.left_inset) : 0;
+        int rel_y = (wa.x > 0 || wa.y > 0) ? (wa.y - mon_cfg.mon_y) : 0;
+        client_resolve_initial_geometry(avail_w, mon_cfg.screen_height,
+                                        mon_cfg.top_inset, mon_cfg.bottom_inset,
+                                        rel_x, rel_y, wa.width, wa.height,
                                         1 /* borderless */,
                                         &init_x, &init_y, &win_w, &win_h);
+        init_x += mon_cfg.mon_x + mon_cfg.left_inset;
+        init_y += mon_cfg.mon_y;
     }
 
     client_add(clients, w, CLIENT_FLOATING);
@@ -350,7 +445,7 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
 
     XMapWindow(d, w);
     if (ewmh_window_has_fullscreen_state(d, w)) {
-        ewmh_apply_fullscreen(d, c, cfg, 1);
+        ewmh_apply_fullscreen(d, c, &mon_cfg, 1);
     } else {
         XMoveResizeWindow(d, w, c->x, c->y, c->width, c->height);
     }
@@ -411,8 +506,15 @@ int main(void) {
 
     int screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
-    int screen_w = DisplayWidth(dpy, screen);
-    int screen_h = DisplayHeight(dpy, screen);
+    total_screen_w = DisplayWidth(dpy, screen);
+    total_screen_h = DisplayHeight(dpy, screen);
+
+    int rr_event_base = 0, rr_error_base = 0;
+    int has_xrandr = XRRQueryExtension(dpy, &rr_event_base, &rr_error_base);
+    if (has_xrandr) {
+        XRRSelectInput(dpy, root, RRScreenChangeNotifyMask);
+    }
+    monitor_count = monitors_query_xrandr(dpy, root, monitors, MAX_MONITORS);
 
     XSetErrorHandler(x_error_handler);
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
@@ -467,9 +569,13 @@ int main(void) {
                     PropModeReplace, (unsigned char *)"MUZUwm", 6);
 
     LayoutConfig cfg = {
-        .screen_width = screen_w,
-        .screen_height = screen_h,
+        .mon_x = monitors[0].x,
+        .mon_y = monitors[0].y,
+        .screen_width = monitors[0].width > 0 ? monitors[0].width : total_screen_w,
+        .screen_height = monitors[0].height > 0 ? monitors[0].height : total_screen_h,
         .master_count = 1,
+        .left_inset = 0,
+        .right_inset = 0,
         .top_inset = 0,
         .bottom_inset = 0,
         .current_workspace = 0
@@ -519,7 +625,7 @@ int main(void) {
     }
 
     // Initial Workarea publish
-    strut_apply_workarea(dpy, root, screen_w, screen_h, 0, 0, 0, 0, &cfg);
+    refresh_struts_and_workarea(dpy, strut_list, &cfg);
 
     // Discover existing windows
     Window root_ret, parent_ret, *children = NULL;
@@ -544,9 +650,7 @@ int main(void) {
             }
         }
         XFree(children);
-        int l = 0, r = 0, t = 0, b = 0;
-        strut_calculate_insets(strut_list, screen_w, screen_h, &l, &r, &t, &b);
-        strut_apply_workarea(dpy, root, screen_w, screen_h, l, r, t, b, &cfg);
+        refresh_struts_and_workarea(dpy, strut_list, &cfg);
         reflow_all(dpy, clients, &cfg);
     }
 
@@ -606,7 +710,13 @@ int main(void) {
                 if (alttab_enabled && sym == XK_Tab && (ev.xkey.state & Mod1Mask)) {
                     alttab_populate(dpy, &alttab, clients);
                     if (alttab.app_count > 0) {
-                        alttab_show(dpy, &alttab, screen_w, screen_h);
+                        int m = get_pointer_monitor(dpy, NULL, NULL);
+                        int mw = (monitor_count > 0) ? monitors[m].width : total_screen_w;
+                        int mh = (monitor_count > 0) ? monitors[m].height : total_screen_h;
+                        alttab_show(dpy, &alttab, mw, mh);
+                        if (monitor_count > 0 && alttab.win != None) {
+                            XMoveWindow(dpy, alttab.win, monitors[m].x + alttab.x, monitors[m].y + alttab.y);
+                        }
                         if (alttab.app_count > 1) {
                             if (ev.xkey.state & ShiftMask) alttab_select_prev(&alttab);
                             else alttab_select_next(&alttab);
@@ -644,7 +754,9 @@ int main(void) {
                         }
                     } else if (sym == XK_m || sym == XK_M) {
                         if (focused_win && focused_win->can_fullscreen && !focused_win->is_fullscreen) {
-                            client_toggle_maximize(dpy, focused_win, &cfg);
+                            LayoutConfig mon_cfg;
+                            monitor_layout_for_client(focused_win, &cfg, &mon_cfg);
+                            client_toggle_maximize(dpy, focused_win, &mon_cfg);
                             ewmh_sync_client_state(dpy, focused_win->win, focused_win->is_fullscreen,
                                                    focused_win->is_maximized, focused_win->is_minimized);
                             if (focused_win->frame != None) titlebar_draw(dpy, focused_win, NULL);
@@ -683,7 +795,9 @@ int main(void) {
                             break;
                         case SHORTCUT_ACT_FULLSCREEN:
                             if (focused && focused->can_fullscreen && !focused->is_fullscreen) {
-                                client_toggle_maximize(dpy, focused, &cfg);
+                                LayoutConfig mon_cfg;
+                                monitor_layout_for_client(focused, &cfg, &mon_cfg);
+                                client_toggle_maximize(dpy, focused, &mon_cfg);
                                 ewmh_sync_client_state(dpy, focused->win, focused->is_fullscreen,
                                                        focused->is_maximized, focused->is_minimized);
                                 if (focused->frame != None) titlebar_draw(dpy, focused, NULL);
@@ -748,9 +862,7 @@ int main(void) {
                 if (strut_read_window_property(dpy, w, &sp)) {
                     strut_list_add_or_update(&strut_list, w, &sp);
                     XSelectInput(dpy, w, PropertyChangeMask | StructureNotifyMask);
-                    int l = 0, r = 0, t = 0, b = 0;
-                    strut_calculate_insets(strut_list, screen_w, screen_h, &l, &r, &t, &b);
-                    strut_apply_workarea(dpy, root, screen_w, screen_h, l, r, t, b, &cfg);
+                    refresh_struts_and_workarea(dpy, strut_list, &cfg);
                     XMapWindow(dpy, w);
                     reflow_all(dpy, clients, &cfg);
                 } else {
@@ -816,9 +928,7 @@ int main(void) {
                 } else {
                     // Check if strut window unmapped/crashed - Review Focus #1
                     strut_list_remove(&strut_list, w);
-                    int l = 0, r = 0, t = 0, b = 0;
-                    strut_calculate_insets(strut_list, screen_w, screen_h, &l, &r, &t, &b);
-                    strut_apply_workarea(dpy, root, screen_w, screen_h, l, r, t, b, &cfg);
+                    refresh_struts_and_workarea(dpy, strut_list, &cfg);
                     reflow_all(dpy, clients, &cfg);
                 }
                 break;
@@ -846,9 +956,7 @@ int main(void) {
                     } else {
                         strut_list_remove(&strut_list, w);
                     }
-                    int l = 0, r = 0, t = 0, b = 0;
-                    strut_calculate_insets(strut_list, screen_w, screen_h, &l, &r, &t, &b);
-                    strut_apply_workarea(dpy, root, screen_w, screen_h, l, r, t, b, &cfg);
+                    refresh_struts_and_workarea(dpy, strut_list, &cfg);
                     reflow_all(dpy, clients, &cfg);
                 } else {
                     Client *c = client_find_by_any(clients, w);
@@ -875,7 +983,10 @@ int main(void) {
                         menu_hide(dpy, &desktop_menu);
                         XUngrabPointer(dpy, CurrentTime);
                         if (ev.xbutton.button == Button3) {
-                            menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
+                            int m = monitor_find_for_point(monitors, monitor_count, ev.xbutton.x_root, ev.xbutton.y_root);
+                            int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
+                            int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
+                            menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, mx_end, my_end);
                             XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
                                          GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
                             break;
@@ -884,7 +995,10 @@ int main(void) {
                 }
 
                 if (ev.xbutton.window == root && ev.xbutton.button == Button3) {
-                    menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, screen_w, screen_h);
+                    int m = monitor_find_for_point(monitors, monitor_count, ev.xbutton.x_root, ev.xbutton.y_root);
+                    int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
+                    int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
+                    menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, mx_end, my_end);
                     XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
                                  GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
                     break;
@@ -901,7 +1015,9 @@ int main(void) {
                             client_close(dpy, c->win);
                         } else if (act == TITLEBAR_CLICK_MAXIMIZE) {
                             if (!c->is_fullscreen) {
-                                client_toggle_maximize(dpy, c, &cfg);
+                                LayoutConfig mon_cfg;
+                                monitor_layout_for_client(c, &cfg, &mon_cfg);
+                                client_toggle_maximize(dpy, c, &mon_cfg);
                                 ewmh_sync_client_state(dpy, c->win, c->is_fullscreen,
                                                        c->is_maximized, c->is_minimized);
                                 titlebar_draw(dpy, c, NULL);
@@ -989,10 +1105,17 @@ int main(void) {
 
                         // Review Focus #2: Suppress snap preview on fixed-size windows
                         if (drag_client->can_fullscreen) {
-                            SnapState snap = snap_preview_detect_zone(ev.xmotion.x_root, ev.xmotion.y_root,
-                                                                     screen_w, cfg.top_inset, SNAP_THRESHOLD);
-                            snap_preview_update(dpy, &snap_preview, snap, screen_w, screen_h,
-                                                0, 0, cfg.top_inset, cfg.bottom_inset);
+                            int m = monitor_find_for_point(monitors, monitor_count, ev.xmotion.x_root, ev.xmotion.y_root);
+                            Monitor mon = (monitor_count > 0) ? monitors[m]
+                                : (Monitor){ 0, 0, total_screen_w, total_screen_h, cfg.left_inset, cfg.right_inset, cfg.top_inset, cfg.bottom_inset, 1 };
+                            SnapState snap = snap_preview_detect_zone_in_monitor(
+                                ev.xmotion.x_root, ev.xmotion.y_root,
+                                mon.x, mon.y, mon.width, mon.height,
+                                mon.top_inset, SNAP_THRESHOLD);
+                            snap_preview_update_in_monitor(
+                                dpy, &snap_preview, snap,
+                                mon.x, mon.y, mon.width, mon.height,
+                                mon.left_inset, mon.right_inset, mon.top_inset, mon.bottom_inset);
                         } else {
                             snap_preview_hide(dpy, &snap_preview);
                         }
@@ -1015,11 +1138,24 @@ int main(void) {
                         snap_preview_hide(dpy, &snap_preview);
 
                         if (drag_client->can_fullscreen) {
+                            int m = monitor_find_for_point(monitors, monitor_count, ev.xbutton.x_root, ev.xbutton.y_root);
+                            LayoutConfig mon_cfg = cfg;
+                            if (monitor_count > 0) {
+                                monitor_to_layout_config(&monitors[m], cfg.master_count, cfg.current_workspace, &mon_cfg);
+                            }
                             if (snap == SNAP_TOP) {
-                                client_toggle_maximize(dpy, drag_client, &cfg);
+                                client_toggle_maximize(dpy, drag_client, &mon_cfg);
+                                ewmh_sync_client_state(dpy, drag_client->win, drag_client->is_fullscreen,
+                                                       drag_client->is_maximized, drag_client->is_minimized);
                                 if (drag_client->frame != None) titlebar_draw(dpy, drag_client, NULL);
                                 reflow_all(dpy, clients, &cfg);
                             } else if (snap == SNAP_LEFT || snap == SNAP_RIGHT) {
+                                if (monitor_count > 0) {
+                                    drag_client->x = monitors[m].x + monitors[m].left_inset;
+                                    drag_client->y = monitors[m].y + monitors[m].top_inset;
+                                    drag_client->width = 100;
+                                    drag_client->height = 100;
+                                }
                                 drag_client->mode = CLIENT_TILED;
                                 drag_client->snap_state = snap;
                                 reflow_all(dpy, clients, &cfg);
@@ -1066,7 +1202,9 @@ int main(void) {
                         if (flags.has_fullscreen) {
                             int want = ewmh_resolve_state_action(action, c->is_fullscreen);
                             if (want != c->is_fullscreen) {
-                                ewmh_apply_fullscreen(dpy, c, &cfg, want);
+                                LayoutConfig mon_cfg;
+                                monitor_layout_for_client(c, &cfg, &mon_cfg);
+                                ewmh_apply_fullscreen(dpy, c, &mon_cfg, want);
                                 if (!want) {
                                     reflow_all(dpy, clients, &cfg);
                                 }
@@ -1076,7 +1214,9 @@ int main(void) {
                             c->can_fullscreen && !c->is_fullscreen) {
                             int want = ewmh_resolve_state_action(action, c->is_maximized);
                             if (want != c->is_maximized) {
-                                client_toggle_maximize(dpy, c, &cfg);
+                                LayoutConfig mon_cfg;
+                                monitor_layout_for_client(c, &cfg, &mon_cfg);
+                                client_toggle_maximize(dpy, c, &mon_cfg);
                                 ewmh_sync_client_state(dpy, c->win, c->is_fullscreen,
                                                        c->is_maximized, c->is_minimized);
                                 if (c->frame != None) titlebar_draw(dpy, c, NULL);
@@ -1104,6 +1244,14 @@ int main(void) {
             }
 
             default:
+                if (has_xrandr && ev.type == rr_event_base + RRScreenChangeNotify) {
+                    XRRUpdateConfiguration(&ev);
+                    total_screen_w = DisplayWidth(dpy, screen);
+                    total_screen_h = DisplayHeight(dpy, screen);
+                    monitor_count = monitors_query_xrandr(dpy, root, monitors, MAX_MONITORS);
+                    refresh_struts_and_workarea(dpy, strut_list, &cfg);
+                    reflow_all(dpy, clients, &cfg);
+                }
                 break;
         }
     }

@@ -119,6 +119,22 @@ int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut
     return 0;
 }
 
+void strut_apply_workarea_rect(Display *dpy, Window root, int wa_x, int wa_y, int wa_w, int wa_h) {
+    if (!dpy || root == None) return;
+    if (wa_w < 100) wa_w = 100;
+    if (wa_h < 100) wa_h = 100;
+
+    Atom net_workarea = XInternAtom(dpy, "_NET_WORKAREA", False);
+    unsigned long workarea[4] = {
+        (unsigned long)(wa_x > 0 ? wa_x : 0),
+        (unsigned long)(wa_y > 0 ? wa_y : 0),
+        (unsigned long)wa_w,
+        (unsigned long)wa_h
+    };
+    XChangeProperty(dpy, root, net_workarea, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)workarea, 4);
+}
+
 void strut_apply_workarea(Display *dpy, Window root, int screen_w, int screen_h,
                           int left, int right, int top, int bottom,
                           LayoutConfig *cfg) {
@@ -128,21 +144,9 @@ void strut_apply_workarea(Display *dpy, Window root, int screen_w, int screen_h,
     }
     if (!dpy || root == None) return;
 
-    Atom net_workarea = XInternAtom(dpy, "_NET_WORKAREA", False);
     int wa_x = left;
     int wa_y = top;
     int wa_w = screen_w - left - right;
     int wa_h = screen_h - top - bottom;
-    if (wa_w < 100) wa_w = 100;
-    if (wa_h < 100) wa_h = 100;
-
-    unsigned long workarea[4] = {
-        (unsigned long)wa_x,
-        (unsigned long)wa_y,
-        (unsigned long)wa_w,
-        (unsigned long)wa_h
-    };
-
-    XChangeProperty(dpy, root, net_workarea, XA_CARDINAL, 32,
-                    PropModeReplace, (unsigned char *)workarea, 4);
+    strut_apply_workarea_rect(dpy, root, wa_x, wa_y, wa_w, wa_h);
 }

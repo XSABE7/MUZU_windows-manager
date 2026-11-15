@@ -89,6 +89,26 @@ int main(void) {
 
     free_clients(&slot_head);
 
+    // Test 7: Multi-monitor layout offset and left/right insets
+    LayoutConfig mon_cfg = {
+        .mon_x = 1920,
+        .mon_y = 0,
+        .screen_width = 1920,
+        .screen_height = 1080,
+        .master_count = 1,
+        .left_inset = 10,
+        .right_inset = 0,
+        .top_inset = 32,
+        .bottom_inset = 0,
+        .current_workspace = 0
+    };
+    Client *mon_head = NULL;
+    client_add(&mon_head, 301, CLIENT_TILED);
+    layout_calculate(&mon_cfg, mon_head, 1);
+    assert(mon_head->x == 1930 && mon_head->y == 32);
+    assert(mon_head->width == 1910 && mon_head->height == 1048);
+    free_clients(&mon_head);
+
     printf("test_layout passed!\n");
     return 0;
 }
