@@ -14,6 +14,7 @@ typedef enum {
     SHORTCUT_ACT_FULLSCREEN,
     SHORTCUT_ACT_FLOAT,
     SHORTCUT_ACT_CLOSE,
+    SHORTCUT_ACT_MINIMIZE,
     SHORTCUT_ACT_LAUNCHER,
     SHORTCUT_ACT_EXEC
 } ShortcutActionType;
@@ -37,6 +38,7 @@ void config_rules_ensure_files(void);
 int config_get_setting(const char *key, char *out, size_t out_len);
 int config_get_master_count(void);
 int config_is_ricewm_enabled(void);
+int config_is_alttab_enabled(void);
 int config_get_desktop_menu_mode(char *out, size_t out_len);
 
 // Returns 1 if any non-empty entry in `path` equals (case-insensitive) res_name, res_class or title

@@ -7,7 +7,6 @@
 #include <X11/Xatom.h>
 #include <cairo/cairo-xlib.h>
 #include "alttab.h"
-#include "icon_fetcher.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -116,9 +115,6 @@ void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
             if (c->icon_surface) {
                 app->icon_surface = c->icon_surface;
                 app->owns_icon_surface = 0;
-            } else if (dpy) {
-                app->icon_surface = icon_load_surface(cls);
-                app->owns_icon_surface = (app->icon_surface != NULL);
             }
             at->app_count++;
         }

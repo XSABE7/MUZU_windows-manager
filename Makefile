@@ -8,12 +8,12 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext xcursor fontconfig)
 LIBS = $(shell pkg-config --libs cairo x11 xext xcursor fontconfig) -lm
 
-SRCS = src/wm.c src/titlebar.c src/client_props.c src/config_rules.c src/struts.c src/snap_preview.c src/menu.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/client_props.c src/config_rules.c src/struts.c src/snap_preview.c src/menu.c src/alttab.c src/main.c
 OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_config_rules test_menu
+tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_config_rules test_menu test_alttab
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -39,6 +39,9 @@ test_config_rules: tests/test_config_rules.c src/config_rules.c
 test_menu: tests/test_menu.c src/menu.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+test_alttab: tests/test_alttab.c src/alttab.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
 -include $(OBJS:.o=.d)
 
 muzuwm: $(OBJS)
@@ -49,24 +52,22 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_config_rules test_menu muzuwm
+	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_config_rules test_menu test_alttab muzuwm
 
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 muzuwm $(DESTDIR)$(BINDIR)/muzuwm
 	install -m 755 bin/muzu-session $(DESTDIR)$(BINDIR)/muzu-session
+	install -m 755 muzuwm_settings.py $(DESTDIR)$(BINDIR)/muzuwm-settings
 	install -d $(DESTDIR)$(XSESSIONSDIR)
 	install -m 644 desktop/muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
 	install -d $(DESTDIR)/etc/muzuwm
 	install -m 644 config/muzuwm.conf $(DESTDIR)/etc/muzuwm/muzuwm.conf
-	install -m 644 config/picom.conf $(DESTDIR)/etc/muzuwm/picom.conf
-	install -m 644 config/panel/tint2rc $(DESTDIR)/etc/muzuwm/tint2rc
-	install -d $(DESTDIR)/etc/muzuwm/rofi
-	install -m 644 config/rofi/config.rasi $(DESTDIR)/etc/muzuwm/rofi/config.rasi
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm
 	rm -f $(DESTDIR)$(BINDIR)/muzu-session
+	rm -f $(DESTDIR)$(BINDIR)/muzuwm-settings
 	rm -f $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
 	rm -rf $(DESTDIR)/etc/muzuwm
 

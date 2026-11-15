@@ -70,19 +70,20 @@ void config_rules_ensure_files(void) {
         "Super+Down = float\n"
         "Super+Return = exec wezterm\n"
         "Super+b = exec google-chrome\n"
-        "Super+q = close_window\n");
+        "Super+q = close_window\n"
+        "Super+x = close_window\n"
+        "Super+m = fullscreen\n"
+        "Super+z = minimize\n");
     write_default("settings.conf",
         "# MUZUwm Core & Rice Settings\n"
         "master_count = 1\n"
         "enable_ricewm = 1\n"
+        "enable_alttab = 1\n"
         "desktop_menu_mode = radial\n");
 }
 
-int config_get_setting(const char *key, char *out, size_t out_len) {
-    if (!key || !out || out_len == 0) return 0;
-    out[0] = '\0';
-    char path[600];
-    if (!config_path("settings.conf", path, sizeof(path))) return 0;
+static int read_setting_from_file(const char *path, const char *key, char *out, size_t out_len) {
+    if (!path || !key || !out || out_len == 0) return 0;
     FILE *f = fopen(path, "r");
     if (!f) return 0;
     int found = 0;
@@ -103,6 +104,24 @@ int config_get_setting(const char *key, char *out, size_t out_len) {
     return found;
 }
 
+int config_get_setting(const char *key, char *out, size_t out_len) {
+    if (!key || !out || out_len == 0) return 0;
+    out[0] = '\0';
+    char path[600];
+    if (config_path("settings.conf", path, sizeof(path)) &&
+        read_setting_from_file(path, key, out, out_len)) {
+        return 1;
+    }
+    if (config_path("muzuwm.conf", path, sizeof(path)) &&
+        read_setting_from_file(path, key, out, out_len)) {
+        return 1;
+    }
+    if (read_setting_from_file("/etc/muzuwm/muzuwm.conf", key, out, out_len)) {
+        return 1;
+    }
+    return 0;
+}
+
 int config_get_master_count(void) {
     char value[32];
     if (!config_get_setting("master_count", value, sizeof(value))) return 1;
@@ -116,6 +135,16 @@ int config_is_ricewm_enabled(void) {
     char val[32];
     if (!config_get_setting("enable_ricewm", val, sizeof(val))) return 1;
     if (strcasecmp(val, "0") == 0 || strcasecmp(val, "false") == 0 || strcasecmp(val, "no") == 0) {
+        return 0;
+    }
+    return 1;
+}
+
+int config_is_alttab_enabled(void) {
+    char val[32];
+    if (!config_get_setting("enable_alttab", val, sizeof(val))) return 1;
+    if (strcasecmp(val, "0") == 0 || strcasecmp(val, "false") == 0 ||
+        strcasecmp(val, "no") == 0 || strcasecmp(val, "off") == 0) {
         return 0;
     }
     return 1;
@@ -260,9 +289,10 @@ static int parse_action(char *action, ShortcutActionType *type, char *cmd, size_
     if (strcasecmp(action, "none") == 0) *type = SHORTCUT_ACT_NONE;
     else if (strcmp(action, "tile_left") == 0) *type = SHORTCUT_ACT_TILE_LEFT;
     else if (strcmp(action, "tile_right") == 0) *type = SHORTCUT_ACT_TILE_RIGHT;
-    else if (strcmp(action, "fullscreen") == 0) *type = SHORTCUT_ACT_FULLSCREEN;
+    else if (strcmp(action, "fullscreen") == 0 || strcmp(action, "maximize") == 0) *type = SHORTCUT_ACT_FULLSCREEN;
     else if (strcmp(action, "float") == 0) *type = SHORTCUT_ACT_FLOAT;
     else if (strcmp(action, "close_window") == 0 || strcmp(action, "close") == 0) *type = SHORTCUT_ACT_CLOSE;
+    else if (strcmp(action, "minimize") == 0 || strcmp(action, "hide") == 0) *type = SHORTCUT_ACT_MINIMIZE;
     else if (strcmp(action, "launcher") == 0) *type = SHORTCUT_ACT_LAUNCHER;
     else if (strncmp(action, "exec", 4) == 0 && isspace((unsigned char)action[4])) {
         char *c = trim(action + 4);
@@ -304,6 +334,9 @@ void shortcuts_init_defaults(ShortcutConfig *sc) {
     shortcuts_set(sc, Mod4Mask, XK_Return, SHORTCUT_ACT_EXEC, "wezterm");
     shortcuts_set(sc, Mod4Mask, XK_b, SHORTCUT_ACT_EXEC, "google-chrome");
     shortcuts_set(sc, Mod4Mask, XK_q, SHORTCUT_ACT_CLOSE, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_x, SHORTCUT_ACT_CLOSE, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_m, SHORTCUT_ACT_FULLSCREEN, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_z, SHORTCUT_ACT_MINIMIZE, NULL);
 }
 
 void shortcuts_load_file(ShortcutConfig *sc, const char *path) {
