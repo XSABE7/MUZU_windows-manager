@@ -45,8 +45,13 @@ typedef struct Client {
     int is_csd;
     int is_minimized;
     int is_maximized;
+    int is_fullscreen;
     int saved_x, saved_y, saved_width, saved_height;
     ClientMode saved_mode;
+    int saved_fs_x, saved_fs_y, saved_fs_w, saved_fs_h;
+    ClientMode saved_fs_mode;
+    SnapState saved_fs_snap;
+    int saved_fs_maximized;
     char title[256];
     cairo_surface_t *titlebar_surface;
     cairo_surface_t *titlebar_cache;

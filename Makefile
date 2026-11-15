@@ -8,12 +8,12 @@ CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
 CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext xcursor fontconfig)
 LIBS = $(shell pkg-config --libs cairo x11 xext xcursor fontconfig) -lm
 
-SRCS = src/wm.c src/titlebar.c src/client_props.c src/config_rules.c src/struts.c src/snap_preview.c src/menu.c src/alttab.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/client_props.c src/ewmh.c src/config_rules.c src/struts.c src/snap_preview.c src/menu.c src/alttab.c src/main.c
 OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_config_rules test_menu test_alttab
+tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_config_rules test_menu test_alttab
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -31,6 +31,9 @@ test_layout: tests/test_layout.c src/wm.c src/titlebar.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_client_props: tests/test_client_props.c src/client_props.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+test_ewmh: tests/test_ewmh.c src/ewmh.c src/wm.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_config_rules: tests/test_config_rules.c src/config_rules.c
@@ -52,7 +55,7 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_config_rules test_menu test_alttab muzuwm
+	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_config_rules test_menu test_alttab muzuwm
 
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)

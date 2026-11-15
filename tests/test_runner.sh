@@ -12,6 +12,7 @@ make -s tests muzuwm
 ./test_snap_preview
 ./test_layout
 ./test_client_props
+./test_ewmh
 ./test_config_rules
 ./test_menu
 ./test_alttab

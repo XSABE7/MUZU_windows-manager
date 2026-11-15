@@ -10,6 +10,7 @@
 #include "wm.h"
 #include "titlebar.h"
 #include "client_props.h"
+#include "ewmh.h"
 #include "config_rules.h"
 #include "struts.h"
 #include "snap_preview.h"
@@ -153,7 +154,7 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
     layout_calculate(cfg, clients, count);
 
     for (Client *c = clients; c; c = c->next) {
-        if (c->is_minimized || c->workspace != cfg->current_workspace) continue;
+        if (c->is_minimized || c->is_fullscreen || c->workspace != cfg->current_workspace) continue;
         if (c->mode == CLIENT_TILED || c->is_maximized) {
             if (c->frame != None) {
                 int ch = c->height - TITLEBAR_HEIGHT;
@@ -200,6 +201,8 @@ static void activate_client(Display *d, Client *target_c, Client *clients, Layou
         if (target_c->frame != None && target_c->win != None) {
             XMapWindow(d, target_c->win);
         }
+        ewmh_sync_client_state(d, target_c->win, target_c->is_fullscreen,
+                               target_c->is_maximized, target_c->is_minimized);
         raise_client_with_transients(d, target_c, clients);
         set_focused_client(d, target_c, clients);
         reflow_all(d, clients, cfg);
@@ -207,6 +210,29 @@ static void activate_client(Display *d, Client *target_c, Client *clients, Layou
         raise_client_with_transients(d, target_c, clients);
         set_focused_client(d, target_c, clients);
     }
+}
+
+static void minimize_client(Display *d, Client *c, Client *clients, LayoutConfig *cfg) {
+    if (!d || !c || c->is_minimized) return;
+    c->is_minimized = 1;
+    Window unmap_target = c->frame != None ? c->frame : c->win;
+    XUnmapWindow(d, unmap_target);
+    if (c->frame != None && c->win != None) {
+        XUnmapWindow(d, c->win);
+    }
+    ewmh_sync_client_state(d, c->win, c->is_fullscreen, c->is_maximized, c->is_minimized);
+    if (c->is_focused) {
+        c->is_focused = 0;
+        Client *next_focus = NULL;
+        for (Client *curr = clients; curr; curr = curr->next) {
+            if (!curr->is_minimized && curr->workspace == cfg->current_workspace) {
+                next_focus = curr;
+                break;
+            }
+        }
+        set_focused_client(d, next_focus, clients);
+    }
+    reflow_all(d, clients, cfg);
 }
 
 static void client_call_back_slot(Display *d, Client *clients, LayoutConfig *cfg, int slot) {
@@ -323,7 +349,11 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
     }
 
     XMapWindow(d, w);
-    XMoveResizeWindow(d, w, c->x, c->y, c->width, c->height);
+    if (ewmh_window_has_fullscreen_state(d, w)) {
+        ewmh_apply_fullscreen(d, c, cfg, 1);
+    } else {
+        XMoveResizeWindow(d, w, c->x, c->y, c->width, c->height);
+    }
 
     set_focused_client(d, c, *clients);
     update_ewmh_client_list(d, *clients);
@@ -405,6 +435,12 @@ int main(void) {
     Atom net_wm_type_dialog = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
     Atom net_wm_type_splash = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_SPLASH", False);
     Atom net_wm_type_utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+    Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+    Atom net_wm_state_fullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+    Atom net_wm_state_max_horz = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    Atom net_wm_state_max_vert = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    Atom net_wm_state_hidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+    Atom net_close_window = XInternAtom(dpy, "_NET_CLOSE_WINDOW", False);
     Atom utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
     Atom muzu_reload_settings = XInternAtom(dpy, "_MUZU_RELOAD_SETTINGS", False);
 
@@ -413,7 +449,10 @@ int main(void) {
                          net_workarea, net_active, net_wm_name,
                          net_wm_window_type, net_wm_type_desktop, net_wm_type_dock,
                          net_wm_type_notify, net_wm_type_dialog, net_wm_type_splash,
-                         net_wm_type_utility };
+                         net_wm_type_utility,
+                         net_wm_state, net_wm_state_fullscreen,
+                         net_wm_state_max_horz, net_wm_state_max_vert,
+                         net_wm_state_hidden, net_close_window };
     XChangeProperty(dpy, root, net_supported, XA_ATOM, 32, PropModeReplace,
                     (unsigned char *)supported, sizeof(supported) / sizeof(Atom));
 
@@ -604,30 +643,17 @@ int main(void) {
                             break;
                         }
                     } else if (sym == XK_m || sym == XK_M) {
-                        if (focused_win && focused_win->can_fullscreen) {
+                        if (focused_win && focused_win->can_fullscreen && !focused_win->is_fullscreen) {
                             client_toggle_maximize(dpy, focused_win, &cfg);
+                            ewmh_sync_client_state(dpy, focused_win->win, focused_win->is_fullscreen,
+                                                   focused_win->is_maximized, focused_win->is_minimized);
                             if (focused_win->frame != None) titlebar_draw(dpy, focused_win, NULL);
                             reflow_all(dpy, clients, &cfg);
                             break;
                         }
                     } else if (sym == XK_z || sym == XK_Z) {
                         if (focused_win) {
-                            focused_win->is_minimized = 1;
-                            Window unmap_target = focused_win->frame != None ? focused_win->frame : focused_win->win;
-                            XUnmapWindow(dpy, unmap_target);
-                            if (focused_win->frame != None && focused_win->win != None) {
-                                XUnmapWindow(dpy, focused_win->win);
-                            }
-                            focused_win->is_focused = 0;
-                            Client *next_focus = NULL;
-                            for (Client *curr = clients; curr; curr = curr->next) {
-                                if (!curr->is_minimized && curr->workspace == cfg.current_workspace) {
-                                    next_focus = curr;
-                                    break;
-                                }
-                            }
-                            set_focused_client(dpy, next_focus, clients);
-                            reflow_all(dpy, clients, &cfg);
+                            minimize_client(dpy, focused_win, clients, &cfg);
                             break;
                         }
                     }
@@ -656,8 +682,10 @@ int main(void) {
                             }
                             break;
                         case SHORTCUT_ACT_FULLSCREEN:
-                            if (focused && focused->can_fullscreen) {
+                            if (focused && focused->can_fullscreen && !focused->is_fullscreen) {
                                 client_toggle_maximize(dpy, focused, &cfg);
+                                ewmh_sync_client_state(dpy, focused->win, focused->is_fullscreen,
+                                                       focused->is_maximized, focused->is_minimized);
                                 if (focused->frame != None) titlebar_draw(dpy, focused, NULL);
                                 reflow_all(dpy, clients, &cfg);
                             }
@@ -674,22 +702,7 @@ int main(void) {
                             break;
                         case SHORTCUT_ACT_MINIMIZE:
                             if (focused) {
-                                focused->is_minimized = 1;
-                                Window unmap_target = focused->frame != None ? focused->frame : focused->win;
-                                XUnmapWindow(dpy, unmap_target);
-                                if (focused->frame != None && focused->win != None) {
-                                    XUnmapWindow(dpy, focused->win);
-                                }
-                                focused->is_focused = 0;
-                                Client *next_focus = NULL;
-                                for (Client *curr = clients; curr; curr = curr->next) {
-                                    if (!curr->is_minimized && curr->workspace == cfg.current_workspace) {
-                                        next_focus = curr;
-                                        break;
-                                    }
-                                }
-                                set_focused_client(dpy, next_focus, clients);
-                                reflow_all(dpy, clients, &cfg);
+                                minimize_client(dpy, focused, clients, &cfg);
                             }
                             break;
                         case SHORTCUT_ACT_LAUNCHER:
@@ -887,29 +900,15 @@ int main(void) {
                         if (act == TITLEBAR_CLICK_CLOSE) {
                             client_close(dpy, c->win);
                         } else if (act == TITLEBAR_CLICK_MAXIMIZE) {
-                            client_toggle_maximize(dpy, c, &cfg);
-                            titlebar_draw(dpy, c, NULL);
-                            reflow_all(dpy, clients, &cfg);
+                            if (!c->is_fullscreen) {
+                                client_toggle_maximize(dpy, c, &cfg);
+                                ewmh_sync_client_state(dpy, c->win, c->is_fullscreen,
+                                                       c->is_maximized, c->is_minimized);
+                                titlebar_draw(dpy, c, NULL);
+                                reflow_all(dpy, clients, &cfg);
+                            }
                         } else if (act == TITLEBAR_CLICK_MINIMIZE) {
-                            // 'Z': Make window disappear
-                            c->is_minimized = 1;
-                            Window unmap_target = c->frame != None ? c->frame : c->win;
-                            XUnmapWindow(dpy, unmap_target);
-                            if (c->frame != None && c->win != None) {
-                                XUnmapWindow(dpy, c->win);
-                            }
-                            if (c->is_focused) {
-                                c->is_focused = 0;
-                                Client *next_focus = NULL;
-                                for (Client *curr = clients; curr; curr = curr->next) {
-                                    if (!curr->is_minimized) {
-                                        next_focus = curr;
-                                        break;
-                                    }
-                                }
-                                set_focused_client(dpy, next_focus, clients);
-                            }
-                            reflow_all(dpy, clients, &cfg);
+                            minimize_client(dpy, c, clients, &cfg);
                         } else if (ev.xbutton.button == Button1) {
                             drag_client = c;
                             drag_start_x = ev.xbutton.x_root;
@@ -1045,6 +1044,61 @@ int main(void) {
                 Client *c = client_find_by_any(clients, ev.xexpose.window);
                 if (c && c->frame != None && ev.xexpose.window == c->frame) {
                     titlebar_draw(dpy, c, NULL);
+                }
+                break;
+            }
+
+            case ClientMessage: {
+                XClientMessageEvent *cm = &ev.xclient;
+                if (cm->message_type == net_active) {
+                    Client *c = client_find_by_any(clients, cm->window);
+                    if (c) {
+                        activate_client(dpy, c, clients, &cfg);
+                    }
+                } else if (cm->message_type == net_wm_state) {
+                    Client *c = client_find_by_any(clients, cm->window);
+                    if (c) {
+                        EwmhStateFlags flags = ewmh_parse_state_atoms(
+                            (Atom)cm->data.l[1], (Atom)cm->data.l[2],
+                            net_wm_state_fullscreen, net_wm_state_max_horz,
+                            net_wm_state_max_vert, net_wm_state_hidden);
+                        long action = cm->data.l[0];
+                        if (flags.has_fullscreen) {
+                            int want = ewmh_resolve_state_action(action, c->is_fullscreen);
+                            if (want != c->is_fullscreen) {
+                                ewmh_apply_fullscreen(dpy, c, &cfg, want);
+                                if (!want) {
+                                    reflow_all(dpy, clients, &cfg);
+                                }
+                            }
+                        }
+                        if ((flags.has_max_horz || flags.has_max_vert) &&
+                            c->can_fullscreen && !c->is_fullscreen) {
+                            int want = ewmh_resolve_state_action(action, c->is_maximized);
+                            if (want != c->is_maximized) {
+                                client_toggle_maximize(dpy, c, &cfg);
+                                ewmh_sync_client_state(dpy, c->win, c->is_fullscreen,
+                                                       c->is_maximized, c->is_minimized);
+                                if (c->frame != None) titlebar_draw(dpy, c, NULL);
+                                reflow_all(dpy, clients, &cfg);
+                            }
+                        }
+                        if (flags.has_hidden) {
+                            int want = ewmh_resolve_state_action(action, c->is_minimized);
+                            if (want != c->is_minimized) {
+                                if (want) {
+                                    minimize_client(dpy, c, clients, &cfg);
+                                } else {
+                                    activate_client(dpy, c, clients, &cfg);
+                                }
+                            }
+                        }
+                    }
+                } else if (cm->message_type == net_close_window) {
+                    Client *c = client_find_by_any(clients, cm->window);
+                    if (c) {
+                        client_close(dpy, c->win);
+                    }
                 }
                 break;
             }

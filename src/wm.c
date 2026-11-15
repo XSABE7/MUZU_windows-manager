@@ -15,11 +15,19 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->is_csd = 0;
     c->is_minimized = 0;
     c->is_maximized = 0;
+    c->is_fullscreen = 0;
     c->saved_x = 0;
     c->saved_y = 0;
     c->saved_width = 100;
     c->saved_height = 100;
     c->saved_mode = mode;
+    c->saved_fs_x = 0;
+    c->saved_fs_y = 0;
+    c->saved_fs_w = 100;
+    c->saved_fs_h = 100;
+    c->saved_fs_mode = CLIENT_FLOATING;
+    c->saved_fs_snap = SNAP_NONE;
+    c->saved_fs_maximized = 0;
     c->title[0] = '\0';
     c->titlebar_surface = NULL;
     c->titlebar_cache = NULL;
@@ -111,7 +119,7 @@ Client *client_find_by_slot(Client *head, int slot) {
 int client_count_tiled(Client *head) {
     int count = 0;
     for (Client *curr = head; curr; curr = curr->next) {
-        if (curr->mode == CLIENT_TILED && !curr->is_minimized) count++;
+        if (curr->mode == CLIENT_TILED && !curr->is_minimized && !curr->is_fullscreen) count++;
     }
     return count;
 }
@@ -121,7 +129,7 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
     Client *tiled[128];
     int idx = 0;
     for (Client *curr = head; curr && idx < 128; curr = curr->next) {
-        if (curr->mode == CLIENT_TILED && !curr->is_minimized &&
+        if (curr->mode == CLIENT_TILED && !curr->is_minimized && !curr->is_fullscreen &&
             curr->workspace == cfg->current_workspace) {
             tiled[idx++] = curr;
         }
