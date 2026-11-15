@@ -51,7 +51,7 @@ static void sanitize_app_name(const char *raw, char *out, size_t out_sz) {
     }
 }
 
-void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
+void alttab_populate_workspace(Display *dpy, AltTab *at, Client *clients, int workspace) {
     if (!at) return;
 
     // Free previously owned icon surfaces
@@ -67,6 +67,7 @@ void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
     at->selected_idx = 0;
 
     for (Client *c = clients; c; c = c->next) {
+        if (workspace >= 0 && c->workspace != workspace) continue;
         char cls[128] = {0};
         char name[128] = {0};
 
@@ -119,6 +120,10 @@ void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
             at->app_count++;
         }
     }
+}
+
+void alttab_populate(Display *dpy, AltTab *at, Client *clients) {
+    alttab_populate_workspace(dpy, at, clients, -1);
 }
 
 void alttab_calculate_geometry(AltTab *at, int screen_w, int screen_h) {

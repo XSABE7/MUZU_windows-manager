@@ -14,6 +14,7 @@ make -s tests muzuwm
 ./test_client_props
 ./test_ewmh
 ./test_monitors
+./test_workspace
 ./test_config_rules
 ./test_menu
 ./test_alttab

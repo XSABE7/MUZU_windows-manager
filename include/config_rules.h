@@ -16,13 +16,18 @@ typedef enum {
     SHORTCUT_ACT_CLOSE,
     SHORTCUT_ACT_MINIMIZE,
     SHORTCUT_ACT_LAUNCHER,
-    SHORTCUT_ACT_EXEC
+    SHORTCUT_ACT_EXEC,
+    SHORTCUT_ACT_WS_SWITCH,
+    SHORTCUT_ACT_WS_MOVE,
+    SHORTCUT_ACT_WS_NEXT,
+    SHORTCUT_ACT_WS_PREV
 } ShortcutActionType;
 
 typedef struct {
     unsigned int mod_mask;
     KeySym keysym;
     ShortcutActionType type;
+    int target_ws;
     char exec_cmd[256];
 } ShortcutBinding;
 
@@ -37,6 +42,7 @@ void config_rules_ensure_files(void);
 /* Values managed by the Settings app in ~/.config/muzuwm/settings.conf. */
 int config_get_setting(const char *key, char *out, size_t out_len);
 int config_get_master_count(void);
+int config_get_workspace_count(void);
 int config_is_ricewm_enabled(void);
 int config_is_alttab_enabled(void);
 int config_get_desktop_menu_mode(char *out, size_t out_len);

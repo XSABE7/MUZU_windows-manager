@@ -64,6 +64,7 @@ void config_rules_ensure_files(void) {
         "# MUZUwm keyboard shortcuts:  MODS+KEY = ACTION\n"
         "# Modifiers: Super, Alt, Ctrl, Shift\n"
         "# Actions: tile_left tile_right fullscreen float close_window launcher exec <command>\n"
+        "#          workspace_1..workspace_10 move_workspace_1..move_workspace_10 workspace_next workspace_prev\n"
         "Super+Left = tile_left\n"
         "Super+Right = tile_right\n"
         "Super+Up = fullscreen\n"
@@ -73,10 +74,21 @@ void config_rules_ensure_files(void) {
         "Super+q = close_window\n"
         "Super+x = close_window\n"
         "Super+m = fullscreen\n"
-        "Super+z = minimize\n");
+        "Super+z = minimize\n"
+        "Super+Ctrl+1 = workspace_1\n"
+        "Super+Ctrl+2 = workspace_2\n"
+        "Super+Ctrl+3 = workspace_3\n"
+        "Super+Ctrl+4 = workspace_4\n"
+        "Super+Shift+1 = move_workspace_1\n"
+        "Super+Shift+2 = move_workspace_2\n"
+        "Super+Shift+3 = move_workspace_3\n"
+        "Super+Shift+4 = move_workspace_4\n"
+        "Super+Page_Up = workspace_prev\n"
+        "Super+Page_Down = workspace_next\n");
     write_default("settings.conf",
         "# MUZUwm Core & Rice Settings\n"
         "master_count = 1\n"
+        "workspace_count = 4\n"
         "enable_ricewm = 1\n"
         "enable_alttab = 1\n"
         "desktop_menu_mode = radial\n");
@@ -128,6 +140,17 @@ int config_get_master_count(void) {
     char *end = NULL;
     long count = strtol(value, &end, 10);
     if (!end || *end != '\0' || count < 1 || count > 8) return 1;
+    return (int)count;
+}
+
+int config_get_workspace_count(void) {
+    char value[32];
+    if (!config_get_setting("workspace_count", value, sizeof(value))) return 4;
+    char *end = NULL;
+    long count = strtol(value, &end, 10);
+    if (!end || *end != '\0') return 4;
+    if (count < 1) return 1;
+    if (count > 10) return 10;
     return (int)count;
 }
 
@@ -247,6 +270,8 @@ static KeySym parse_key_name(const char *name) {
         {"enter", XK_Return}, {"return", XK_Return}, {"esc", XK_Escape},
         {"escape", XK_Escape}, {"space", XK_space}, {"tab", XK_Tab},
         {"left", XK_Left}, {"right", XK_Right}, {"up", XK_Up}, {"down", XK_Down},
+        {"page_up", XK_Page_Up}, {"page_down", XK_Page_Down},
+        {"prior", XK_Prior}, {"next", XK_Next},
     };
     for (size_t i = 0; i < sizeof(aliases) / sizeof(aliases[0]); i++) {
         if (strcasecmp(name, aliases[i].alias) == 0) return aliases[i].sym;
@@ -284,8 +309,9 @@ static int parse_combo(char *combo, unsigned int *mods, KeySym *sym) {
     return *sym != NoSymbol;
 }
 
-static int parse_action(char *action, ShortcutActionType *type, char *cmd, size_t cmd_len) {
+static int parse_action(char *action, ShortcutActionType *type, int *target_ws, char *cmd, size_t cmd_len) {
     cmd[0] = '\0';
+    *target_ws = 0;
     if (strcasecmp(action, "none") == 0) *type = SHORTCUT_ACT_NONE;
     else if (strcmp(action, "tile_left") == 0) *type = SHORTCUT_ACT_TILE_LEFT;
     else if (strcmp(action, "tile_right") == 0) *type = SHORTCUT_ACT_TILE_RIGHT;
@@ -294,7 +320,21 @@ static int parse_action(char *action, ShortcutActionType *type, char *cmd, size_
     else if (strcmp(action, "close_window") == 0 || strcmp(action, "close") == 0) *type = SHORTCUT_ACT_CLOSE;
     else if (strcmp(action, "minimize") == 0 || strcmp(action, "hide") == 0) *type = SHORTCUT_ACT_MINIMIZE;
     else if (strcmp(action, "launcher") == 0) *type = SHORTCUT_ACT_LAUNCHER;
-    else if (strncmp(action, "exec", 4) == 0 && isspace((unsigned char)action[4])) {
+    else if (strcmp(action, "workspace_next") == 0) *type = SHORTCUT_ACT_WS_NEXT;
+    else if (strcmp(action, "workspace_prev") == 0) *type = SHORTCUT_ACT_WS_PREV;
+    else if (strncmp(action, "workspace_", 10) == 0) {
+        char *end = NULL;
+        long n = strtol(action + 10, &end, 10);
+        if (!end || *end != '\0' || n < 1 || n > 10) return 0;
+        *type = SHORTCUT_ACT_WS_SWITCH;
+        *target_ws = (int)(n - 1);
+    } else if (strncmp(action, "move_workspace_", 15) == 0) {
+        char *end = NULL;
+        long n = strtol(action + 15, &end, 10);
+        if (!end || *end != '\0' || n < 1 || n > 10) return 0;
+        *type = SHORTCUT_ACT_WS_MOVE;
+        *target_ws = (int)(n - 1);
+    } else if (strncmp(action, "exec", 4) == 0 && isspace((unsigned char)action[4])) {
         char *c = trim(action + 4);
         if (c[0] == '\0') return 0;
         snprintf(cmd, cmd_len, "%s", c);
@@ -305,7 +345,8 @@ static int parse_action(char *action, ShortcutActionType *type, char *cmd, size_
     return 1;
 }
 
-static void shortcuts_set(ShortcutConfig *sc, unsigned int mods, KeySym sym, ShortcutActionType type, const char *cmd) {
+static void shortcuts_set(ShortcutConfig *sc, unsigned int mods, KeySym sym,
+                          ShortcutActionType type, int target_ws, const char *cmd) {
     KeySym lo = lower_keysym(sym);
     int idx = -1;
     for (int i = 0; i < sc->count; i++) {
@@ -321,22 +362,33 @@ static void shortcuts_set(ShortcutConfig *sc, unsigned int mods, KeySym sym, Sho
     sc->bindings[idx].mod_mask = mods;
     sc->bindings[idx].keysym = sym;
     sc->bindings[idx].type = type;
+    sc->bindings[idx].target_ws = target_ws;
     snprintf(sc->bindings[idx].exec_cmd, sizeof(sc->bindings[idx].exec_cmd), "%s", cmd ? cmd : "");
 }
 
 void shortcuts_init_defaults(ShortcutConfig *sc) {
     if (!sc) return;
     sc->count = 0;
-    shortcuts_set(sc, Mod4Mask, XK_Left, SHORTCUT_ACT_TILE_LEFT, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_Right, SHORTCUT_ACT_TILE_RIGHT, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_Up, SHORTCUT_ACT_FULLSCREEN, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_Down, SHORTCUT_ACT_FLOAT, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_Return, SHORTCUT_ACT_EXEC, "wezterm");
-    shortcuts_set(sc, Mod4Mask, XK_b, SHORTCUT_ACT_EXEC, "google-chrome");
-    shortcuts_set(sc, Mod4Mask, XK_q, SHORTCUT_ACT_CLOSE, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_x, SHORTCUT_ACT_CLOSE, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_m, SHORTCUT_ACT_FULLSCREEN, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_z, SHORTCUT_ACT_MINIMIZE, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Left, SHORTCUT_ACT_TILE_LEFT, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Right, SHORTCUT_ACT_TILE_RIGHT, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Up, SHORTCUT_ACT_FULLSCREEN, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Down, SHORTCUT_ACT_FLOAT, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Return, SHORTCUT_ACT_EXEC, 0, "wezterm");
+    shortcuts_set(sc, Mod4Mask, XK_b, SHORTCUT_ACT_EXEC, 0, "google-chrome");
+    shortcuts_set(sc, Mod4Mask, XK_q, SHORTCUT_ACT_CLOSE, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_x, SHORTCUT_ACT_CLOSE, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_m, SHORTCUT_ACT_FULLSCREEN, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_z, SHORTCUT_ACT_MINIMIZE, 0, NULL);
+    shortcuts_set(sc, Mod4Mask | ControlMask, XK_1, SHORTCUT_ACT_WS_SWITCH, 0, NULL);
+    shortcuts_set(sc, Mod4Mask | ControlMask, XK_2, SHORTCUT_ACT_WS_SWITCH, 1, NULL);
+    shortcuts_set(sc, Mod4Mask | ControlMask, XK_3, SHORTCUT_ACT_WS_SWITCH, 2, NULL);
+    shortcuts_set(sc, Mod4Mask | ControlMask, XK_4, SHORTCUT_ACT_WS_SWITCH, 3, NULL);
+    shortcuts_set(sc, Mod4Mask | ShiftMask, XK_1, SHORTCUT_ACT_WS_MOVE, 0, NULL);
+    shortcuts_set(sc, Mod4Mask | ShiftMask, XK_2, SHORTCUT_ACT_WS_MOVE, 1, NULL);
+    shortcuts_set(sc, Mod4Mask | ShiftMask, XK_3, SHORTCUT_ACT_WS_MOVE, 2, NULL);
+    shortcuts_set(sc, Mod4Mask | ShiftMask, XK_4, SHORTCUT_ACT_WS_MOVE, 3, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Page_Up, SHORTCUT_ACT_WS_PREV, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Page_Down, SHORTCUT_ACT_WS_NEXT, 0, NULL);
 }
 
 void shortcuts_load_file(ShortcutConfig *sc, const char *path) {
@@ -359,9 +411,10 @@ void shortcuts_load_file(ShortcutConfig *sc, const char *path) {
         KeySym sym;
         if (!parse_combo(combo, &mods, &sym)) continue;
         ShortcutActionType type;
+        int target_ws = 0;
         char cmd[256];
-        if (!parse_action(action, &type, cmd, sizeof(cmd))) continue;
-        shortcuts_set(sc, mods, sym, type, cmd);
+        if (!parse_action(action, &type, &target_ws, cmd, sizeof(cmd))) continue;
+        shortcuts_set(sc, mods, sym, type, target_ws, cmd);
     }
     fclose(f);
 }

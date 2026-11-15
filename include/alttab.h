@@ -35,6 +35,7 @@ typedef struct {
 
 void alttab_init(Display *dpy, AltTab *at, const GtkTheme *theme);
 void alttab_populate(Display *dpy, AltTab *at, Client *clients);
+void alttab_populate_workspace(Display *dpy, AltTab *at, Client *clients, int workspace);
 void alttab_calculate_geometry(AltTab *at, int screen_w, int screen_h);
 void alttab_select_next(AltTab *at);
 void alttab_select_prev(AltTab *at);

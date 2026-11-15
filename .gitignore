@@ -34,3 +34,6 @@ test_struts
 test_titlebar
 test_snap_preview
 test_menu
+test_ewmh
+test_monitors
+test_workspace

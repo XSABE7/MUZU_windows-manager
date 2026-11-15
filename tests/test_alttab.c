@@ -80,6 +80,18 @@ int main(void) {
     assert(at.y == (1080 - at.height) / 2);
 
     alttab_cleanup(&at);
+
+    // Test 5: Workspace-filtered Alt+Tab population
+    Client ws0 = {.win = 401, .workspace = 0};
+    strncpy(ws0.title, "Browser", sizeof(ws0.title) - 1);
+    Client ws1 = {.win = 402, .workspace = 1};
+    strncpy(ws1.title, "Music", sizeof(ws1.title) - 1);
+    ws0.next = &ws1;
+    alttab_populate_workspace(NULL, &at, &ws0, 0);
+    assert(at.app_count == 1);
+    assert(alttab_get_selected_window(&at) == 401);
+    alttab_cleanup(&at);
+
     printf("test_alttab passed!\n");
     return 0;
 }

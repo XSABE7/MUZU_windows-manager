@@ -40,6 +40,7 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->is_focused = 0;
     c->can_fullscreen = 1;
     c->workspace = 0;
+    c->ws_hidden = 0;
     c->transient_for = None;
 
     int used_slots[16] = {0};

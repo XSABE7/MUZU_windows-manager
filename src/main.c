@@ -13,6 +13,7 @@
 #include "client_props.h"
 #include "ewmh.h"
 #include "monitors.h"
+#include "workspace.h"
 #include "config_rules.h"
 #include "struts.h"
 #include "snap_preview.h"
@@ -26,6 +27,7 @@ static Monitor monitors[MAX_MONITORS];
 static int monitor_count = 0;
 static int total_screen_w = 0;
 static int total_screen_h = 0;
+static int num_workspaces = DEFAULT_WORKSPACE_COUNT;
 
 static void sig_handler(int sig) {
     (void)sig;
@@ -269,6 +271,11 @@ static void raise_client_with_transients(Display *d, Client *target_c, Client *c
 static void activate_client(Display *d, Client *target_c, Client *clients, LayoutConfig *cfg) {
     if (!d || !target_c) return;
 
+    int switched = 0;
+    if (target_c->workspace != cfg->current_workspace) {
+        switched = workspace_switch(d, root, clients, cfg, target_c->workspace, num_workspaces, NULL);
+    }
+
     if (target_c->is_minimized) {
         target_c->is_minimized = 0;
         Window target = target_c->frame != None ? target_c->frame : target_c->win;
@@ -284,6 +291,30 @@ static void activate_client(Display *d, Client *target_c, Client *clients, Layou
     } else {
         raise_client_with_transients(d, target_c, clients);
         set_focused_client(d, target_c, clients);
+        if (switched) reflow_all(d, clients, cfg);
+    }
+}
+
+static void switch_to_workspace(Display *d, Client *clients, LayoutConfig *cfg, int target_ws) {
+    Client *next_focus = NULL;
+    if (workspace_switch(d, root, clients, cfg, target_ws, num_workspaces, &next_focus)) {
+        set_focused_client(d, next_focus, clients);
+        if (next_focus) raise_client_with_transients(d, next_focus, clients);
+        reflow_all(d, clients, cfg);
+    }
+}
+
+static void move_client_to_workspace(Display *d, Client *c, Client *clients, LayoutConfig *cfg, int target_ws) {
+    if (!c) return;
+    Client *next_focus = NULL;
+    if (workspace_move_client(d, c, clients, cfg, target_ws, num_workspaces, &next_focus)) {
+        if (c->workspace != cfg->current_workspace) {
+            set_focused_client(d, next_focus, clients);
+        } else {
+            set_focused_client(d, c, clients);
+            raise_client_with_transients(d, c, clients);
+        }
+        reflow_all(d, clients, cfg);
     }
 }
 
@@ -443,14 +474,19 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
                     GrabModeAsync, GrabModeAsync, None, None);
     }
 
-    XMapWindow(d, w);
-    if (ewmh_window_has_fullscreen_state(d, w)) {
-        ewmh_apply_fullscreen(d, c, &mon_cfg, 1);
-    } else {
+    workspace_set_client_desktop(d, w, c->workspace);
+    if (c->workspace != cfg->current_workspace) {
+        c->ws_hidden = 1;
         XMoveResizeWindow(d, w, c->x, c->y, c->width, c->height);
+    } else {
+        XMapWindow(d, w);
+        if (ewmh_window_has_fullscreen_state(d, w)) {
+            ewmh_apply_fullscreen(d, c, &mon_cfg, 1);
+        } else {
+            XMoveResizeWindow(d, w, c->x, c->y, c->width, c->height);
+        }
+        set_focused_client(d, c, *clients);
     }
-
-    set_focused_client(d, c, *clients);
     update_ewmh_client_list(d, *clients);
 }
 
@@ -543,6 +579,9 @@ int main(void) {
     Atom net_wm_state_max_vert = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     Atom net_wm_state_hidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
     Atom net_close_window = XInternAtom(dpy, "_NET_CLOSE_WINDOW", False);
+    Atom net_num_desktops = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
+    Atom net_cur_desktop = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
+    Atom net_wm_desktop = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
     Atom utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
     Atom muzu_reload_settings = XInternAtom(dpy, "_MUZU_RELOAD_SETTINGS", False);
 
@@ -554,7 +593,8 @@ int main(void) {
                          net_wm_type_utility,
                          net_wm_state, net_wm_state_fullscreen,
                          net_wm_state_max_horz, net_wm_state_max_vert,
-                         net_wm_state_hidden, net_close_window };
+                         net_wm_state_hidden, net_close_window,
+                         net_num_desktops, net_cur_desktop, net_wm_desktop };
     XChangeProperty(dpy, root, net_supported, XA_ATOM, 32, PropModeReplace,
                     (unsigned char *)supported, sizeof(supported) / sizeof(Atom));
 
@@ -606,6 +646,8 @@ int main(void) {
     ShortcutConfig sc;
     config_rules_ensure_files();
     cfg.master_count = config_get_master_count();
+    num_workspaces = config_get_workspace_count();
+    workspace_publish_ewmh(dpy, root, num_workspaces, cfg.current_workspace);
     int alttab_enabled = config_is_alttab_enabled();
     shortcuts_load(&sc);
     shortcuts_grab_keys(dpy, root, &sc);
@@ -708,7 +750,7 @@ int main(void) {
                 unsigned int mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
 
                 if (alttab_enabled && sym == XK_Tab && (ev.xkey.state & Mod1Mask)) {
-                    alttab_populate(dpy, &alttab, clients);
+                    alttab_populate_workspace(dpy, &alttab, clients, cfg.current_workspace);
                     if (alttab.app_count > 0) {
                         int m = get_pointer_monitor(dpy, NULL, NULL);
                         int mw = (monitor_count > 0) ? monitors[m].width : total_screen_w;
@@ -744,7 +786,7 @@ int main(void) {
                     // Super + X / M / Z on focused window
                     Client *focused_win = NULL;
                     for (Client *c = clients; c; c = c->next) {
-                        if (c->is_focused && !c->is_minimized) { focused_win = c; break; }
+                        if (c->is_focused && !c->is_minimized && c->workspace == cfg.current_workspace) { focused_win = c; break; }
                     }
 
                     if (sym == XK_x || sym == XK_X) {
@@ -774,7 +816,7 @@ int main(void) {
                 const ShortcutBinding *b = shortcuts_match_event(&sc, ev.xkey.state, sym);
                 Client *focused = NULL;
                 for (Client *c = clients; c; c = c->next) {
-                    if (c->is_focused) { focused = c; break; }
+                    if (c->is_focused && !c->is_minimized && c->workspace == cfg.current_workspace) { focused = c; break; }
                 }
 
                 if (b) {
@@ -818,6 +860,22 @@ int main(void) {
                             if (focused) {
                                 minimize_client(dpy, focused, clients, &cfg);
                             }
+                            break;
+                        case SHORTCUT_ACT_WS_SWITCH:
+                            switch_to_workspace(dpy, clients, &cfg, b->target_ws);
+                            break;
+                        case SHORTCUT_ACT_WS_MOVE:
+                            if (focused) {
+                                move_client_to_workspace(dpy, focused, clients, &cfg, b->target_ws);
+                            }
+                            break;
+                        case SHORTCUT_ACT_WS_NEXT:
+                            switch_to_workspace(dpy, clients, &cfg,
+                                                (cfg.current_workspace + 1) % num_workspaces);
+                            break;
+                        case SHORTCUT_ACT_WS_PREV:
+                            switch_to_workspace(dpy, clients, &cfg,
+                                                (cfg.current_workspace + num_workspaces - 1) % num_workspaces);
                             break;
                         case SHORTCUT_ACT_LAUNCHER:
                             config_spawn_command("if command -v mzshell >/dev/null 2>&1; then exec mzshell; fi");
@@ -912,12 +970,12 @@ int main(void) {
                 }
                 Client *c = client_find_by_any(clients, w);
                 if (c) {
-                    if (ev.type == UnmapNotify && c->is_minimized) {
+                    if (ev.type == UnmapNotify && (c->is_minimized || c->ws_hidden || c->workspace != cfg.current_workspace)) {
                         break;
                     }
                     client_teardown(dpy, &clients, w, &cfg, &drag_client, &snap_preview);
                     if (alttab.is_visible) {
-                        alttab_populate(dpy, &alttab, clients);
+                        alttab_populate_workspace(dpy, &alttab, clients, cfg.current_workspace);
                         if (alttab.app_count == 0) {
                             XUngrabKeyboard(dpy, CurrentTime);
                             alttab_hide(dpy, &alttab);
@@ -939,6 +997,32 @@ int main(void) {
                 Window w = ev.xproperty.window;
                 if (w == root && atom == muzu_reload_settings) {
                     cfg.master_count = config_get_master_count();
+                    int new_ws_count = config_get_workspace_count();
+                    if (new_ws_count != num_workspaces) {
+                        num_workspaces = new_ws_count;
+                        for (Client *curr = clients; curr; curr = curr->next) {
+                            if (curr->workspace >= num_workspaces) {
+                                curr->workspace = num_workspaces - 1;
+                                workspace_set_client_desktop(dpy, curr->win, curr->workspace);
+                                if (curr->workspace == cfg.current_workspace && curr->ws_hidden) {
+                                    curr->ws_hidden = 0;
+                                    if (!curr->is_minimized) {
+                                        if (curr->frame != None) {
+                                            XMapWindow(dpy, curr->frame);
+                                            if (curr->win != None) XMapWindow(dpy, curr->win);
+                                        } else if (curr->win != None) {
+                                            XMapWindow(dpy, curr->win);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (cfg.current_workspace >= num_workspaces) {
+                            switch_to_workspace(dpy, clients, &cfg, num_workspaces - 1);
+                        } else {
+                            workspace_publish_ewmh(dpy, root, num_workspaces, cfg.current_workspace);
+                        }
+                    }
                     int new_alttab = config_is_alttab_enabled();
                     if (new_alttab != alttab_enabled) {
                         alttab_enabled = new_alttab;
@@ -1238,6 +1322,13 @@ int main(void) {
                     Client *c = client_find_by_any(clients, cm->window);
                     if (c) {
                         client_close(dpy, c->win);
+                    }
+                } else if (cm->message_type == net_cur_desktop) {
+                    switch_to_workspace(dpy, clients, &cfg, (int)cm->data.l[0]);
+                } else if (cm->message_type == net_wm_desktop) {
+                    Client *c = client_find_by_any(clients, cm->window);
+                    if (c) {
+                        move_client_to_workspace(dpy, c, clients, &cfg, (int)cm->data.l[0]);
                     }
                 }
                 break;

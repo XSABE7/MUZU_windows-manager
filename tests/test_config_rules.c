@@ -158,6 +158,47 @@ int main(void) {
     b_browser = shortcuts_match_event(&sc, Mod4Mask, XK_b);
     assert(b_browser && b_browser->type == SHORTCUT_ACT_NONE);
 
+    // 5. Workspace count setting & clamping [1, 10]
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "master_count=1\n");
+    fclose(f);
+    assert(config_get_workspace_count() == 4);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "workspace_count=6\n");
+    fclose(f);
+    assert(config_get_workspace_count() == 6);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "workspace_count=0\n");
+    fclose(f);
+    assert(config_get_workspace_count() == 1);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "workspace_count=99\n");
+    fclose(f);
+    assert(config_get_workspace_count() == 10);
+
+    // 6. Workspace switch/move/next/prev shortcuts
+    f = fopen(sc_path, "w");
+    assert(f != NULL);
+    fprintf(f, "Super+Ctrl+2 = workspace_2\nSuper+Shift+3 = move_workspace_3\nSuper+Page_Up = workspace_prev\nSuper+Page_Down = workspace_next\n");
+    fclose(f);
+    shortcuts_load_file(&sc, sc_path);
+
+    const ShortcutBinding *b_ws2 = shortcuts_match_event(&sc, Mod4Mask | ControlMask, XK_2);
+    assert(b_ws2 && b_ws2->type == SHORTCUT_ACT_WS_SWITCH && b_ws2->target_ws == 1);
+    const ShortcutBinding *b_mws3 = shortcuts_match_event(&sc, Mod4Mask | ShiftMask, XK_3);
+    assert(b_mws3 && b_mws3->type == SHORTCUT_ACT_WS_MOVE && b_mws3->target_ws == 2);
+    const ShortcutBinding *b_wsp = shortcuts_match_event(&sc, Mod4Mask, XK_Page_Up);
+    assert(b_wsp && b_wsp->type == SHORTCUT_ACT_WS_PREV);
+    const ShortcutBinding *b_wsn = shortcuts_match_event(&sc, Mod4Mask, XK_Page_Down);
+    assert(b_wsn && b_wsn->type == SHORTCUT_ACT_WS_NEXT);
+
     if (orig_home) setenv("HOME", orig_home, 1);
     char rm_cmd[600];
     snprintf(rm_cmd, sizeof(rm_cmd), "rm -rf %s", tmp_dir);
