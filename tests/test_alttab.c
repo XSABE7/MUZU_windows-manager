@@ -51,6 +51,36 @@ int main(void) {
     // Window retrieval
     assert(at.selected_idx == 0);
     assert(alttab_get_selected_window(&at) == 101);
+    assert(strcmp(at.apps[0].win_titles[1], "Terminal 2") == 0);
+
+    // Same-app window cycling (Alt+` behavior)
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 102);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 103);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 101);
+    alttab_select_prev_win(&at);
+    assert(alttab_get_selected_window(&at) == 103);
+
+    // Selecting a specific window focuses its app & slot
+    alttab_select_window(&at, 102);
+    assert(at.selected_idx == 0);
+    assert(alttab_get_selected_window(&at) == 102);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 103);
+
+    alttab_select_window(&at, 201);
+    assert(at.selected_idx == 1);
+    assert(alttab_get_selected_window(&at) == 201);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 201);
+    alttab_select_prev_win(&at);
+    assert(alttab_get_selected_window(&at) == 201);
+
+    // Reset back to app 0 before App-level navigation tests
+    alttab_select_window(&at, 101);
+    assert(at.selected_idx == 0);
 
     // Test 3: Navigation and wrapping
     alttab_select_next(&at);

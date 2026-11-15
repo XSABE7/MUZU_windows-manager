@@ -353,18 +353,59 @@ static void client_call_back_slot(Display *d, Client *clients, LayoutConfig *cfg
 
 static void grab_alttab_keys(Display *d, Window r, int enable) {
     if (!d || r == None) return;
-    KeyCode tab_kc = XKeysymToKeycode(d, XK_Tab);
-    if (tab_kc == 0) return;
+    const KeySym keys[2] = { XK_Tab, XK_grave };
     const unsigned int locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
-    for (int l = 0; l < 4; l++) {
-        if (enable) {
-            XGrabKey(d, tab_kc, Mod1Mask | locks[l], r, True, GrabModeAsync, GrabModeAsync);
-            XGrabKey(d, tab_kc, Mod1Mask | ShiftMask | locks[l], r, True, GrabModeAsync, GrabModeAsync);
-        } else {
-            XUngrabKey(d, tab_kc, Mod1Mask | locks[l], r);
-            XUngrabKey(d, tab_kc, Mod1Mask | ShiftMask | locks[l], r);
+    for (int k = 0; k < 2; k++) {
+        KeyCode kc = XKeysymToKeycode(d, keys[k]);
+        if (kc == 0) continue;
+        for (int l = 0; l < 4; l++) {
+            if (enable) {
+                XGrabKey(d, kc, Mod1Mask | locks[l], r, True, GrabModeAsync, GrabModeAsync);
+                XGrabKey(d, kc, Mod1Mask | ShiftMask | locks[l], r, True, GrabModeAsync, GrabModeAsync);
+            } else {
+                XUngrabKey(d, kc, Mod1Mask | locks[l], r);
+                XUngrabKey(d, kc, Mod1Mask | ShiftMask | locks[l], r);
+            }
         }
     }
+}
+
+static void start_alttab_switcher(Display *d, AltTab *at, Client *clients,
+                                  int current_ws, int same_app_only, int reverse) {
+    if (!d || !at) return;
+    Client *focused_win = NULL;
+    for (Client *c = clients; c; c = c->next) {
+        if (c->is_focused && !c->is_minimized && c->workspace == current_ws) {
+            focused_win = c;
+            break;
+        }
+    }
+    alttab_populate_workspace(d, at, clients, current_ws);
+    if (at->app_count <= 0) return;
+
+    if (focused_win) {
+        alttab_select_window(at, focused_win->win);
+    }
+
+    int m = get_pointer_monitor(d, NULL, NULL);
+    int mw = (monitor_count > 0) ? monitors[m].width : total_screen_w;
+    int mh = (monitor_count > 0) ? monitors[m].height : total_screen_h;
+    alttab_show(d, at, mw, mh);
+    if (monitor_count > 0 && at->win != None) {
+        XMoveWindow(d, at->win, monitors[m].x + at->x, monitors[m].y + at->y);
+    }
+
+    if (same_app_only) {
+        if (reverse) alttab_select_prev_win(at);
+        else alttab_select_next_win(at);
+    } else if (at->app_count > 1) {
+        if (reverse) alttab_select_prev(at);
+        else alttab_select_next(at);
+    }
+
+    alttab_render(d, at);
+    XGrabKeyboard(d, root, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+    XRaiseWindow(d, at->win);
 }
 
 static void update_ewmh_client_list(Display *d, Client *clients) {
@@ -719,6 +760,12 @@ int main(void) {
                         alttab_render(dpy, &alttab);
                         break;
                     }
+                    if (sym == XK_grave || sym == XK_asciitilde) {
+                        if (ev.xkey.state & ShiftMask) alttab_select_prev_win(&alttab);
+                        else alttab_select_next_win(&alttab);
+                        alttab_render(dpy, &alttab);
+                        break;
+                    }
                     if (sym == XK_Left) {
                         alttab_select_prev(&alttab);
                         alttab_render(dpy, &alttab);
@@ -753,24 +800,11 @@ int main(void) {
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
                 unsigned int mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
 
-                if (alttab_enabled && sym == XK_Tab && (ev.xkey.state & Mod1Mask)) {
-                    alttab_populate_workspace(dpy, &alttab, clients, cfg.current_workspace);
-                    if (alttab.app_count > 0) {
-                        int m = get_pointer_monitor(dpy, NULL, NULL);
-                        int mw = (monitor_count > 0) ? monitors[m].width : total_screen_w;
-                        int mh = (monitor_count > 0) ? monitors[m].height : total_screen_h;
-                        alttab_show(dpy, &alttab, mw, mh);
-                        if (monitor_count > 0 && alttab.win != None) {
-                            XMoveWindow(dpy, alttab.win, monitors[m].x + alttab.x, monitors[m].y + alttab.y);
-                        }
-                        if (alttab.app_count > 1) {
-                            if (ev.xkey.state & ShiftMask) alttab_select_prev(&alttab);
-                            else alttab_select_next(&alttab);
-                        }
-                        alttab_render(dpy, &alttab);
-                        XGrabKeyboard(dpy, root, True, GrabModeAsync, GrabModeAsync, CurrentTime);
-                        XRaiseWindow(dpy, alttab.win);
-                    }
+                if (alttab_enabled && (ev.xkey.state & Mod1Mask) &&
+                    (sym == XK_Tab || sym == XK_grave || sym == XK_asciitilde)) {
+                    int same_app = (sym == XK_grave || sym == XK_asciitilde);
+                    start_alttab_switcher(dpy, &alttab, clients, cfg.current_workspace,
+                                          same_app, (ev.xkey.state & ShiftMask) != 0);
                     break;
                 }
 

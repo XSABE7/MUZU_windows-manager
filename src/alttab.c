@@ -101,6 +101,8 @@ void alttab_populate_workspace(Display *dpy, AltTab *at, Client *clients, int wo
             AltTabApp *app = &at->apps[found];
             if (app->win_count < ALTTAB_MAX_WINS_PER_APP) {
                 app->wins[app->win_count] = c->win;
+                snprintf(app->win_titles[app->win_count], sizeof(app->win_titles[0]),
+                         "%.*s", (int)(sizeof(app->win_titles[0]) - 1), c->title);
             }
             app->win_count++;
             if (!app->icon_surface && c->icon_surface) {
@@ -112,7 +114,10 @@ void alttab_populate_workspace(Display *dpy, AltTab *at, Client *clients, int wo
             snprintf(app->app_class, sizeof(app->app_class), "%s", cls);
             snprintf(app->app_name, sizeof(app->app_name), "%s", name);
             app->wins[0] = c->win;
+            snprintf(app->win_titles[0], sizeof(app->win_titles[0]),
+                     "%.*s", (int)(sizeof(app->win_titles[0]) - 1), c->title);
             app->win_count = 1;
+            app->selected_win = 0;
             if (c->icon_surface) {
                 app->icon_surface = c->icon_surface;
                 app->owns_icon_surface = 0;
@@ -145,14 +150,52 @@ void alttab_select_prev(AltTab *at) {
     at->selected_idx = (at->selected_idx - 1 + at->app_count) % at->app_count;
 }
 
+static int app_stored_wins(const AltTabApp *app) {
+    if (!app || app->win_count <= 0) return 0;
+    return (app->win_count < ALTTAB_MAX_WINS_PER_APP) ? app->win_count : ALTTAB_MAX_WINS_PER_APP;
+}
+
+void alttab_select_next_win(AltTab *at) {
+    if (!at || at->app_count <= 0 || at->selected_idx < 0 || at->selected_idx >= at->app_count) return;
+    AltTabApp *app = &at->apps[at->selected_idx];
+    int n = app_stored_wins(app);
+    if (n <= 0) return;
+    app->selected_win = (app->selected_win + 1) % n;
+}
+
+void alttab_select_prev_win(AltTab *at) {
+    if (!at || at->app_count <= 0 || at->selected_idx < 0 || at->selected_idx >= at->app_count) return;
+    AltTabApp *app = &at->apps[at->selected_idx];
+    int n = app_stored_wins(app);
+    if (n <= 0) return;
+    app->selected_win = (app->selected_win - 1 + n) % n;
+}
+
+void alttab_select_window(AltTab *at, Window win) {
+    if (!at || win == None) return;
+    for (int i = 0; i < at->app_count; i++) {
+        int n = app_stored_wins(&at->apps[i]);
+        for (int j = 0; j < n; j++) {
+            if (at->apps[i].wins[j] == win) {
+                at->selected_idx = i;
+                at->apps[i].selected_win = j;
+                return;
+            }
+        }
+    }
+}
+
 Window alttab_get_selected_window(const AltTab *at) {
     if (!at || at->app_count <= 0 || at->selected_idx < 0 || at->selected_idx >= at->app_count) {
         return None;
     }
-    if (at->apps[at->selected_idx].win_count <= 0) {
+    const AltTabApp *app = &at->apps[at->selected_idx];
+    int n = app_stored_wins(app);
+    if (n <= 0) {
         return None;
     }
-    return at->apps[at->selected_idx].wins[0];
+    int widx = (app->selected_win >= 0 && app->selected_win < n) ? app->selected_win : 0;
+    return app->wins[widx];
 }
 
 void alttab_render(Display *dpy, AltTab *at) {
@@ -230,6 +273,8 @@ void alttab_render(Display *dpy, AltTab *at) {
         // Window indicator dots row
         int dots = app->win_count;
         if (dots > ALTTAB_MAX_DOTS) dots = ALTTAB_MAX_DOTS;
+        int active_dot = (app->selected_win >= 0 && app->selected_win < dots)
+                         ? app->selected_win : (dots > 0 ? dots - 1 : 0);
         if (dots > 0) {
             double dot_r = 2.5;
             double dot_gap = 3.5;
@@ -238,25 +283,33 @@ void alttab_render(Display *dpy, AltTab *at) {
             double dot_y = icon_y + icon_size + 9.0;
 
             for (int d = 0; d < dots; d++) {
-                if (is_selected) {
-                    cairo_set_source_rgba(cr, 0.22, 0.74, 1.0, 0.98);
+                double r = dot_r;
+                if (is_selected && d == active_dot) {
+                    cairo_set_source_rgba(cr, 0.35, 0.85, 1.0, 1.0);
+                    r = dot_r + 0.8;
+                } else if (is_selected) {
+                    cairo_set_source_rgba(cr, 0.72, 0.78, 0.88, 0.45);
                 } else {
                     cairo_set_source_rgba(cr, 0.72, 0.78, 0.88, 0.65);
                 }
-                cairo_arc(cr, dot_x + d * (dot_r * 2.0 + dot_gap), dot_y, dot_r, 0, 2.0 * M_PI);
+                cairo_arc(cr, dot_x + d * (dot_r * 2.0 + dot_gap), dot_y, r, 0, 2.0 * M_PI);
                 cairo_fill(cr);
             }
         }
 
-        // App title
+        // App or active-window title
         cairo_set_source_rgba(cr, 0.90, 0.93, 0.98, is_selected ? 1.0 : 0.75);
         cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, is_selected ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL);
         cairo_set_font_size(cr, 11.0);
 
+        int sel_w = (app->selected_win >= 0 && app->selected_win < ALTTAB_MAX_WINS_PER_APP) ? app->selected_win : 0;
+        const char *raw_label = (is_selected && app->win_count > 1 && app->win_titles[sel_w][0] != '\0')
+                                ? app->win_titles[sel_w] : app->app_name;
+
         char label[16];
-        strncpy(label, app->app_name, sizeof(label) - 1);
+        strncpy(label, raw_label, sizeof(label) - 1);
         label[sizeof(label) - 1] = '\0';
-        if (strlen(app->app_name) >= sizeof(label) - 1) {
+        if (strlen(raw_label) >= sizeof(label) - 1) {
             label[12] = '.';
             label[13] = '.';
             label[14] = '.';
