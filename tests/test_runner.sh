@@ -22,6 +22,10 @@ bash tests/test_session_install.sh
 echo "--> All Unit Tests & Verification Passed!"
 
 echo ""
+echo "2. Running Xvfb ASan+UBSan Integration Suite..."
+bash tests/test_integration_xvfb.sh
+
+echo ""
 echo "================================================="
 echo "           ALL TESTS PASSED CLEANLY              "
 echo "================================================="
