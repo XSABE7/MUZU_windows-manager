@@ -4,6 +4,10 @@
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/wait.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
@@ -31,7 +35,8 @@ typedef struct {
     int orig_h;
 } DragState;
 
-static int running = 1;
+static volatile sig_atomic_t running = 1;
+static volatile sig_atomic_t wm_conflict_detected = 0;
 static Display *dpy = NULL;
 static Window root = None;
 static Monitor monitors[MAX_MONITORS];
@@ -43,6 +48,21 @@ static int num_workspaces = DEFAULT_WORKSPACE_COUNT;
 static void sig_handler(int sig) {
     (void)sig;
     running = 0;
+}
+
+static void sigchld_handler(int sig) {
+    (void)sig;
+    int saved = errno;
+    while (waitpid(-1, NULL, WNOHANG) > 0) {}
+    errno = saved;
+}
+
+static int startup_xerror_handler(Display *d, XErrorEvent *ee) {
+    (void)d;
+    if (ee && ee->error_code == BadAccess) {
+        wm_conflict_detected = 1;
+    }
+    return 0;
 }
 
 static int x_error_handler(Display *d, XErrorEvent *ee) {
@@ -75,8 +95,8 @@ static void launch_settings_app(void) {
     };
 
     char settings_cmd[1200] = {0};
-    for (int i = 0; i < 5; i++) {
-        if (candidates[i] && access(candidates[i], R_OK) == 0) {
+    for (int i = 0; candidates[i] != NULL; i++) {
+        if (access(candidates[i], R_OK) == 0) {
             snprintf(settings_cmd, sizeof(settings_cmd), "%s", candidates[i]);
             break;
         }
@@ -85,6 +105,8 @@ static void launch_settings_app(void) {
     pid_t pid = fork();
     if (pid != 0) return;
     setsid();
+    signal(SIGCHLD, SIG_DFL);
+    signal(SIGPIPE, SIG_DFL);
 
     if (settings_cmd[0] == '\0') {
         execlp("sh", "sh", "-c",
@@ -590,20 +612,50 @@ static void client_teardown(Display *d, Client **clients, Window w, LayoutConfig
 
 
 int main(void) {
-    signal(SIGINT, sig_handler);
-    signal(SIGTERM, sig_handler);
-    signal(SIGHUP, sig_handler);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = sig_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // Do NOT set SA_RESTART so poll() wakes on termination signals
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+
+    struct sigaction sa_chld;
+    memset(&sa_chld, 0, sizeof(sa_chld));
+    sa_chld.sa_handler = sigchld_handler;
+    sigemptyset(&sa_chld.sa_mask);
+    sa_chld.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    sigaction(SIGCHLD, &sa_chld, NULL);
+
+    signal(SIGPIPE, SIG_IGN);
 
     dpy = XOpenDisplay(NULL);
     if (!dpy) {
         fprintf(stderr, "muzuwm: cannot open display\n");
         return 1;
     }
+    int x11_fd = ConnectionNumber(dpy);
+    int fd_flags = fcntl(x11_fd, F_GETFD);
+    if (fd_flags >= 0) {
+        fcntl(x11_fd, F_SETFD, fd_flags | FD_CLOEXEC);
+    }
 
     int screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
     total_screen_w = DisplayWidth(dpy, screen);
     total_screen_h = DisplayHeight(dpy, screen);
+
+    wm_conflict_detected = 0;
+    XSetErrorHandler(startup_xerror_handler);
+    XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
+                            StructureNotifyMask | ButtonPressMask | PropertyChangeMask);
+    XSync(dpy, False);
+    if (wm_conflict_detected) {
+        fprintf(stderr, "muzuwm: another window manager is already running\n");
+        XCloseDisplay(dpy);
+        return 1;
+    }
 
     int rr_event_base = 0, rr_error_base = 0;
     int has_xrandr = XRRQueryExtension(dpy, &rr_event_base, &rr_error_base);
@@ -613,9 +665,6 @@ int main(void) {
     monitor_count = monitors_query_xrandr(dpy, root, monitors, MAX_MONITORS);
 
     XSetErrorHandler(x_error_handler);
-    XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
-                            StructureNotifyMask | ButtonPressMask | PropertyChangeMask);
-    XSync(dpy, False);
 
     // EWMH Supported Atoms & WM Identity (_NET_SUPPORTING_WM_CHECK)
     Atom net_supported = XInternAtom(dpy, "_NET_SUPPORTED", False);
@@ -753,10 +802,12 @@ int main(void) {
     }
 
     XEvent ev;
+    struct pollfd pfd = { .fd = x11_fd, .events = POLLIN, .revents = 0 };
     while (running) {
-        XNextEvent(dpy, &ev);
+        while (running && XPending(dpy) > 0) {
+            XNextEvent(dpy, &ev);
 
-        switch (ev.type) {
+            switch (ev.type) {
             case KeyPress: {
                 if (alttab.is_visible) {
                     KeySym sym = XLookupKeysym(&ev.xkey, 0);
@@ -1444,9 +1495,26 @@ int main(void) {
                 }
                 break;
         }
+        }
+        if (!running) break;
+        XFlush(dpy);
+        int pr = poll(&pfd, 1, -1);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            break;
+        }
     }
 
     // Teardown
+    if (drag.client || desktop_menu.is_visible) {
+        XUngrabPointer(dpy, CurrentTime);
+    }
+    if (alttab.is_visible) {
+        XUngrabKeyboard(dpy, CurrentTime);
+    }
     Window alttab_win = alttab.win;
     alttab_cleanup(&alttab);
     if (alttab_win != None) {
@@ -1461,10 +1529,14 @@ int main(void) {
     while (clients) {
         client_teardown(dpy, &clients, clients->win, &cfg, NULL, NULL);
     }
+    while (strut_list) {
+        strut_list_remove(&strut_list, strut_list->win);
+    }
     if (wm_check_win != None) {
         XDestroyWindow(dpy, wm_check_win);
         wm_check_win = None;
     }
+    XSync(dpy, True);
     XCloseDisplay(dpy);
     return 0;
 }

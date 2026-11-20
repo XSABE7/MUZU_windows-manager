@@ -5,6 +5,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -251,6 +252,8 @@ void config_spawn_command(const char *cmd) {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
+        signal(SIGCHLD, SIG_DFL);
+        signal(SIGPIPE, SIG_DFL);
         execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
         _exit(1);
     }
