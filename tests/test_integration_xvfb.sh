@@ -15,20 +15,13 @@ cleanup() {
     set +e
     [ -n "$WM2_PID" ] && kill -9 "$WM2_PID" 2>/dev/null || true
     [ -n "$WM1_PID" ] && kill -9 "$WM1_PID" 2>/dev/null || true
-    [ -n "$XVFB_PID" ] && kill -9 "$XVFB_PID" 2>/dev/null || true
+    if [ -n "$XVFB_PID" ]; then
+        kill -TERM "$XVFB_PID" 2>/dev/null || true
+        wait "$XVFB_PID" 2>/dev/null || true
+    fi
     rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT INT TERM
-
-# Pick a free display :90..:99
-DISP=""
-for d in $(seq 90 99); do
-    if [ ! -e "/tmp/.X${d}-lock" ] && [ ! -e "/tmp/.X11-unix/X${d}" ]; then
-        DISP=":$d"
-        break
-    fi
-done
-[ -n "$DISP" ] || { echo "FAIL: no free Xvfb display :90..:99"; exit 1; }
 
 CFLAGS=$(pkg-config --cflags cairo x11 xext xcursor xrandr fontconfig)
 LIBS="$(pkg-config --libs cairo x11 xext xcursor xrandr fontconfig) -lm"
@@ -250,9 +243,15 @@ export HOME="$TMP_DIR/home"
 mkdir -p "$HOME/.config/muzuwm"
 printf '/bin/true\n' > "$HOME/.config/muzuwm/auto_allowlist"
 
-Xvfb "$DISP" -screen 0 1280x720x24 >/dev/null 2>&1 &
+Xvfb -displayfd 3 -screen 0 1280x720x24 3>"$TMP_DIR/disp.txt" >/dev/null 2>&1 &
 XVFB_PID=$!
-sleep 0.4
+for _ in $(seq 1 40); do
+    if [ -s "$TMP_DIR/disp.txt" ]; then break; fi
+    sleep 0.05
+done
+DISP_NUM=$(tr -d '[:space:]' < "$TMP_DIR/disp.txt")
+[ -n "$DISP_NUM" ] || { echo "FAIL: Xvfb failed to report displayfd"; exit 1; }
+DISP=":${DISP_NUM}"
 
 export DISPLAY="$DISP"
 printf 'leak:_XEnq\n' > "$TMP_DIR/lsan.supp"
