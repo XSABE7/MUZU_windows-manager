@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <sys/wait.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -24,19 +23,9 @@
 #include "menu.h"
 #include "alttab.h"
 
-typedef struct {
-    Client *client;
-    int is_resize;
-    int start_x;
-    int start_y;
-    int orig_x;
-    int orig_y;
-    int orig_w;
-    int orig_h;
-} DragState;
-
 static volatile sig_atomic_t running = 1;
 static volatile sig_atomic_t wm_conflict_detected = 0;
+static int sig_pipe[2] = { -1, -1 };
 static Display *dpy = NULL;
 static Window root = None;
 static Monitor monitors[MAX_MONITORS];
@@ -44,10 +33,27 @@ static int monitor_count = 0;
 static int total_screen_w = 0;
 static int total_screen_h = 0;
 static int num_workspaces = DEFAULT_WORKSPACE_COUNT;
+static DragState drag = {0};
+static SnapPreview snap_preview;
 
 static void sig_handler(int sig) {
     (void)sig;
     running = 0;
+    if (sig_pipe[1] >= 0) {
+        int saved = errno;
+        ssize_t r = write(sig_pipe[1], "x", 1);
+        (void)r;
+        errno = saved;
+    }
+}
+
+static void cancel_active_drag(Display *d) {
+    if (!drag.client) return;
+    wm_drag_reset(&drag);
+    if (d) {
+        XUngrabPointer(d, CurrentTime);
+        snap_preview_hide(d, &snap_preview);
+    }
 }
 
 static void sigchld_handler(int sig) {
@@ -95,12 +101,8 @@ static void launch_settings_app(void) {
     };
 
     char settings_cmd[1200] = {0};
-    for (int i = 0; candidates[i] != NULL; i++) {
-        if (access(candidates[i], R_OK) == 0) {
-            snprintf(settings_cmd, sizeof(settings_cmd), "%s", candidates[i]);
-            break;
-        }
-    }
+    wm_find_readable_path(candidates, sizeof(candidates) / sizeof(candidates[0]),
+                          settings_cmd, sizeof(settings_cmd));
 
     pid_t pid = fork();
     if (pid != 0) return;
@@ -333,6 +335,9 @@ static void activate_client(Display *d, Client *target_c, Client *clients, Layou
 }
 
 static void switch_to_workspace(Display *d, Client *clients, LayoutConfig *cfg, int target_ws) {
+    if (drag.client && drag.client->workspace != target_ws) {
+        cancel_active_drag(d);
+    }
     Client *next_focus = NULL;
     if (workspace_switch(d, root, clients, cfg, target_ws, num_workspaces, &next_focus)) {
         set_focused_client(d, next_focus, clients);
@@ -343,6 +348,9 @@ static void switch_to_workspace(Display *d, Client *clients, LayoutConfig *cfg, 
 
 static void move_client_to_workspace(Display *d, Client *c, Client *clients, LayoutConfig *cfg, int target_ws) {
     if (!c) return;
+    if (wm_drag_should_cancel(&drag, c) && target_ws != cfg->current_workspace) {
+        cancel_active_drag(d);
+    }
     Client *next_focus = NULL;
     if (workspace_move_client(d, c, clients, cfg, target_ws, num_workspaces, &next_focus)) {
         if (c->workspace != cfg->current_workspace) {
@@ -357,6 +365,9 @@ static void move_client_to_workspace(Display *d, Client *c, Client *clients, Lay
 
 static void minimize_client(Display *d, Client *c, Client *clients, LayoutConfig *cfg) {
     if (!d || !c || c->is_minimized) return;
+    if (wm_drag_should_cancel(&drag, c)) {
+        cancel_active_drag(d);
+    }
     c->is_minimized = 1;
     Window unmap_target = c->frame != None ? c->frame : c->win;
     XUnmapWindow(d, unmap_target);
@@ -612,6 +623,10 @@ static void client_teardown(Display *d, Client **clients, Window w, LayoutConfig
 
 
 int main(void) {
+    if (pipe2(sig_pipe, O_NONBLOCK | O_CLOEXEC) != 0) {
+        sig_pipe[0] = sig_pipe[1] = -1;
+    }
+
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = sig_handler;
@@ -731,10 +746,9 @@ int main(void) {
     };
 
     Client *clients = NULL;
-    DragState drag = {0};
+    memset(&drag, 0, sizeof(drag));
 
     StrutList *strut_list = NULL;
-    SnapPreview snap_preview;
     snap_preview_init(dpy, root, &snap_preview);
 
     Menu desktop_menu;
@@ -801,8 +815,9 @@ int main(void) {
         reflow_all(dpy, clients, &cfg);
     }
 
+    config_run_autostart();
+
     XEvent ev;
-    struct pollfd pfd = { .fd = x11_fd, .events = POLLIN, .revents = 0 };
     while (running) {
         while (running && XPending(dpy) > 0) {
             XNextEvent(dpy, &ev);
@@ -1201,8 +1216,10 @@ int main(void) {
                             int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
                             int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
                             menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, mx_end, my_end);
-                            XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
-                                         GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
+                            if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
+                                             GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
+                                menu_hide(dpy, &desktop_menu);
+                            }
                             break;
                         }
                     }
@@ -1213,8 +1230,10 @@ int main(void) {
                     int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
                     int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
                     menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, mx_end, my_end);
-                    XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
-                                 GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
+                    if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
+                                     GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
+                        menu_hide(dpy, &desktop_menu);
+                    }
                     break;
                 }
 
@@ -1240,41 +1259,26 @@ int main(void) {
                         } else if (act == TITLEBAR_CLICK_MINIMIZE) {
                             minimize_client(dpy, c, clients, &cfg);
                         } else if (ev.xbutton.button == Button1 && ewmh_can_drag_client(c)) {
-                            drag.client = c;
-                            drag.is_resize = 0;
-                            drag.start_x = ev.xbutton.x_root;
-                            drag.start_y = ev.xbutton.y_root;
-                            drag.orig_x = c->x;
-                            drag.orig_y = c->y;
-                            XGrabPointer(dpy, root, False,
-                                         ButtonReleaseMask | PointerMotionMask,
-                                         GrabModeAsync, GrabModeAsync,
-                                         None, None, CurrentTime);
+                            int gs = XGrabPointer(dpy, root, False,
+                                                  ButtonReleaseMask | PointerMotionMask,
+                                                  GrabModeAsync, GrabModeAsync,
+                                                  None, None, CurrentTime);
+                            wm_drag_commit_if_grabbed(&drag, c, 0, ev.xbutton.x_root, ev.xbutton.y_root, gs);
                         }
                     } else if (ev.xbutton.window == c->win) {
                         if ((ev.xbutton.state & Mod4Mask) && ewmh_can_drag_client(c)) {
                             if (ev.xbutton.button == Button1) {
-                                drag.client = c;
-                                drag.is_resize = 0;
-                                drag.start_x = ev.xbutton.x_root;
-                                drag.start_y = ev.xbutton.y_root;
-                                drag.orig_x = c->x;
-                                drag.orig_y = c->y;
-                                XGrabPointer(dpy, root, False,
-                                             ButtonReleaseMask | PointerMotionMask,
-                                             GrabModeAsync, GrabModeAsync,
-                                             None, None, CurrentTime);
+                                int gs = XGrabPointer(dpy, root, False,
+                                                      ButtonReleaseMask | PointerMotionMask,
+                                                      GrabModeAsync, GrabModeAsync,
+                                                      None, None, CurrentTime);
+                                wm_drag_commit_if_grabbed(&drag, c, 0, ev.xbutton.x_root, ev.xbutton.y_root, gs);
                             } else if (ev.xbutton.button == Button3 && c->can_fullscreen) {
-                                drag.client = c;
-                                drag.is_resize = 1;
-                                drag.start_x = ev.xbutton.x_root;
-                                drag.start_y = ev.xbutton.y_root;
-                                drag.orig_w = c->width;
-                                drag.orig_h = c->height;
-                                XGrabPointer(dpy, root, False,
-                                             ButtonReleaseMask | PointerMotionMask,
-                                             GrabModeAsync, GrabModeAsync,
-                                             None, None, CurrentTime);
+                                int gs = XGrabPointer(dpy, root, False,
+                                                      ButtonReleaseMask | PointerMotionMask,
+                                                      GrabModeAsync, GrabModeAsync,
+                                                      None, None, CurrentTime);
+                                wm_drag_commit_if_grabbed(&drag, c, 1, ev.xbutton.x_root, ev.xbutton.y_root, gs);
                             }
                         } else {
                             XAllowEvents(dpy, ReplayPointer, CurrentTime);
@@ -1299,6 +1303,12 @@ int main(void) {
                     int dx = ev.xmotion.x_root - drag.start_x;
                     int dy = ev.xmotion.y_root - drag.start_y;
                     if (drag.is_resize) {
+                        if (wm_drag_prepare_resize(drag.client)) {
+                            ewmh_sync_client_state(dpy, drag.client->win, drag.client->is_fullscreen,
+                                                   drag.client->is_maximized, drag.client->is_minimized);
+                            if (drag.client->frame != None) titlebar_draw(dpy, drag.client, NULL);
+                            reflow_all(dpy, clients, &cfg);
+                        }
                         int nw = drag.orig_w + dx;
                         int nh = drag.orig_h + dy;
                         if (nw < 100) nw = 100;
@@ -1430,6 +1440,9 @@ int main(void) {
                         if (flags.has_fullscreen) {
                             int want = ewmh_resolve_state_action(action, c->is_fullscreen);
                             if (want != c->is_fullscreen) {
+                                if (want && wm_drag_should_cancel(&drag, c)) {
+                                    cancel_active_drag(dpy);
+                                }
                                 LayoutConfig mon_cfg;
                                 monitor_layout_for_client(c, &cfg, &mon_cfg);
                                 ewmh_apply_fullscreen(dpy, c, &mon_cfg, want);
@@ -1498,13 +1511,11 @@ int main(void) {
         }
         if (!running) break;
         XFlush(dpy);
-        int pr = poll(&pfd, 1, -1);
-        if (pr < 0) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-            break;
+        int wr = wm_wait_x11_or_signal(x11_fd, sig_pipe[0]);
+        if (wr < 0) break;
+        if (wr > 0 && sig_pipe[0] >= 0) {
+            char drain[32];
+            while (read(sig_pipe[0], drain, sizeof(drain)) > 0) {}
         }
     }
 
@@ -1538,5 +1549,7 @@ int main(void) {
     }
     XSync(dpy, True);
     XCloseDisplay(dpy);
+    if (sig_pipe[0] >= 0) close(sig_pipe[0]);
+    if (sig_pipe[1] >= 0) close(sig_pipe[1]);
     return 0;
 }

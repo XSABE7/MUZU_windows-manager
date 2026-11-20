@@ -1,4 +1,8 @@
+#include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <poll.h>
 #include "wm.h"
 
 void client_add(Client **head, Window win, ClientMode mode) {
@@ -228,4 +232,81 @@ void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
     }
 
     layout_calculate_clients(cfg, tiled, idx);
+}
+
+int wm_find_readable_path(const char *const *candidates, size_t count, char *out, size_t out_len) {
+    if (!candidates || !out || out_len == 0) return 0;
+    out[0] = '\0';
+    for (size_t i = 0; i < count; i++) {
+        if (candidates[i] && candidates[i][0] != '\0' && access(candidates[i], R_OK) == 0) {
+            snprintf(out, out_len, "%s", candidates[i]);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int wm_wait_x11_or_signal(int x11_fd, int sig_fd) {
+    struct pollfd pfds[2];
+    nfds_t nfds = 1;
+    pfds[0].fd = x11_fd;
+    pfds[0].events = POLLIN;
+    pfds[0].revents = 0;
+    if (sig_fd >= 0) {
+        pfds[1].fd = sig_fd;
+        pfds[1].events = POLLIN;
+        pfds[1].revents = 0;
+        nfds = 2;
+    }
+
+    int pr = poll(pfds, nfds, -1);
+    if (pr < 0) {
+        return (errno == EINTR) ? 1 : -1;
+    }
+    if (nfds == 2 && (pfds[1].revents & POLLIN)) {
+        return 1;
+    }
+    if (pfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+        return -1;
+    }
+    return 0;
+}
+
+int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
+                              int start_x, int start_y, int grab_status) {
+    if (!drag || !c || grab_status != GrabSuccess) return 0;
+    drag->client = c;
+    drag->is_resize = is_resize ? 1 : 0;
+    drag->start_x = start_x;
+    drag->start_y = start_y;
+    drag->orig_x = c->x;
+    drag->orig_y = c->y;
+    drag->orig_w = c->width;
+    drag->orig_h = c->height;
+    return 1;
+}
+
+int wm_drag_prepare_resize(Client *c) {
+    if (!c) return 0;
+    int changed = 0;
+    if (c->is_maximized) {
+        c->is_maximized = 0;
+        changed = 1;
+    }
+    if (c->mode == CLIENT_TILED || c->snap_state != SNAP_NONE) {
+        c->mode = CLIENT_FLOATING;
+        c->snap_state = SNAP_NONE;
+        changed = 1;
+    }
+    return changed;
+}
+
+int wm_drag_should_cancel(const DragState *drag, const Client *c) {
+    return (drag && c && drag->client == c) ? 1 : 0;
+}
+
+void wm_drag_reset(DragState *drag) {
+    if (!drag) return;
+    drag->client = NULL;
+    drag->is_resize = 0;
 }

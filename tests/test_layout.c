@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "wm.h"
 #include "titlebar.h"
 
@@ -108,6 +109,45 @@ int main(void) {
     assert(mon_head->x == 1930 && mon_head->y == 32);
     assert(mon_head->width == 1910 && mon_head->height == 1048);
     free_clients(&mon_head);
+
+    // Test 8: wm_find_readable_path skips leading NULL entries
+    char tmp_path[] = "/tmp/muzu_cand_XXXXXX";
+    int tmp_fd = mkstemp(tmp_path);
+    assert(tmp_fd >= 0);
+    close(tmp_fd);
+    const char *cands[] = { NULL, NULL, tmp_path, NULL };
+    char found_path[256] = {0};
+    assert(wm_find_readable_path(cands, 4, found_path, sizeof(found_path)) == 1);
+    assert(strcmp(found_path, tmp_path) == 0);
+    const char *none_cands[] = { NULL, "/nonexistent/muzu_no_such_file" };
+    assert(wm_find_readable_path(none_cands, 2, found_path, sizeof(found_path)) == 0);
+    unlink(tmp_path);
+
+    // Test 9: wm_wait_x11_or_signal wakes immediately on self-pipe byte
+    int xp[2], sp[2];
+    assert(pipe(xp) == 0 && pipe(sp) == 0);
+    assert(write(sp[1], "x", 1) == 1);
+    assert(wm_wait_x11_or_signal(xp[0], sp[0]) == 1);
+    close(xp[0]); close(xp[1]);
+    close(sp[0]); close(sp[1]);
+
+    // Test 10: DragState grab check, resize detach, and cancel helpers
+    Client *drag_head = NULL;
+    client_add(&drag_head, 401, CLIENT_TILED);
+    Client *dc = client_find(drag_head, 401);
+    dc->snap_state = SNAP_LEFT;
+    dc->is_maximized = 1;
+    DragState ds = {0};
+    assert(wm_drag_commit_if_grabbed(&ds, dc, 1, 10, 20, AlreadyGrabbed) == 0);
+    assert(ds.client == NULL && ds.is_resize == 0);
+    assert(wm_drag_commit_if_grabbed(&ds, dc, 1, 10, 20, GrabSuccess) == 1);
+    assert(ds.client == dc && ds.is_resize == 1);
+    assert(wm_drag_prepare_resize(dc) == 1);
+    assert(dc->mode == CLIENT_FLOATING && dc->snap_state == SNAP_NONE && dc->is_maximized == 0);
+    assert(wm_drag_should_cancel(&ds, dc) == 1);
+    wm_drag_reset(&ds);
+    assert(ds.client == NULL && ds.is_resize == 0);
+    free_clients(&drag_head);
 
     printf("test_layout passed!\n");
     return 0;

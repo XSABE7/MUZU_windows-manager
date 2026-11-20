@@ -83,6 +83,17 @@ typedef struct {
     int current_workspace;
 } LayoutConfig;
 
+typedef struct {
+    Client *client;
+    int is_resize;
+    int start_x;
+    int start_y;
+    int orig_x;
+    int orig_y;
+    int orig_w;
+    int orig_h;
+} DragState;
+
 void layout_calculate_clients(const LayoutConfig *cfg, Client **tiled, int tiled_count);
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count);
 void client_add(Client **head, Window win, ClientMode mode);
@@ -91,5 +102,13 @@ Client *client_find(Client *head, Window win);
 Client *client_find_by_any(Client *head, Window win);
 Client *client_find_by_slot(Client *head, int slot);
 int client_count_tiled(Client *head);
+
+int wm_find_readable_path(const char *const *candidates, size_t count, char *out, size_t out_len);
+int wm_wait_x11_or_signal(int x11_fd, int sig_fd);
+int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
+                              int start_x, int start_y, int grab_status);
+int wm_drag_prepare_resize(Client *c);
+int wm_drag_should_cancel(const DragState *drag, const Client *c);
+void wm_drag_reset(DragState *drag);
 
 #endif /* MUZU_WM_H */

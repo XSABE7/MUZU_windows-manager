@@ -241,7 +241,7 @@ gcc -Wall -Wextra -pedantic -std=c11 -O1 "$TMP_DIR/x11_driver.c" -o "$TMP_DIR/x1
 
 export HOME="$TMP_DIR/home"
 mkdir -p "$HOME/.config/muzuwm"
-printf '/bin/true\n' > "$HOME/.config/muzuwm/auto_allowlist"
+printf 'touch "%s/child_ran"\n' "$TMP_DIR" > "$HOME/.config/muzuwm/auto_allowlist"
 
 Xvfb -displayfd 3 -screen 0 1280x720x24 3>"$TMP_DIR/disp.txt" >/dev/null 2>&1 &
 XVFB_PID=$!
@@ -263,13 +263,22 @@ WM1_PID=$!
 sleep 0.5
 kill -0 "$WM1_PID" 2>/dev/null || { echo "FAIL: WM1 exited prematurely"; cat "$TMP_DIR/wm1.err"; exit 1; }
 
-# 2. Verify zero zombie child processes
+# 2. Verify auto_allowlist actually spawned child and zero zombie child processes remain
+for _ in $(seq 1 40); do
+    if [ -f "$TMP_DIR/child_ran" ]; then break; fi
+    sleep 0.05
+done
+if [ ! -f "$TMP_DIR/child_ran" ]; then
+    echo "FAIL: auto_allowlist child never ran (config_run_autostart missing?)"
+    exit 1
+fi
+sleep 0.1
 ZOMBIES=$(ps -eo ppid=,stat= | awk -v p="$WM1_PID" '$1 == p && $2 ~ /Z/ { count++ } END { print count+0 }')
 if [ "$ZOMBIES" -ne 0 ]; then
     echo "FAIL: Found $ZOMBIES zombie child process(es) under WM1"
     exit 1
 fi
-echo "PASS: Zero zombie child processes"
+echo "PASS: auto_allowlist executed and zero zombie child processes"
 
 # 3. Duplicate WM conflict must fail fast
 set +e
