@@ -53,25 +53,6 @@ cairo_surface_t *titlebar_pre_render(Display *dpy, int width, int is_focused, co
     return surf;
 }
 
-Window titlebar_create(Display *dpy, Window client_win, int width) {
-    int screen = DefaultScreen(dpy);
-    Window root = RootWindow(dpy, screen);
-
-    XSetWindowAttributes attrs;
-    attrs.background_pixel = BlackPixel(dpy, screen);
-    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | Button1MotionMask | EnterWindowMask | LeaveWindowMask;
-
-    Window frame = XCreateWindow(dpy, root, 0, 0, width, TITLEBAR_HEIGHT, 0,
-                                 DefaultDepth(dpy, screen), InputOutput,
-                                 DefaultVisual(dpy, screen),
-                                 CWBackPixel | CWEventMask, &attrs);
-
-    XStoreName(dpy, frame, "MUZUwm Titlebar");
-    XReparentWindow(dpy, client_win, frame, 0, TITLEBAR_HEIGHT);
-    XMapWindow(dpy, frame);
-    return frame;
-}
-
 void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     if (!dpy || !c || c->frame == None) return;
 
@@ -275,58 +256,5 @@ void titlebar_cleanup(Client *c) {
     if (c->titlebar_cache) {
         cairo_surface_destroy(c->titlebar_cache);
         c->titlebar_cache = NULL;
-    }
-}
-
-void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int screen_w, int screen_h) {
-    if (!c) return;
-
-    // Detach to floating if currently tiled
-    if (c->mode == CLIENT_TILED) {
-        c->mode = CLIENT_FLOATING;
-        c->snap_state = SNAP_NONE;
-    }
-
-    if (c->is_maximized) {
-        c->is_maximized = 0;
-        c->snap_state = SNAP_NONE;
-        c->width = (c->saved_width > 0 && c->saved_width < screen_w) ? c->saved_width : (screen_w / 2);
-        c->height = (c->saved_height > 0 && c->saved_height < screen_h) ? c->saved_height : (screen_h * 2 / 3);
-        if (dpy) {
-            Window target = c->frame ? c->frame : c->win;
-            if (target != None) {
-                XResizeWindow(dpy, target, c->width, c->height);
-                if (c->frame) {
-                    int ch = c->height - TITLEBAR_HEIGHT;
-                    if (ch < 10) ch = 10;
-                    XResizeWindow(dpy, c->win, c->width, ch);
-                }
-            }
-        }
-    }
-
-    c->x = root_x;
-    c->y = root_y;
-    if (dpy) {
-        Window target = c->frame ? c->frame : c->win;
-        if (target != None) {
-            XMoveWindow(dpy, target, c->x, c->y);
-        }
-    }
-}
-
-void handle_titlebar_double_click(Display *dpy, Client *c, LayoutConfig *cfg) {
-    if (!c || !c->can_fullscreen) return;
-    (void)dpy;
-    if (c->mode == CLIENT_FLOATING) {
-        c->mode = CLIENT_TILED;
-        c->snap_state = SNAP_NONE;
-    } else {
-        c->mode = CLIENT_FLOATING;
-        c->snap_state = SNAP_NONE;
-        c->x = cfg->screen_width / 4;
-        c->y = cfg->screen_height / 4;
-        c->width = cfg->screen_width / 2;
-        c->height = cfg->screen_height / 2;
     }
 }

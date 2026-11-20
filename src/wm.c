@@ -39,8 +39,6 @@ void client_add(Client **head, Window win, ClientMode mode) {
     c->titlebar_cache_focused = 0;
     c->icon_surface = NULL;
     c->last_unfocus_time = time(NULL);
-    c->is_ghost = 0;
-    c->is_hovered = 0;
     c->is_focused = 0;
     c->can_fullscreen = 1;
     c->workspace = 0;

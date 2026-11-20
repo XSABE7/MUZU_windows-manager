@@ -381,11 +381,6 @@ int client_supports_fullscreen(Display *dpy, Window win) {
                                               hints.max_width, hints.max_height, is_dialog);
 }
 
-cairo_surface_t *client_get_icon(Display *dpy, Window win, const char *title, int target_size) {
-    (void)dpy; (void)win; (void)title; (void)target_size;
-    return NULL;
-}
-
 void client_set_opacity(Display *dpy, Window win, unsigned int opacity) {
     if (!dpy || win == None) return;
     static Atom net_opacity = None;

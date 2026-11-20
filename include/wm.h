@@ -59,8 +59,6 @@ typedef struct Client {
     int titlebar_cache_focused;
     cairo_surface_t *icon_surface;
     time_t last_unfocus_time;
-    int is_ghost;
-    int is_hovered;
     int is_focused;
     int can_fullscreen;
     int slot;

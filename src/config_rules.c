@@ -93,12 +93,10 @@ void config_rules_ensure_files(void) {
         "Super+Page_Up = workspace_prev\n"
         "Super+Page_Down = workspace_next\n");
     write_default("settings.conf",
-        "# MUZUwm Core & Rice Settings\n"
+        "# MUZUwm Core Settings\n"
         "master_count = 1\n"
         "workspace_count = 4\n"
-        "enable_ricewm = 1\n"
-        "enable_alttab = 1\n"
-        "desktop_menu_mode = radial\n");
+        "enable_alttab = 1\n");
 }
 
 static int read_setting_from_file(const char *path, const char *key, char *out, size_t out_len) {
@@ -162,29 +160,12 @@ int config_get_workspace_count(void) {
     return (int)count;
 }
 
-int config_is_ricewm_enabled(void) {
-    char val[32];
-    if (!config_get_setting("enable_ricewm", val, sizeof(val))) return 1;
-    if (strcasecmp(val, "0") == 0 || strcasecmp(val, "false") == 0 || strcasecmp(val, "no") == 0) {
-        return 0;
-    }
-    return 1;
-}
-
 int config_is_alttab_enabled(void) {
     char val[32];
     if (!config_get_setting("enable_alttab", val, sizeof(val))) return 1;
     if (strcasecmp(val, "0") == 0 || strcasecmp(val, "false") == 0 ||
         strcasecmp(val, "no") == 0 || strcasecmp(val, "off") == 0) {
         return 0;
-    }
-    return 1;
-}
-
-int config_get_desktop_menu_mode(char *out, size_t out_len) {
-    if (!out || out_len == 0) return 0;
-    if (!config_get_setting("desktop_menu_mode", out, out_len)) {
-        snprintf(out, out_len, "radial");
     }
     return 1;
 }
