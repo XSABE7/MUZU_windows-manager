@@ -204,6 +204,16 @@ int main(void) {
     assert(cw == 600 && ch == 400);
     assert(cx >= 0 && cy >= 0 && cx + cw <= 800 && cy + ch <= 600);
 
+    // Test 10: _NET_WM_NAME UTF-8 property type/format/length validation
+    char utf8_title_buf[16];
+    const Atom A_UTF8 = 300;
+    const unsigned char raw_title[5] = {'H', 'e', 'l', 'l', 'o'};
+    assert(client_copy_utf8_prop(utf8_title_buf, sizeof(utf8_title_buf), raw_title, 5, A_UTF8, 8, A_UTF8) == 1);
+    assert(strcmp(utf8_title_buf, "Hello") == 0);
+    assert(client_copy_utf8_prop(utf8_title_buf, sizeof(utf8_title_buf), raw_title, 5, A_UTF8, 32, A_UTF8) == 0);
+    assert(client_copy_utf8_prop(utf8_title_buf, sizeof(utf8_title_buf), raw_title, 5, XA_ATOM, 8, A_UTF8) == 0);
+    assert(client_copy_utf8_prop(utf8_title_buf, sizeof(utf8_title_buf), raw_title, 0, A_UTF8, 8, A_UTF8) == 0);
+
     printf("test_client_props passed!\n");
     return 0;
 }

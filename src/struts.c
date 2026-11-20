@@ -2,6 +2,13 @@
 #include <string.h>
 #include "struts.h"
 
+#define STRUT_MAX_VALUE 32768UL
+
+int strut_clamp_value(unsigned long raw) {
+    if (raw > STRUT_MAX_VALUE) return (int)STRUT_MAX_VALUE;
+    return (int)raw;
+}
+
 void strut_list_add_or_update(StrutList **head, Window win, const StrutPartial *strut) {
     if (!head || !strut) return;
     for (StrutList *curr = *head; curr; curr = curr->next) {
@@ -82,18 +89,18 @@ int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (nitems >= 12 && actual_format == 32) {
             const unsigned long *v = (const unsigned long *)prop;
-            out_strut->left = (int)v[0];
-            out_strut->right = (int)v[1];
-            out_strut->top = (int)v[2];
-            out_strut->bottom = (int)v[3];
-            out_strut->left_start_y = (int)v[4];
-            out_strut->left_end_y = (int)v[5];
-            out_strut->right_start_y = (int)v[6];
-            out_strut->right_end_y = (int)v[7];
-            out_strut->top_start_x = (int)v[8];
-            out_strut->top_end_x = (int)v[9];
-            out_strut->bottom_start_x = (int)v[10];
-            out_strut->bottom_end_x = (int)v[11];
+            out_strut->left = strut_clamp_value(v[0]);
+            out_strut->right = strut_clamp_value(v[1]);
+            out_strut->top = strut_clamp_value(v[2]);
+            out_strut->bottom = strut_clamp_value(v[3]);
+            out_strut->left_start_y = strut_clamp_value(v[4]);
+            out_strut->left_end_y = strut_clamp_value(v[5]);
+            out_strut->right_start_y = strut_clamp_value(v[6]);
+            out_strut->right_end_y = strut_clamp_value(v[7]);
+            out_strut->top_start_x = strut_clamp_value(v[8]);
+            out_strut->top_end_x = strut_clamp_value(v[9]);
+            out_strut->bottom_start_x = strut_clamp_value(v[10]);
+            out_strut->bottom_end_x = strut_clamp_value(v[11]);
             XFree(prop);
             return 1;
         }
@@ -106,10 +113,10 @@ int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (nitems >= 4 && actual_format == 32) {
             const unsigned long *v = (const unsigned long *)prop;
-            out_strut->left = (int)v[0];
-            out_strut->right = (int)v[1];
-            out_strut->top = (int)v[2];
-            out_strut->bottom = (int)v[3];
+            out_strut->left = strut_clamp_value(v[0]);
+            out_strut->right = strut_clamp_value(v[1]);
+            out_strut->top = strut_clamp_value(v[2]);
+            out_strut->bottom = strut_clamp_value(v[3]);
             XFree(prop);
             return 1;
         }

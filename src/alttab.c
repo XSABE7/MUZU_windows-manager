@@ -307,13 +307,9 @@ void alttab_render(Display *dpy, AltTab *at) {
                                 ? app->win_titles[sel_w] : app->app_name;
 
         char label[16];
-        strncpy(label, raw_label, sizeof(label) - 1);
-        label[sizeof(label) - 1] = '\0';
-        if (strlen(raw_label) >= sizeof(label) - 1) {
-            label[12] = '.';
-            label[13] = '.';
-            label[14] = '.';
-            label[15] = '\0';
+        snprintf(label, sizeof(label), "%s", raw_label);
+        if (strlen(raw_label) >= sizeof(label)) {
+            memcpy(label + 12, "...", 4);
         }
 
         cairo_text_extents_t te;

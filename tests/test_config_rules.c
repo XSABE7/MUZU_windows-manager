@@ -199,6 +199,25 @@ int main(void) {
     const ShortcutBinding *b_wsn = shortcuts_match_event(&sc, Mod4Mask, XK_Page_Down);
     assert(b_wsn && b_wsn->type == SHORTCUT_ACT_WS_NEXT);
 
+    // 7. Overlong config/shortcut lines (> 512 bytes) must not split tail into fake entries
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "# ");
+    for (int i = 0; i < 509; i++) fputc('a', f);
+    fprintf(f, "workspace_count=9\nmaster_count=2\n");
+    fclose(f);
+    assert(config_get_workspace_count() == 4);
+    assert(config_get_master_count() == 2);
+
+    f = fopen(sc_path, "w");
+    assert(f != NULL);
+    fprintf(f, "# ");
+    for (int i = 0; i < 509; i++) fputc('b', f);
+    fprintf(f, "Super+q = none\n");
+    fclose(f);
+    shortcuts_load_file(&sc, sc_path);
+    assert(shortcuts_match_event(&sc, Mod4Mask, XK_q)->type == SHORTCUT_ACT_CLOSE);
+
     if (orig_home) setenv("HOME", orig_home, 1);
     char rm_cmd[600];
     snprintf(rm_cmd, sizeof(rm_cmd), "rm -rf %s", tmp_dir);

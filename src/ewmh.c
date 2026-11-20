@@ -50,6 +50,23 @@ void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_
     }
 }
 
+int ewmh_atoms_contain(const unsigned char *prop, unsigned long nitems,
+                       Atom actual_type, int actual_format, Atom target) {
+    if (!prop || nitems == 0 || target == None) return 0;
+    if (actual_type != XA_ATOM || actual_format != 32) return 0;
+
+    const Atom *atoms = (const Atom *)prop;
+    for (unsigned long i = 0; i < nitems; i++) {
+        if (atoms[i] == target) return 1;
+    }
+    return 0;
+}
+
+int ewmh_parse_desktop_index(long raw, int num_workspaces) {
+    if (num_workspaces <= 0 || raw < 0 || raw >= (long)num_workspaces) return -1;
+    return (int)raw;
+}
+
 int ewmh_window_has_fullscreen_state(Display *dpy, Window win) {
     if (!dpy || win == None) return 0;
 
@@ -64,13 +81,7 @@ int ewmh_window_has_fullscreen_state(Display *dpy, Window win) {
     if (XGetWindowProperty(dpy, win, net_wm_state, 0, (~0L), False,
                            XA_ATOM, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        Atom *atoms = (Atom *)prop;
-        for (unsigned long i = 0; i < nitems; i++) {
-            if (atoms[i] == net_wm_fs) {
-                found = 1;
-                break;
-            }
-        }
+        found = ewmh_atoms_contain(prop, nitems, actual_type, actual_format, net_wm_fs);
         XFree(prop);
     }
     return found;

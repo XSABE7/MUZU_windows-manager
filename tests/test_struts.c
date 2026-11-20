@@ -54,6 +54,12 @@ int main(void) {
     assert(wa_buf[0] == 0 && wa_buf[1] == 0 && wa_buf[2] == 100 && wa_buf[3] == 100);
     assert(strut_build_workarea_array(0, 0, 800, 600, 4, wa_buf, 10) == 8);
 
+    // Test 7: Strut value clamping against huge/overflowing cardinals
+    assert(strut_clamp_value(0UL) == 0);
+    assert(strut_clamp_value(48UL) == 48);
+    assert(strut_clamp_value(999999UL) == 32768);
+    assert(strut_clamp_value(0xFFFFFFFFUL) == 32768);
+
     printf("test_struts passed!\n");
     return 0;
 }

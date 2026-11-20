@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <X11/Xatom.h>
 #include "wm.h"
 #include "ewmh.h"
 
@@ -89,6 +90,18 @@ int main(void) {
     c->is_minimized = 1;
     assert(ewmh_resolve_active_window(c) == None);
     ewmh_set_active_window(NULL, None, None);
+
+    // Test 6: Property type/format validation & 64-bit long desktop index bounds
+    Atom fs_atoms[2] = { 99, 10 };
+    assert(ewmh_atoms_contain((const unsigned char *)fs_atoms, 2, XA_ATOM, 32, 10) == 1);
+    assert(ewmh_atoms_contain((const unsigned char *)fs_atoms, 2, XA_CARDINAL, 32, 10) == 0);
+    assert(ewmh_atoms_contain((const unsigned char *)fs_atoms, 2, XA_ATOM, 8, 10) == 0);
+    assert(ewmh_atoms_contain((const unsigned char *)fs_atoms, 0, XA_ATOM, 32, 10) == 0);
+
+    assert(ewmh_parse_desktop_index(2L, 4) == 2);
+    assert(ewmh_parse_desktop_index(-1L, 4) == -1);
+    assert(ewmh_parse_desktop_index(4L, 4) == -1);
+    assert(ewmh_parse_desktop_index(0x100000000L, 4) == -1);
 
     client_remove(&head, 501);
     printf("test_ewmh passed!\n");

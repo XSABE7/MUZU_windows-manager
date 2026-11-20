@@ -22,11 +22,28 @@ void client_sanitize_title(char *out_buf, size_t maxlen, const char *raw_title) 
     if (!out_buf || maxlen == 0) return;
 
     if (!raw_title || raw_title[0] == '\0') {
-        strncpy(out_buf, DEFAULT_TITLE, maxlen - 1);
+        snprintf(out_buf, maxlen, "%s", DEFAULT_TITLE);
     } else {
-        strncpy(out_buf, raw_title, maxlen - 1);
+        snprintf(out_buf, maxlen, "%s", raw_title);
     }
-    out_buf[maxlen - 1] = '\0';
+}
+
+int client_copy_utf8_prop(char *out_buf, size_t maxlen, const unsigned char *prop,
+                          unsigned long nitems, Atom actual_type, int actual_format, Atom utf8_string) {
+    if (!out_buf || maxlen == 0 || !prop || nitems == 0) return 0;
+    if (actual_format != 8 || (utf8_string != None && actual_type != utf8_string)) return 0;
+
+    size_t copy_len = (nitems < maxlen - 1) ? (size_t)nitems : (maxlen - 1);
+    size_t actual_len = 0;
+    while (actual_len < copy_len && prop[actual_len] != '\0') {
+        out_buf[actual_len] = (char)prop[actual_len];
+        actual_len++;
+    }
+    out_buf[actual_len] = '\0';
+    if (actual_len == 0) {
+        client_sanitize_title(out_buf, maxlen, NULL);
+    }
+    return 1;
 }
 
 void client_calculate_dialog_geometry(int screen_w, int screen_h, int win_w, int win_h,
@@ -140,9 +157,9 @@ void client_get_title(Display *dpy, Window win, char *out_buf, size_t maxlen) {
     if (XGetWindowProperty(dpy, win, net_wm_name, 0, (~0L), False,
                            utf8_string, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        client_sanitize_title(out_buf, maxlen, (const char *)prop);
+        int ok = client_copy_utf8_prop(out_buf, maxlen, prop, nitems, actual_type, actual_format, utf8_string);
         XFree(prop);
-        return;
+        if (ok) return;
     }
 
     // 2. Try WM_NAME (ICCCM)
@@ -236,10 +253,12 @@ WindowType client_get_window_type(Display *dpy, Window win) {
     if (XGetWindowProperty(dpy, win, net_wm_window_type, 0, (~0L), False,
                            XA_ATOM, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        result = client_classify_window_type_atoms((const Atom *)prop, nitems,
-                                                   a_desktop, a_dock, a_toolbar, a_menu,
-                                                   a_utility, a_splash, a_dialog, a_notify,
-                                                   a_normal, has_transient);
+        if (actual_type == XA_ATOM && actual_format == 32 && nitems > 0) {
+            result = client_classify_window_type_atoms((const Atom *)prop, nitems,
+                                                       a_desktop, a_dock, a_toolbar, a_menu,
+                                                       a_utility, a_splash, a_dialog, a_notify,
+                                                       a_normal, has_transient);
+        }
         XFree(prop);
     }
 

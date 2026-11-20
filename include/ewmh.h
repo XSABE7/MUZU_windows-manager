@@ -24,6 +24,13 @@ void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_
 // Check whether a client window already has _NET_WM_STATE_FULLSCREEN set prior to mapping
 int ewmh_window_has_fullscreen_state(Display *dpy, Window win);
 
+// Validate an XA_ATOM/32 property buffer and check whether it contains target
+int ewmh_atoms_contain(const unsigned char *prop, unsigned long nitems,
+                       Atom actual_type, int actual_format, Atom target);
+
+// Validate a 64-bit ClientMessage desktop index against [0, num_workspaces - 1]
+int ewmh_parse_desktop_index(long raw, int num_workspaces);
+
 // Resolve the _NET_ACTIVE_WINDOW target for a focused client (or None if hidden/NULL)
 Window ewmh_resolve_active_window(const Client *c);
 

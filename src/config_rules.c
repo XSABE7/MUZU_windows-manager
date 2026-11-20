@@ -20,6 +20,12 @@ static char *trim(char *s) {
     return s;
 }
 
+static void discard_rest_of_line(FILE *f, const char *buf) {
+    if (!f || !buf || strchr(buf, '\n') != NULL) return;
+    int ch;
+    while ((ch = fgetc(f)) != EOF && ch != '\n') {}
+}
+
 static int config_dir(char *out, size_t len) {
     const char *home = getenv("HOME");
     if (!home) home = "/tmp";
@@ -101,6 +107,7 @@ static int read_setting_from_file(const char *path, const char *key, char *out, 
     int found = 0;
     char line[512];
     while (fgets(line, sizeof(line), f)) {
+        discard_rest_of_line(f, line);
         char *entry = trim(line);
         if (entry[0] == '\0' || entry[0] == '#') continue;
         char *eq = strchr(entry, '=');
@@ -189,6 +196,7 @@ int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_nam
     int found = 0;
     char line[512];
     while (!found && fgets(line, sizeof(line), f)) {
+        discard_rest_of_line(f, line);
         char *entry = trim(line);
         if (entry[0] == '\0' || entry[0] == '#') continue;
         if ((res_name && res_name[0] && strcasecmp(entry, res_name) == 0) ||
@@ -228,6 +236,7 @@ int config_load_auto_allowlist_file(const char *path, char out_cmds[][256], int 
     int n = 0;
     char line[512];
     while (n < max_cmds && fgets(line, sizeof(line), f)) {
+        discard_rest_of_line(f, line);
         char *cmd = trim(line);
         if (cmd[0] == '\0' || cmd[0] == '#') continue;
         snprintf(out_cmds[n], 256, "%s", cmd);
@@ -398,6 +407,7 @@ void shortcuts_load_file(ShortcutConfig *sc, const char *path) {
 
     char line[512];
     while (fgets(line, sizeof(line), f)) {
+        discard_rest_of_line(f, line);
         char *l = trim(line);
         if (l[0] == '\0' || l[0] == '#') continue;
         char *eq = strchr(l, '=');

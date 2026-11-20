@@ -14,6 +14,10 @@ int client_protocols_contain(const Atom *protocols, int count, Atom target);
 // Safe copy and sanitize window title with fallback
 void client_sanitize_title(char *out_buf, size_t maxlen, const char *raw_title);
 
+// Validate UTF8_STRING property metadata (type/format/nitems) and copy safely
+int client_copy_utf8_prop(char *out_buf, size_t maxlen, const unsigned char *prop,
+                          unsigned long nitems, Atom actual_type, int actual_format, Atom utf8_string);
+
 // Calculate centered & clamped geometry for floating dialog windows
 void client_calculate_dialog_geometry(int screen_w, int screen_h, int win_w, int win_h,
                                      int *out_x, int *out_y, int *out_w, int *out_h);

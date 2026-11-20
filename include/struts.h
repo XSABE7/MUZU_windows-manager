@@ -19,6 +19,7 @@ typedef struct StrutList {
     struct StrutList *next;
 } StrutList;
 
+int strut_clamp_value(unsigned long raw);
 void strut_list_add_or_update(StrutList **head, Window win, const StrutPartial *strut);
 void strut_list_remove(StrutList **head, Window win);
 void strut_calculate_insets(const StrutList *head, int screen_w, int screen_h,
