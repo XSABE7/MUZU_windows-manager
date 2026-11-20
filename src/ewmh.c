@@ -67,6 +67,22 @@ int ewmh_parse_desktop_index(long raw, int num_workspaces) {
     return (int)raw;
 }
 
+int ewmh_allows_client_configure(const Client *c) {
+    if (!c) return 0;
+    return (c->mode == CLIENT_FLOATING && !c->is_maximized && !c->is_fullscreen) ? 1 : 0;
+}
+
+int ewmh_can_drag_client(const Client *c) {
+    if (!c || c->is_fullscreen) return 0;
+    return 1;
+}
+
+int ewmh_begin_move_clears_maximized(Client *c) {
+    if (!c || !c->is_maximized) return 0;
+    c->is_maximized = 0;
+    return 1;
+}
+
 int ewmh_window_has_fullscreen_state(Display *dpy, Window win) {
     if (!dpy || win == None) return 0;
 

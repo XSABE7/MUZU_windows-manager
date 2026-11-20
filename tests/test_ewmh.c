@@ -103,6 +103,29 @@ int main(void) {
     assert(ewmh_parse_desktop_index(4L, 4) == -1);
     assert(ewmh_parse_desktop_index(0x100000000L, 4) == -1);
 
+    // Test 7: Fullscreen ConfigureRequest guard & drag/maximize state helpers
+    c->mode = CLIENT_FLOATING;
+    c->is_maximized = 0;
+    c->is_fullscreen = 0;
+    assert(ewmh_allows_client_configure(c) == 1);
+    assert(ewmh_can_drag_client(c) == 1);
+    assert(ewmh_begin_move_clears_maximized(c) == 0);
+
+    c->is_fullscreen = 1;
+    assert(ewmh_allows_client_configure(c) == 0);
+    assert(ewmh_can_drag_client(c) == 0);
+    assert(ewmh_can_drag_client(NULL) == 0);
+
+    c->is_fullscreen = 0;
+    c->is_maximized = 1;
+    assert(ewmh_allows_client_configure(c) == 0);
+    assert(ewmh_begin_move_clears_maximized(c) == 1);
+    assert(c->is_maximized == 0);
+    assert(ewmh_allows_client_configure(c) == 1);
+
+    c->mode = CLIENT_TILED;
+    assert(ewmh_allows_client_configure(c) == 0);
+
     client_remove(&head, 501);
     printf("test_ewmh passed!\n");
     return 0;

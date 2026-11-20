@@ -31,6 +31,15 @@ int ewmh_atoms_contain(const unsigned char *prop, unsigned long nitems,
 // Validate a 64-bit ClientMessage desktop index against [0, num_workspaces - 1]
 int ewmh_parse_desktop_index(long raw, int num_workspaces);
 
+// Returns 1 only when a floating client is allowed to move/resize via ConfigureRequest
+int ewmh_allows_client_configure(const Client *c);
+
+// Returns 1 when a client can be interactively dragged/resized (blocked in fullscreen)
+int ewmh_can_drag_client(const Client *c);
+
+// Clears is_maximized when moving a maximized window to float; returns 1 if state changed
+int ewmh_begin_move_clears_maximized(Client *c);
+
 // Resolve the _NET_ACTIVE_WINDOW target for a focused client (or None if hidden/NULL)
 Window ewmh_resolve_active_window(const Client *c);
 
