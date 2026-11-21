@@ -13,7 +13,7 @@ OBJS = $(SRCS:.c=.o)
 
 all: muzuwm
 
-tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab
+tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -51,6 +51,9 @@ test_menu: tests/test_menu.c src/menu.c
 test_alttab: tests/test_alttab.c src/alttab.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
+test_mzml: tests/test_mzml.c src/mzml.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
 -include $(OBJS:.o=.d)
 
 muzuwm: $(OBJS)
@@ -61,7 +64,7 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab muzuwm
+	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml muzuwm
 
 install: muzuwm
 	install -d $(DESTDIR)$(BINDIR)

@@ -4,7 +4,9 @@
 .superpowers/
 *.o
 muzuwm
+mzml
 test_layout
+test_mzml
 test_trigger
 test_easter_egg
 test_calendar
