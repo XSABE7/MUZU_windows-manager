@@ -156,6 +156,61 @@ class ConfigManager:
         ConfigManager.set_key(SETTINGS_FILE, "enable_alttab", "1" if enabled else "0")
         ConfigManager.reload_muzuwm_settings()
 
+    @staticmethod
+    def _parse_bool(key, default=True):
+        raw = ConfigManager.get_key(SETTINGS_FILE, key, "1" if default else "0").strip().lower()
+        return raw not in ("0", "false", "no", "off")
+
+    @staticmethod
+    def get_focus_follows_mouse():
+        return ConfigManager._parse_bool("focus_follows_mouse", True)
+
+    @staticmethod
+    def get_desktop_menu_enabled():
+        return ConfigManager._parse_bool("enable_desktop_menu", True)
+
+    @staticmethod
+    def get_border_width():
+        raw = ConfigManager.get_key(SETTINGS_FILE, "border_width", "2").strip()
+        try:
+            val = int(raw)
+        except ValueError:
+            return 2
+        return max(0, min(16, val))
+
+    @staticmethod
+    def _normalize_hex(val, fallback):
+        s = (val or "").strip()
+        if s.startswith("#"):
+            s = s[1:]
+        if len(s) == 6 and all(c in "0123456789abcdefABCDEF" for c in s):
+            return "#" + s.lower()
+        return fallback
+
+    @staticmethod
+    def get_focus_border_color():
+        return ConfigManager._normalize_hex(
+            ConfigManager.get_key(SETTINGS_FILE, "focus_border_color", "#89b4fa"), "#89b4fa"
+        )
+
+    @staticmethod
+    def get_unfocus_border_color():
+        return ConfigManager._normalize_hex(
+            ConfigManager.get_key(SETTINGS_FILE, "unfocus_border_color", "#45475a"), "#45475a"
+        )
+
+    @staticmethod
+    def set_wm_behavior_settings(ffm, desktop_menu, border_width, focus_color, unfocus_color):
+        bw = max(0, min(16, int(border_width)))
+        fc = ConfigManager._normalize_hex(focus_color, "#89b4fa")
+        uc = ConfigManager._normalize_hex(unfocus_color, "#45475a")
+        ConfigManager.set_key(SETTINGS_FILE, "focus_follows_mouse", "1" if ffm else "0")
+        ConfigManager.set_key(SETTINGS_FILE, "enable_desktop_menu", "1" if desktop_menu else "0")
+        ConfigManager.set_key(SETTINGS_FILE, "border_width", str(bw))
+        ConfigManager.set_key(SETTINGS_FILE, "focus_border_color", fc)
+        ConfigManager.set_key(SETTINGS_FILE, "unfocus_border_color", uc)
+        ConfigManager.reload_muzuwm_settings()
+
     # 1. Keyboard & Language Management
     @staticmethod
     def get_keyboard_settings():
@@ -476,6 +531,7 @@ class ConfigManager:
             "Super+Up = fullscreen",
             "Super+Down = float",
             "Super+Return = exec wezterm",
+            "Super+space = launcher",
             "Super+b = exec google-chrome",
             "Super+e = exec thunar",
             "Super+q = close_window",
@@ -529,7 +585,13 @@ class ConfigManager:
             "keyboard_layouts=us,th",
             "layout_switch_option=super_space",
             "master_count=1",
+            "workspace_count=4",
             "enable_alttab=1",
+            "focus_follows_mouse=1",
+            "enable_desktop_menu=1",
+            "border_width=2",
+            "focus_border_color=#89b4fa",
+            "unfocus_border_color=#45475a",
             "titlebar_height=24",
             "titlebar_font=sans-serif",
             "titlebar_font_size=11",
@@ -967,14 +1029,41 @@ def cli_wallpaper_menu():
 
 
 def cli_layout_menu():
-    print("\n--- 📐 การจัดเรียงหน้าต่าง (Window Layout & Tiling) ---")
+    print("\n--- 📐 การจัดเรียงหน้าต่าง, Focus & เส้นขอบ (Layout, Focus & Borders) ---")
     masters = ConfigManager.get_key(SETTINGS_FILE, "master_count", "1")
-    print(f"จำนวนหน้าต่างหลักในฝั่ง Master: {masters}")
-    val = input("ระบุจำนวน Master windows (1 - 4): ").strip()
-    if val in ["1", "2", "3", "4"]:
-        ConfigManager.set_key(SETTINGS_FILE, "master_count", val)
-        ConfigManager.reload_muzuwm_settings()
-        print(f"✓ บันทึก Master count = {val} แล้ว")
+    ffm = ConfigManager.get_focus_follows_mouse()
+    dmenu = ConfigManager.get_desktop_menu_enabled()
+    bw = ConfigManager.get_border_width()
+    fc = ConfigManager.get_focus_border_color()
+    uc = ConfigManager.get_unfocus_border_color()
+    print(f"1) Master count: {masters}")
+    print(f"2) Focus-follows-mouse: {'เปิด' if ffm else 'ปิด'}")
+    print(f"3) เมนูคลิกขวาพื้นหลัง (Desktop Menu): {'เปิด' if dmenu else 'ปิด'} (Ctrl+Alt+Delete เปิดฉุกเฉินได้เสมอ)")
+    print(f"4) ความหนาเส้นขอบ (border_width): {bw} px")
+    print(f"5) สีขอบ Focus / Unfocus: {fc} / {uc}")
+    choice = input("เลือกหัวข้อ (1-5) [Enter เพื่อย้อนกลับ]: ").strip()
+    if choice == "1":
+        val = input("ระบุจำนวน Master windows (1 - 4): ").strip()
+        if val in ["1", "2", "3", "4"]:
+            ConfigManager.set_key(SETTINGS_FILE, "master_count", val)
+            ConfigManager.reload_muzuwm_settings()
+            print(f"✓ บันทึก Master count = {val} แล้ว")
+    elif choice == "2":
+        ConfigManager.set_wm_behavior_settings(not ffm, dmenu, bw, fc, uc)
+        print(f"✓ Focus-follows-mouse: {'เปิด' if not ffm else 'ปิด'}")
+    elif choice == "3":
+        ConfigManager.set_wm_behavior_settings(ffm, not dmenu, bw, fc, uc)
+        print(f"✓ Desktop Menu: {'เปิด' if not dmenu else 'ปิด'}")
+    elif choice == "4":
+        val = input("ความหนาเส้นขอบ (0-16 px): ").strip()
+        if val.lstrip("-").isdigit():
+            ConfigManager.set_wm_behavior_settings(ffm, dmenu, int(val), fc, uc)
+            print("✓ บันทึกความหนาเส้นขอบแล้ว")
+    elif choice == "5":
+        nfc = input(f"สีขอบ Focus (#RRGGBB) [{fc}]: ").strip() or fc
+        nuc = input(f"สีขอบ Unfocus (#RRGGBB) [{uc}]: ").strip() or uc
+        ConfigManager.set_wm_behavior_settings(ffm, dmenu, bw, nfc, nuc)
+        print("✓ บันทึกสีเส้นขอบและรีโหลดแล้ว")
 
 
 def cli_backup_menu():
@@ -1817,6 +1906,66 @@ def run_gtk_gui():
                 icon_combo.append(i, i)
             icon_combo.set_active(0)
             gform.attach(icon_combo, 1, 1, 1, 1)
+
+            box.pack_start(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL), False, False, 8)
+
+            # WM Focus, Desktop Menu & Focus Border Settings
+            wm_lbl = Gtk.Label(xalign=0)
+            wm_lbl.set_markup("<b>พฤติกรรม Focus, เมนูคลิกขวา และเส้นขอบหน้าต่าง (Focus & Borders)</b>")
+            box.pack_start(wm_lbl, False, False, 0)
+
+            wm_form = Gtk.Grid(row_spacing=10, column_spacing=14)
+            box.pack_start(wm_form, False, False, 0)
+
+            self.ffm_switch = Gtk.Switch()
+            self.ffm_switch.set_active(ConfigManager.get_focus_follows_mouse())
+            wm_form.attach(Gtk.Label(label="Focus-follows-mouse (ชี้เมาส์เพื่อโฟกัส):", xalign=0), 0, 0, 1, 1)
+            wm_form.attach(self.ffm_switch, 1, 0, 1, 1)
+
+            self.dmenu_switch = Gtk.Switch()
+            self.dmenu_switch.set_active(ConfigManager.get_desktop_menu_enabled())
+            wm_form.attach(Gtk.Label(label="เมนูคลิกขวาบนพื้นหลัง (ปิดได้; Ctrl+Alt+Del เปิดฉุกเฉินเสมอ):", xalign=0), 0, 1, 1, 1)
+            wm_form.attach(self.dmenu_switch, 1, 1, 1, 1)
+
+            self.bw_spin = Gtk.SpinButton.new_with_range(0, 16, 1)
+            self.bw_spin.set_value(ConfigManager.get_border_width())
+            wm_form.attach(Gtk.Label(label="ความหนาเส้นขอบ (border_width px):", xalign=0), 0, 2, 1, 1)
+            wm_form.attach(self.bw_spin, 1, 2, 1, 1)
+
+            def make_color_row(row_idx, label_text, initial_hex):
+                entry = Gtk.Entry()
+                entry.set_text(initial_hex)
+                cbtn = Gtk.ColorButton()
+                rgba = Gdk.RGBA()
+                if rgba.parse(initial_hex):
+                    cbtn.set_rgba(rgba)
+                def on_color_set(btn):
+                    c = btn.get_rgba()
+                    entry.set_text(f"#{int(c.red*255):02x}{int(c.green*255):02x}{int(c.blue*255):02x}")
+                cbtn.connect("color-set", on_color_set)
+                hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                hb.pack_start(entry, True, True, 0)
+                hb.pack_start(cbtn, False, False, 0)
+                wm_form.attach(Gtk.Label(label=label_text, xalign=0), 0, row_idx, 1, 1)
+                wm_form.attach(hb, 1, row_idx, 1, 1)
+                return entry
+
+            self.focus_color_entry = make_color_row(3, "สีเส้นขอบ Focused (#RRGGBB):", ConfigManager.get_focus_border_color())
+            self.unfocus_color_entry = make_color_row(4, "สีเส้นขอบ Unfocused (#RRGGBB):", ConfigManager.get_unfocus_border_color())
+
+            save_wm_btn = Gtk.Button(label="บันทึกและรีโหลด Focus / เส้นขอบ")
+            save_wm_btn.get_style_context().add_class("suggested-action")
+            def on_save_wm(b):
+                ConfigManager.set_wm_behavior_settings(
+                    self.ffm_switch.get_active(),
+                    self.dmenu_switch.get_active(),
+                    self.bw_spin.get_value_as_int(),
+                    self.focus_color_entry.get_text(),
+                    self.unfocus_color_entry.get_text()
+                )
+                self.show_toast("✓ บันทึก Focus / เมนูคลิกขวา / สีเส้นขอบ และรีโหลด MUZUwm แล้ว")
+            save_wm_btn.connect("clicked", on_save_wm)
+            wm_form.attach(save_wm_btn, 1, 5, 1, 1)
 
             self.stack.add_titled(scroller, "appearance", "🎨 ธีมและภาพพื้นหลัง")
 

@@ -187,6 +187,12 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
     if (!c || !cfg) return;
     if (!c->can_fullscreen) return;
 
+    int bw = (cfg->border_width > 0) ? cfg->border_width : 0;
+    int max_w = cfg->screen_width - cfg->left_inset - cfg->right_inset - 2 * bw;
+    int max_h = cfg->screen_height - cfg->top_inset - cfg->bottom_inset - 2 * bw;
+    if (max_w < 10) max_w = 10;
+    if (max_h < 10) max_h = 10;
+
     if (!c->is_maximized) {
         c->saved_x = c->x;
         c->saved_y = c->y;
@@ -198,10 +204,8 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
         c->snap_state = SNAP_TOP;
         c->x = cfg->mon_x + cfg->left_inset;
         c->y = cfg->mon_y + cfg->top_inset;
-        c->width = cfg->screen_width - cfg->left_inset - cfg->right_inset;
-        c->height = cfg->screen_height - cfg->top_inset - cfg->bottom_inset;
-        if (c->width < 34) c->width = 34;
-        if (c->height < 34) c->height = 34;
+        c->width = max_w;
+        c->height = max_h;
         c->is_maximized = 1;
 
         if (dpy) {
@@ -214,8 +218,6 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
             }
         }
     } else {
-        int max_w = cfg->screen_width - cfg->left_inset - cfg->right_inset;
-        int max_h = cfg->screen_height - cfg->top_inset - cfg->bottom_inset;
         int bad_saved = (c->saved_width <= 0 || c->saved_width >= max_w ||
                          c->saved_height <= 0 || c->saved_height >= max_h);
         if (bad_saved) {

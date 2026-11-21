@@ -149,6 +149,83 @@ int main(void) {
     assert(ds.client == NULL && ds.is_resize == 0);
     free_clients(&drag_head);
 
+    // Test 11: border_width geometry compensation and small-screen clamping
+    LayoutConfig bcfg = {
+        .screen_width = 1920,
+        .screen_height = 1080,
+        .master_count = 1,
+        .border_width = 2
+    };
+    Client *bhead = NULL;
+    client_add(&bhead, 501, CLIENT_TILED);
+    layout_calculate(&bcfg, bhead, 1);
+    assert(bhead->x == 0 && bhead->y == 0);
+    assert(bhead->width == 1916 && bhead->height == 1076);
+
+    client_add(&bhead, 502, CLIENT_TILED);
+    layout_calculate(&bcfg, bhead, 2);
+    Client *bf1 = client_find(bhead, 501);
+    Client *bf2 = client_find(bhead, 502);
+    assert(bf1->width == 956 && bf1->height == 1076);
+    assert(bf2->width == 956 && bf2->height == 1076);
+    free_clients(&bhead);
+
+    LayoutConfig tiny_cfg = {
+        .screen_width = 40,
+        .screen_height = 40,
+        .master_count = 1,
+        .border_width = 16
+    };
+    Client *thead = NULL;
+    client_add(&thead, 503, CLIENT_TILED);
+    layout_calculate(&tiny_cfg, thead, 1);
+    assert(thead->width >= 10 && thead->height >= 10);
+    free_clients(&thead);
+
+    // Test 12: EnterNotify focus predicate and double-tap timestamp helper
+    Client enter_c = {0};
+    enter_c.workspace = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 1);
+    assert(wm_should_focus_on_enter(0, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyGrab, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyUngrab, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyInferior, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 1, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 1, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 1, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, NULL, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 0) == 0);
+    enter_c.is_minimized = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    enter_c.is_minimized = 0;
+    enter_c.ws_hidden = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    enter_c.ws_hidden = 0;
+    enter_c.is_focused = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+
+    assert(wm_is_double_tap_within(1000, 1400, 0, 500) == 0);
+    assert(wm_is_double_tap_within(1000, 1400, 1, 500) == 1);
+    assert(wm_is_double_tap_within(1000, 1500, 1, 500) == 1);
+    assert(wm_is_double_tap_within(1000, 1501, 1, 500) == 0);
+    assert(wm_is_double_tap_within((Time)0xFFFFFF00UL, (Time)100UL, 1, 500) == 1);
+    assert(wm_is_double_tap_within((Time)0xFFFFFF00UL, (Time)300UL, 1, 500) == 0);
+
+    // Test 13: Ctrl+Alt+Delete state machine ignores ReplayKeyboard bounce on same timestamp
+    int cad_pend = 0;
+    Time cad_t = 0;
+    assert(wm_handle_cad_keypress(1000UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(cad_pend == 1 && cad_t == 1000UL);
+    assert(wm_handle_cad_keypress(1000UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_IGNORE_REPLAY);
+    assert(cad_pend == 1 && cad_t == 1000UL);
+    assert(wm_handle_cad_keypress(1200UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_TRIGGER_MENU);
+    assert(cad_pend == 0);
+    assert(wm_handle_cad_keypress(2000UL, 1, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(wm_handle_cad_keypress(2250UL, 1, &cad_pend, &cad_t, 500) == CAD_ACTION_TRIGGER_MENU);
+    assert(wm_handle_cad_keypress(3000UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(wm_handle_cad_keypress(3600UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(cad_t == 3600UL);
+
     printf("test_layout passed!\n");
     return 0;
 }

@@ -124,6 +124,8 @@ void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enabl
         c->height = cfg->screen_height;
 
         if (dpy && c->win != None) {
+            Window target = (c->frame != None) ? c->frame : c->win;
+            XSetWindowBorderWidth(dpy, target, 0);
             if (c->frame != None) {
                 XMoveResizeWindow(dpy, c->frame, c->x, c->y, c->width, c->height);
                 XMoveResizeWindow(dpy, c->win, 0, 0, c->width, c->height);
@@ -145,6 +147,9 @@ void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enabl
         c->is_maximized = c->saved_fs_maximized;
 
         if (dpy && c->win != None) {
+            Window target = (c->frame != None) ? c->frame : c->win;
+            int bw = (cfg->border_width > 0) ? cfg->border_width : 0;
+            XSetWindowBorderWidth(dpy, target, (unsigned int)bw);
             if (c->frame != None) {
                 int ch = c->height - TITLEBAR_HEIGHT;
                 if (ch < 10) ch = 10;

@@ -77,6 +77,7 @@ void config_rules_ensure_files(void) {
         "Super+Up = fullscreen\n"
         "Super+Down = float\n"
         "Super+Return = exec wezterm\n"
+        "Super+space = launcher\n"
         "Super+b = exec google-chrome\n"
         "Super+q = close_window\n"
         "Super+x = close_window\n"
@@ -96,7 +97,12 @@ void config_rules_ensure_files(void) {
         "# MUZUwm Core Settings\n"
         "master_count = 1\n"
         "workspace_count = 4\n"
-        "enable_alttab = 1\n");
+        "enable_alttab = 1\n"
+        "focus_follows_mouse = 1\n"
+        "enable_desktop_menu = 1\n"
+        "border_width = 2\n"
+        "focus_border_color = #89b4fa\n"
+        "unfocus_border_color = #45475a\n");
 }
 
 static int read_setting_from_file(const char *path, const char *key, char *out, size_t out_len) {
@@ -160,14 +166,87 @@ int config_get_workspace_count(void) {
     return (int)count;
 }
 
-int config_is_alttab_enabled(void) {
+static int parse_bool_setting(const char *key, int default_val) {
     char val[32];
-    if (!config_get_setting("enable_alttab", val, sizeof(val))) return 1;
+    if (!config_get_setting(key, val, sizeof(val))) return default_val;
     if (strcasecmp(val, "0") == 0 || strcasecmp(val, "false") == 0 ||
         strcasecmp(val, "no") == 0 || strcasecmp(val, "off") == 0) {
         return 0;
     }
     return 1;
+}
+
+int config_is_alttab_enabled(void) {
+    return parse_bool_setting("enable_alttab", 1);
+}
+
+int config_is_focus_follows_mouse_enabled(void) {
+    return parse_bool_setting("focus_follows_mouse", 1);
+}
+
+int config_is_desktop_menu_enabled(void) {
+    return parse_bool_setting("enable_desktop_menu", 1);
+}
+
+int config_get_border_width(void) {
+    char value[32];
+    if (!config_get_setting("border_width", value, sizeof(value))) return 2;
+    char *end = NULL;
+    long bw = strtol(value, &end, 10);
+    if (!end || *end != '\0') return 2;
+    if (bw < 0) return 0;
+    if (bw > 16) return 16;
+    return (int)bw;
+}
+
+static int hex_nibble(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return 10 + (ch - 'a');
+    if (ch >= 'A' && ch <= 'F') return 10 + (ch - 'A');
+    return -1;
+}
+
+int config_parse_hex_color(const char *hex, unsigned short *r16, unsigned short *g16, unsigned short *b16) {
+    if (!hex) return 0;
+    if (hex[0] == '#') hex++;
+    if (strlen(hex) != 6) return 0;
+
+    int d[6];
+    for (int i = 0; i < 6; i++) {
+        d[i] = hex_nibble(hex[i]);
+        if (d[i] < 0) return 0;
+    }
+
+    unsigned int r8 = (unsigned int)((d[0] << 4) | d[1]);
+    unsigned int g8 = (unsigned int)((d[2] << 4) | d[3]);
+    unsigned int b8 = (unsigned int)((d[4] << 4) | d[5]);
+    if (r16) *r16 = (unsigned short)(r8 * 257U);
+    if (g16) *g16 = (unsigned short)(g8 * 257U);
+    if (b16) *b16 = (unsigned short)(b8 * 257U);
+    return 1;
+}
+
+static void read_validated_hex_setting(const char *key, const char *fallback, char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    char val[32];
+    if (config_get_setting(key, val, sizeof(val)) &&
+        config_parse_hex_color(val, NULL, NULL, NULL)) {
+        if (val[0] == '#') {
+            snprintf(out, out_len, "%s", val);
+        } else {
+            snprintf(out, out_len, "#%s", val);
+        }
+        return;
+    }
+    snprintf(out, out_len, "%s", fallback);
+}
+
+void config_get_focus_border_color(char *out, size_t out_len) {
+    read_validated_hex_setting("focus_border_color", "#89b4fa", out, out_len);
+}
+
+void config_get_unfocus_border_color(char *out, size_t out_len) {
+    read_validated_hex_setting("unfocus_border_color", "#45475a", out, out_len);
 }
 
 int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_name, const char *res_class, const char *title) {
@@ -367,6 +446,7 @@ void shortcuts_init_defaults(ShortcutConfig *sc) {
     shortcuts_set(sc, Mod4Mask, XK_Up, SHORTCUT_ACT_FULLSCREEN, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Down, SHORTCUT_ACT_FLOAT, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Return, SHORTCUT_ACT_EXEC, 0, "wezterm");
+    shortcuts_set(sc, Mod4Mask, XK_space, SHORTCUT_ACT_LAUNCHER, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_b, SHORTCUT_ACT_EXEC, 0, "google-chrome");
     shortcuts_set(sc, Mod4Mask, XK_q, SHORTCUT_ACT_CLOSE, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_x, SHORTCUT_ACT_CLOSE, 0, NULL);

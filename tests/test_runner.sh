@@ -18,6 +18,7 @@ make -s tests muzuwm
 ./test_config_rules
 ./test_menu
 ./test_alttab
+./test_mzml
 bash tests/test_session_install.sh
 echo "--> All Unit Tests & Verification Passed!"
 

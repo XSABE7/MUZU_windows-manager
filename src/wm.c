@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
@@ -207,6 +208,16 @@ void layout_calculate_clients(const LayoutConfig *cfg, Client **tiled, int tiled
             if (c->height < 34) c->height = 34;
         }
     }
+
+    int bw = (cfg->border_width > 0) ? cfg->border_width : 0;
+    if (bw > 0) {
+        for (int i = 0; i < tiled_count; i++) {
+            tiled[i]->width -= 2 * bw;
+            tiled[i]->height -= 2 * bw;
+            if (tiled[i]->width < 10) tiled[i]->width = 10;
+            if (tiled[i]->height < 10) tiled[i]->height = 10;
+        }
+    }
 }
 
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {
@@ -307,4 +318,37 @@ void wm_drag_reset(DragState *drag) {
     if (!drag) return;
     drag->client = NULL;
     drag->is_resize = 0;
+}
+
+int wm_should_focus_on_enter(int ffm_enabled, int enter_mode, int enter_detail,
+                             int has_drag, int menu_visible, int alttab_visible,
+                             const Client *c, int current_ws) {
+    if (!ffm_enabled) return 0;
+    if (enter_mode != NotifyNormal || enter_detail == NotifyInferior) return 0;
+    if (has_drag || menu_visible || alttab_visible) return 0;
+    if (!c || c->is_minimized || c->ws_hidden) return 0;
+    if (c->workspace != current_ws || c->is_focused) return 0;
+    return 1;
+}
+
+int wm_is_double_tap_within(Time prev_time, Time curr_time, int has_prev, unsigned long window_ms) {
+    if (!has_prev) return 0;
+    uint32_t delta = (uint32_t)curr_time - (uint32_t)prev_time;
+    return ((unsigned long)delta <= window_ms) ? 1 : 0;
+}
+
+CadAction wm_handle_cad_keypress(Time ev_time, int is_send_event,
+                                 int *cad_pending, Time *cad_first_time,
+                                 unsigned long window_ms) {
+    if (!cad_pending || !cad_first_time) return CAD_ACTION_IGNORE_REPLAY;
+    if (!is_send_event && *cad_pending && ev_time == *cad_first_time) {
+        return CAD_ACTION_IGNORE_REPLAY;
+    }
+    if (wm_is_double_tap_within(*cad_first_time, ev_time, *cad_pending, window_ms)) {
+        *cad_pending = 0;
+        return CAD_ACTION_TRIGGER_MENU;
+    }
+    *cad_pending = 1;
+    *cad_first_time = ev_time;
+    return CAD_ACTION_REPLAY_FIRST;
 }

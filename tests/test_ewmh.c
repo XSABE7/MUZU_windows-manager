@@ -126,6 +126,27 @@ int main(void) {
     c->mode = CLIENT_TILED;
     assert(ewmh_allows_client_configure(c) == 0);
 
+    // Test 8: Fullscreen ignores border_width and fills exact monitor size
+    LayoutConfig fs_bcfg = {
+        .screen_width = 1920,
+        .screen_height = 1080,
+        .master_count = 1,
+        .top_inset = 32,
+        .bottom_inset = 48,
+        .current_workspace = 0,
+        .border_width = 4
+    };
+    c->mode = CLIENT_FLOATING;
+    c->is_maximized = 0;
+    c->is_fullscreen = 0;
+    c->x = 100;
+    c->y = 100;
+    c->width = 500;
+    c->height = 400;
+    ewmh_apply_fullscreen(NULL, c, &fs_bcfg, 1);
+    assert(c->is_fullscreen == 1);
+    assert(c->x == 0 && c->y == 0 && c->width == 1920 && c->height == 1080);
+
     client_remove(&head, 501);
     printf("test_ewmh passed!\n");
     return 0;

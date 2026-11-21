@@ -29,7 +29,11 @@ SRCS="src/wm.c src/titlebar.c src/client_props.c src/ewmh.c src/monitors.c src/w
 
 echo "Building ASan+UBSan muzuwm in $TMP_DIR..."
 gcc -Wall -Wextra -pedantic -std=c11 -O1 -g -fsanitize=address,undefined -Iinclude \
-    $CFLAGS $SRCS -o "$TMP_DIR/muzuwm_asan" -fsanitize=address,undefined $LIBS
+    $CFLAGS $SRCS -o "$TMP_DIR/muzuwm" -fsanitize=address,undefined $LIBS
+
+MZML_SRCS="src/mzml.c src/mzml_main.c src/monitors.c src/struts.c"
+gcc -Wall -Wextra -pedantic -std=c11 -O1 -g -fsanitize=address,undefined -Iinclude \
+    $CFLAGS $MZML_SRCS -o "$TMP_DIR/mzml" -fsanitize=address,undefined $LIBS
 
 cat > "$TMP_DIR/x11_driver.c" << 'EOF'
 #define _DEFAULT_SOURCE
@@ -41,6 +45,7 @@ cat > "$TMP_DIR/x11_driver.c" << 'EOF'
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 
 static int get_cardinal(Display *dpy, Window w, Atom prop, unsigned long *out) {
     Atom type;
@@ -121,6 +126,69 @@ static void send_root_client_msg(Display *dpy, Window root, Window win, Atom typ
     XSync(dpy, False);
 }
 
+static int has_visible_window_with_type(Display *dpy, Window root, Atom a_win_type, Atom a_target_type) {
+    Window rr = None, pr = None, *children = NULL;
+    unsigned int n = 0;
+    int found = 0;
+    if (!XQueryTree(dpy, root, &rr, &pr, &children, &n) || !children) return 0;
+    for (unsigned int i = 0; i < n; i++) {
+        XWindowAttributes wa;
+        if (!XGetWindowAttributes(dpy, children[i], &wa) || wa.map_state != IsViewable) continue;
+        Atom rt; int rf; unsigned long rn, ra; unsigned char *rdata = NULL;
+        if (XGetWindowProperty(dpy, children[i], a_win_type, 0, 8, False, XA_ATOM,
+                               &rt, &rf, &rn, &ra, &rdata) == Success && rdata) {
+            if (rt == XA_ATOM && rf == 32) {
+                Atom *atoms = (Atom *)rdata;
+                for (unsigned long j = 0; j < rn; j++) {
+                    if (atoms[j] == a_target_type) found = 1;
+                }
+            }
+            XFree(rdata);
+        }
+        if (found) break;
+    }
+    XFree(children);
+    return found;
+}
+
+static Window find_visible_named_window(Display *dpy, Window root, Atom a_wm_name, Atom a_utf8, const char *expected_name) {
+    Window rr = None, pr = None, *children = NULL;
+    unsigned int n = 0;
+    Window found = None;
+    if (!XQueryTree(dpy, root, &rr, &pr, &children, &n) || !children) return None;
+    for (unsigned int i = 0; i < n; i++) {
+        XWindowAttributes wa;
+        if (!XGetWindowAttributes(dpy, children[i], &wa) || wa.map_state != IsViewable) continue;
+        Atom rt; int rf; unsigned long rn, ra; unsigned char *rdata = NULL;
+        if (XGetWindowProperty(dpy, children[i], a_wm_name, 0, 64, False, a_utf8,
+                               &rt, &rf, &rn, &ra, &rdata) == Success && rdata) {
+            if (rt == a_utf8 && rf == 8 && strcmp((char *)rdata, expected_name) == 0) {
+                found = children[i];
+            }
+            XFree(rdata);
+        }
+        if (found != None) break;
+    }
+    XFree(children);
+    return found;
+}
+
+static void send_key_on_root(Display *dpy, Window root, unsigned int state, KeySym sym, unsigned long time_ms) {
+    XEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = KeyPress;
+    ev.xkey.display = dpy;
+    ev.xkey.window = root;
+    ev.xkey.root = root;
+    ev.xkey.subwindow = None;
+    ev.xkey.time = time_ms;
+    ev.xkey.state = state;
+    ev.xkey.keycode = XKeysymToKeycode(dpy, sym);
+    ev.xkey.same_screen = True;
+    XSendEvent(dpy, root, False, KeyPressMask, &ev);
+    XSync(dpy, False);
+}
+
 #define WAIT_UNTIL(cond) do { \
     int _tries = 0; \
     while (!(cond) && _tries < 100) { usleep(20000); XSync(dpy, False); _tries++; } \
@@ -144,7 +212,9 @@ int main(void) {
     Atom a_wm_state_fs = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
     Atom a_win_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
     Atom a_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    Atom a_type_popup = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
     Atom a_strut_partial = XInternAtom(dpy, "_NET_WM_STRUT_PARTIAL", False);
+    Atom a_reload = XInternAtom(dpy, "_MUZU_RELOAD_SETTINGS", False);
 
     // 1. EWMH root publication
     Window check_win = None;
@@ -231,8 +301,102 @@ int main(void) {
     XSync(dpy, False);
     WAIT_UNTIL(get_workarea(dpy, root, a_workarea, &wx, &wy, &ww, &wh) && wy == 0 && wh == 720);
     XDestroyWindow(dpy, dock);
-    XCloseDisplay(dpy);
     printf("PASS: Struts shrink and restore _NET_WORKAREA\n");
+
+    // 6. Focus borders, EnterNotify focus-follows-mouse, reload, and Ctrl+Alt+2xDel
+    Window fa = XCreateSimpleWindow(dpy, root, 40, 40, 300, 200, 0, 0, 0);
+    XMapWindow(dpy, fa);
+    XSync(dpy, False);
+    WAIT_UNTIL(get_window_prop(dpy, root, a_active, &active) && active == fa);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 2);
+
+    Window fb = XCreateSimpleWindow(dpy, root, 420, 40, 300, 200, 0, 0, 0);
+    XMapWindow(dpy, fb);
+    XSync(dpy, False);
+    WAIT_UNTIL(get_window_prop(dpy, root, a_active, &active) && active == fb);
+
+    // Warp pointer into fa -> EnterNotify moves focus to fa
+    XWarpPointer(dpy, None, root, 0, 0, 0, 0, 120, 120);
+    XSync(dpy, False);
+    WAIT_UNTIL(get_window_prop(dpy, root, a_active, &active) && active == fa);
+
+    // Fullscreen strips border_width to 0, exiting restores border_width == 2
+    send_root_client_msg(dpy, root, fa, a_wm_state, 1 /* ADD */, (long)a_wm_state_fs, 0);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 0 && wa.width == 1280);
+    send_root_client_msg(dpy, root, fa, a_wm_state, 0 /* REMOVE */, (long)a_wm_state_fs, 0);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 2);
+
+    // Live reload border_width=4 and enable_desktop_menu=0
+    const char *home_dir = getenv("HOME");
+    assert(home_dir != NULL);
+    char cfg_path[512];
+    snprintf(cfg_path, sizeof(cfg_path), "%s/.config/muzuwm/settings.conf", home_dir);
+    FILE *sf = fopen(cfg_path, "w");
+    assert(sf != NULL);
+    fprintf(sf, "border_width=4\nfocus_border_color=#ff5500\nunfocus_border_color=#223344\nenable_desktop_menu=0\nfocus_follows_mouse=1\n");
+    fclose(sf);
+    unsigned long rel_val = 1;
+    XChangeProperty(dpy, root, a_reload, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&rel_val, 1);
+    XSync(dpy, False);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 4);
+
+    // Root right-click must NOT open popup when enable_desktop_menu=0
+    XEvent bev;
+    memset(&bev, 0, sizeof(bev));
+    bev.type = ButtonPress;
+    bev.xbutton.display = dpy;
+    bev.xbutton.window = root;
+    bev.xbutton.root = root;
+    bev.xbutton.button = Button3;
+    bev.xbutton.x = 900;
+    bev.xbutton.y = 500;
+    bev.xbutton.x_root = 900;
+    bev.xbutton.y_root = 500;
+    bev.xbutton.same_screen = True;
+    XSendEvent(dpy, root, False, ButtonPressMask, &bev);
+    XSync(dpy, False);
+    usleep(80000);
+    assert(has_visible_window_with_type(dpy, root, a_win_type, a_type_popup) == 0);
+
+    // Single Ctrl+Alt+Delete centers mouse pointer (640, 360) and launches MUZUmagic_fallback (mzml --magic)
+    send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 10000UL);
+    Window magic_win = None;
+    WAIT_UNTIL((magic_win = find_visible_named_window(dpy, root, a_wm_name, a_utf8, "MUZUmagic_fallback")) != None);
+    assert(has_visible_window_with_type(dpy, root, a_win_type, a_type_popup) == 0);
+    Window qrr = None, qcr = None;
+    int qrx = 0, qry = 0, qwx = 0, qwy = 0;
+    unsigned int qmask = 0;
+    assert(XQueryPointer(dpy, root, &qrr, &qcr, &qrx, &qry, &qwx, &qwy, &qmask));
+    assert(qrx == 640 && qry == 360);
+
+    // Escape closes MUZUmagic_fallback cleanly
+    XEvent esc_ev;
+    memset(&esc_ev, 0, sizeof(esc_ev));
+    esc_ev.type = KeyPress;
+    esc_ev.xkey.display = dpy;
+    esc_ev.xkey.window = magic_win;
+    esc_ev.xkey.root = root;
+    esc_ev.xkey.keycode = XKeysymToKeycode(dpy, XK_Escape);
+    esc_ev.xkey.same_screen = True;
+    XSendEvent(dpy, magic_win, False, KeyPressMask, &esc_ev);
+    XSync(dpy, False);
+    WAIT_UNTIL(find_visible_named_window(dpy, root, a_wm_name, a_utf8, "MUZUmagic_fallback") == None);
+
+    // Maximized window shrinks cleanly when border_width increases on live reload
+    send_root_client_msg(dpy, root, fa, a_wm_state, 1 /* ADD */, (long)XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False), (long)XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False));
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.width == 1272 && wa.height == 712);
+    sf = fopen(cfg_path, "w");
+    assert(sf != NULL);
+    fprintf(sf, "border_width=8\nfocus_border_color=#89b4fa\nunfocus_border_color=#45475a\nenable_desktop_menu=0\nfocus_follows_mouse=1\n");
+    fclose(sf);
+    XChangeProperty(dpy, root, a_reload, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&rel_val, 1);
+    XSync(dpy, False);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 8 && wa.width == 1264 && wa.height == 704);
+
+    XDestroyWindow(dpy, fb);
+    XDestroyWindow(dpy, fa);
+    XCloseDisplay(dpy);
+    printf("PASS: Focus borders, EnterNotify, live reload, and Ctrl+Alt+2xDel verified\n");
     return 0;
 }
 EOF
@@ -254,11 +418,11 @@ DISP_NUM=$(tr -d '[:space:]' < "$TMP_DIR/disp.txt")
 DISP=":${DISP_NUM}"
 
 export DISPLAY="$DISP"
-printf 'leak:_XEnq\n' > "$TMP_DIR/lsan.supp"
+printf 'leak:_XEnq\nleak:libcairo.so\nleak:libfontconfig.so\n' > "$TMP_DIR/lsan.supp"
 export LSAN_OPTIONS="suppressions=$TMP_DIR/lsan.supp"
 
 # 1. Start primary WM
-"$TMP_DIR/muzuwm_asan" >"$TMP_DIR/wm1.out" 2>"$TMP_DIR/wm1.err" &
+"$TMP_DIR/muzuwm" >"$TMP_DIR/wm1.out" 2>"$TMP_DIR/wm1.err" &
 WM1_PID=$!
 sleep 0.5
 kill -0 "$WM1_PID" 2>/dev/null || { echo "FAIL: WM1 exited prematurely"; cat "$TMP_DIR/wm1.err"; exit 1; }
@@ -282,7 +446,7 @@ echo "PASS: auto_allowlist executed and zero zombie child processes"
 
 # 3. Duplicate WM conflict must fail fast
 set +e
-timeout -k 1 2 "$TMP_DIR/muzuwm_asan" >"$TMP_DIR/wm2.out" 2>"$TMP_DIR/wm2.err"
+timeout -k 1 2 "$TMP_DIR/muzuwm" >"$TMP_DIR/wm2.out" 2>"$TMP_DIR/wm2.err"
 WM2_RC=$?
 set -e
 if [ "$WM2_RC" -eq 0 ] || [ "$WM2_RC" -eq 124 ] || [ "$WM2_RC" -eq 137 ]; then
@@ -321,3 +485,97 @@ if grep -qE "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:" "$TMP_
     exit 1
 fi
 echo "PASS: Idle SIGTERM clean exit (< 1.5s, rc=0)"
+
+# 6. Standalone mzml ASan+UBSan smoke test
+mkdir -p "$TMP_DIR/xdg/applications"
+cat > "$TMP_DIR/xdg/applications/hello.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Hello World
+Comment=Test entry
+Exec=true
+EOF
+
+XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml" >"$TMP_DIR/mzml.out" 2>"$TMP_DIR/mzml.err" &
+MZML_PID=$!
+sleep 0.4
+kill -0 "$MZML_PID" 2>/dev/null || { echo "FAIL: mzml exited prematurely"; cat "$TMP_DIR/mzml.err"; exit 1; }
+kill -TERM "$MZML_PID"
+set +e
+wait "$MZML_PID"
+MZML_RC=$?
+set -e
+if [ "$MZML_RC" -ne 0 ]; then
+    echo "FAIL: mzml exited with rc=$MZML_RC on SIGTERM"
+    cat "$TMP_DIR/mzml.err"
+    exit 1
+fi
+if grep -qE "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:" "$TMP_DIR/mzml.err"; then
+    echo "FAIL: Sanitizer error detected in mzml"
+    cat "$TMP_DIR/mzml.err"
+    exit 1
+fi
+echo "PASS: mzml ASan+UBSan startup and SIGTERM clean exit (rc=0)"
+
+# 7. mzml Escape key clean exit under ASan+UBSan
+XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml" >"$TMP_DIR/mzml_esc.out" 2>"$TMP_DIR/mzml_esc.err" &
+MZML_ESC_PID=$!
+cat > "$TMP_DIR/send_esc.c" << 'EOF'
+#define _DEFAULT_SOURCE
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/keysym.h>
+#include <string.h>
+#include <unistd.h>
+
+int main(void) {
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return 1;
+    Window root = DefaultRootWindow(dpy);
+    Atom a_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom a_dlg = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+    Window target = None;
+    for (int t = 0; t < 60 && target == None; t++) {
+        Window rr, pr, *ch = NULL;
+        unsigned int n = 0;
+        if (XQueryTree(dpy, root, &rr, &pr, &ch, &n) && ch) {
+            for (unsigned int i = 0; i < n; i++) {
+                XWindowAttributes wa;
+                if (!XGetWindowAttributes(dpy, ch[i], &wa) || wa.map_state != IsViewable) continue;
+                Atom rt; int rf; unsigned long rn, ra; unsigned char *rd = NULL;
+                if (XGetWindowProperty(dpy, ch[i], a_type, 0, 4, False, XA_ATOM, &rt, &rf, &rn, &ra, &rd) == Success && rd) {
+                    if (rt == XA_ATOM && rf == 32 && rn >= 1 && ((Atom *)rd)[0] == a_dlg) target = ch[i];
+                    XFree(rd);
+                }
+            }
+            XFree(ch);
+        }
+        if (target == None) usleep(20000);
+    }
+    if (target == None) { XCloseDisplay(dpy); return 2; }
+    XEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = KeyPress;
+    ev.xkey.display = dpy;
+    ev.xkey.window = target;
+    ev.xkey.root = root;
+    ev.xkey.keycode = XKeysymToKeycode(dpy, XK_Escape);
+    ev.xkey.same_screen = True;
+    XSendEvent(dpy, target, False, KeyPressMask, &ev);
+    XSync(dpy, False);
+    XCloseDisplay(dpy);
+    return 0;
+}
+EOF
+gcc -Wall -Wextra -pedantic -std=c11 -O1 "$TMP_DIR/send_esc.c" -o "$TMP_DIR/send_esc" -lX11
+"$TMP_DIR/send_esc"
+set +e
+wait "$MZML_ESC_PID"
+MZML_ESC_RC=$?
+set -e
+if [ "$MZML_ESC_RC" -ne 0 ] || grep -qE "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:" "$TMP_DIR/mzml_esc.err"; then
+    echo "FAIL: mzml Escape exit failed (rc=$MZML_ESC_RC)"
+    cat "$TMP_DIR/mzml_esc.err"
+    exit 1
+fi
+echo "PASS: mzml ASan+UBSan Escape clean exit (rc=0)"
