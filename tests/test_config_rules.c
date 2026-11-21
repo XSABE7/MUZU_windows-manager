@@ -133,6 +133,9 @@ int main(void) {
     const ShortcutBinding *b_z = shortcuts_match_event(&sc, Mod4Mask, XK_z);
     assert(b_z && b_z->type == SHORTCUT_ACT_MINIMIZE);
 
+    const ShortcutBinding *b_space = shortcuts_match_event(&sc, Mod4Mask, XK_space);
+    assert(b_space && b_space->type == SHORTCUT_ACT_LAUNCHER);
+
     // Unbound combination matches nothing
     assert(shortcuts_match_event(&sc, Mod4Mask | ShiftMask, XK_Left) == NULL);
 
@@ -217,6 +220,57 @@ int main(void) {
     fclose(f);
     shortcuts_load_file(&sc, sc_path);
     assert(shortcuts_match_event(&sc, Mod4Mask, XK_q)->type == SHORTCUT_ACT_CLOSE);
+
+    // 8. Focus, desktop menu, border width, and hex border color settings
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "master_count=1\n");
+    fclose(f);
+    assert(config_is_focus_follows_mouse_enabled() == 1);
+    assert(config_is_desktop_menu_enabled() == 1);
+    assert(config_get_border_width() == 2);
+
+    char border_hex[32];
+    config_get_focus_border_color(border_hex, sizeof(border_hex));
+    assert(strcmp(border_hex, "#89b4fa") == 0);
+    config_get_unfocus_border_color(border_hex, sizeof(border_hex));
+    assert(strcmp(border_hex, "#45475a") == 0);
+
+    unsigned short r16 = 0, g16 = 0, b16 = 0;
+    assert(config_parse_hex_color("#89b4fa", &r16, &g16, &b16) == 1);
+    assert(r16 == 0x8989 && g16 == 0xb4b4 && b16 == 0xfafa);
+    assert(config_parse_hex_color("ff5500", &r16, &g16, &b16) == 1);
+    assert(r16 == 0xffff && g16 == 0x5555 && b16 == 0x0000);
+    assert(config_parse_hex_color("#123", &r16, &g16, &b16) == 0);
+    assert(config_parse_hex_color("#zzzzzz", &r16, &g16, &b16) == 0);
+    assert(config_parse_hex_color("", &r16, &g16, &b16) == 0);
+    assert(config_parse_hex_color(NULL, &r16, &g16, &b16) == 0);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "focus_follows_mouse=0\nenable_desktop_menu=off\nborder_width=4\nfocus_border_color=#ff5500\nunfocus_border_color=#112233\n");
+    fclose(f);
+    assert(config_is_focus_follows_mouse_enabled() == 0);
+    assert(config_is_desktop_menu_enabled() == 0);
+    assert(config_get_border_width() == 4);
+    config_get_focus_border_color(border_hex, sizeof(border_hex));
+    assert(strcmp(border_hex, "#ff5500") == 0);
+    config_get_unfocus_border_color(border_hex, sizeof(border_hex));
+    assert(strcmp(border_hex, "#112233") == 0);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "border_width=-5\nfocus_border_color=invalid\n");
+    fclose(f);
+    assert(config_get_border_width() == 0);
+    config_get_focus_border_color(border_hex, sizeof(border_hex));
+    assert(strcmp(border_hex, "#89b4fa") == 0);
+
+    f = fopen(settings_path, "w");
+    assert(f != NULL);
+    fprintf(f, "border_width=99\n");
+    fclose(f);
+    assert(config_get_border_width() == 16);
 
     if (orig_home) setenv("HOME", orig_home, 1);
     char rm_cmd[600];
