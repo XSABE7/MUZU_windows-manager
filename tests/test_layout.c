@@ -182,6 +182,35 @@ int main(void) {
     assert(thead->width >= 10 && thead->height >= 10);
     free_clients(&thead);
 
+    // Test 12: EnterNotify focus predicate and double-tap timestamp helper
+    Client enter_c = {0};
+    enter_c.workspace = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 1);
+    assert(wm_should_focus_on_enter(0, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyGrab, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyUngrab, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyInferior, 0, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 1, 0, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 1, 0, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 1, &enter_c, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, NULL, 1) == 0);
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 0) == 0);
+    enter_c.is_minimized = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    enter_c.is_minimized = 0;
+    enter_c.ws_hidden = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+    enter_c.ws_hidden = 0;
+    enter_c.is_focused = 1;
+    assert(wm_should_focus_on_enter(1, NotifyNormal, NotifyAncestor, 0, 0, 0, &enter_c, 1) == 0);
+
+    assert(wm_is_double_tap_within(1000, 1400, 0, 500) == 0);
+    assert(wm_is_double_tap_within(1000, 1400, 1, 500) == 1);
+    assert(wm_is_double_tap_within(1000, 1500, 1, 500) == 1);
+    assert(wm_is_double_tap_within(1000, 1501, 1, 500) == 0);
+    assert(wm_is_double_tap_within((Time)0xFFFFFF00UL, (Time)100UL, 1, 500) == 1);
+    assert(wm_is_double_tap_within((Time)0xFFFFFF00UL, (Time)300UL, 1, 500) == 0);
+
     printf("test_layout passed!\n");
     return 0;
 }

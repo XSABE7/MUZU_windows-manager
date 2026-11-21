@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
@@ -317,4 +318,21 @@ void wm_drag_reset(DragState *drag) {
     if (!drag) return;
     drag->client = NULL;
     drag->is_resize = 0;
+}
+
+int wm_should_focus_on_enter(int ffm_enabled, int enter_mode, int enter_detail,
+                             int has_drag, int menu_visible, int alttab_visible,
+                             const Client *c, int current_ws) {
+    if (!ffm_enabled) return 0;
+    if (enter_mode != NotifyNormal || enter_detail == NotifyInferior) return 0;
+    if (has_drag || menu_visible || alttab_visible) return 0;
+    if (!c || c->is_minimized || c->ws_hidden) return 0;
+    if (c->workspace != current_ws || c->is_focused) return 0;
+    return 1;
+}
+
+int wm_is_double_tap_within(Time prev_time, Time curr_time, int has_prev, unsigned long window_ms) {
+    if (!has_prev) return 0;
+    uint32_t delta = (uint32_t)curr_time - (uint32_t)prev_time;
+    return ((unsigned long)delta <= window_ms) ? 1 : 0;
 }
