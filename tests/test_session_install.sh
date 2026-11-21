@@ -25,6 +25,7 @@ rm -rf "$DEST"
 make install DESTDIR="$DEST" PREFIX=/usr
 
 test -x "$DEST/usr/bin/muzuwm"
+test -x "$DEST/usr/bin/mzml"
 test -x "$DEST/usr/bin/muzu-session"
 test -x "$DEST/usr/bin/muzuwm-settings"
 test -f "$DEST/usr/share/xsessions/muzuwm.desktop"

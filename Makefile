@@ -10,8 +10,10 @@ LIBS = $(shell pkg-config --libs cairo x11 xext xcursor xrandr fontconfig) -lm
 
 SRCS = src/wm.c src/titlebar.c src/client_props.c src/ewmh.c src/monitors.c src/workspace.c src/config_rules.c src/struts.c src/snap_preview.c src/menu.c src/alttab.c src/main.c
 OBJS = $(SRCS:.c=.o)
+MZML_SRCS = src/mzml.c src/mzml_main.c src/monitors.c src/struts.c
+MZML_OBJS = $(MZML_SRCS:.c=.o)
 
-all: muzuwm
+all: muzuwm mzml
 
 tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml
 
@@ -54,9 +56,12 @@ test_alttab: tests/test_alttab.c src/alttab.c
 test_mzml: tests/test_mzml.c src/mzml.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(MZML_OBJS:.o=.d)
 
 muzuwm: $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+mzml: $(MZML_OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 asan: CFLAGS += -fsanitize=address -g -O1
@@ -64,11 +69,12 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml muzuwm
+	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml muzuwm mzml
 
-install: muzuwm
+install: muzuwm mzml
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 muzuwm $(DESTDIR)$(BINDIR)/muzuwm
+	install -m 755 mzml $(DESTDIR)$(BINDIR)/mzml
 	install -m 755 bin/muzu-session $(DESTDIR)$(BINDIR)/muzu-session
 	install -m 755 muzuwm_settings.py $(DESTDIR)$(BINDIR)/muzuwm-settings
 	install -d $(DESTDIR)$(XSESSIONSDIR)
@@ -78,6 +84,7 @@ install: muzuwm
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm
+	rm -f $(DESTDIR)$(BINDIR)/mzml
 	rm -f $(DESTDIR)$(BINDIR)/muzu-session
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm-settings
 	rm -f $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
