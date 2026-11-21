@@ -38,8 +38,6 @@ static int desktop_menu_enabled = 1;
 static int current_border_width = 2;
 static unsigned long focus_border_pixel = 0;
 static unsigned long unfocus_border_pixel = 0;
-static int cad_pending = 0;
-static Time cad_first_time = 0;
 static DragState drag = {0};
 static SnapPreview snap_preview;
 
@@ -928,13 +926,16 @@ int main(void) {
     shortcuts_grab_keys(dpy, root, &sc);
     grab_alttab_keys(dpy, root, alttab_enabled);
 
-    // Hardcoded emergency safety hatch: Ctrl+Alt + 2x Delete force-opens desktop_menu
-    KeyCode cad_kc = XKeysymToKeycode(dpy, XK_Delete);
-    if (cad_kc != 0) {
-        const unsigned int cad_locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
-        for (int l = 0; l < 4; l++) {
-            XGrabKey(dpy, cad_kc, ControlMask | Mod1Mask | cad_locks[l], root, True,
-                     GrabModeSync, GrabModeAsync);
+    // Hardcoded emergency safety hatch: Ctrl+Alt+Delete centers mouse and force-opens desktop_menu
+    const KeySym cad_syms[2] = { XK_Delete, XK_KP_Delete };
+    const unsigned int cad_locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+    for (int k = 0; k < 2; k++) {
+        KeyCode cad_kc = XKeysymToKeycode(dpy, cad_syms[k]);
+        if (cad_kc != 0) {
+            for (int l = 0; l < 4; l++) {
+                XGrabKey(dpy, cad_kc, ControlMask | Mod1Mask | cad_locks[l], root, True,
+                         GrabModeAsync, GrabModeAsync);
+            }
         }
     }
 
@@ -993,37 +994,28 @@ int main(void) {
                 KeySym raw_sym = XLookupKeysym(&ev.xkey, 0);
                 unsigned int raw_mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
 
-                // Hardcoded emergency trigger: Ctrl+Alt + 2x Delete force-opens desktop_menu
+                // Hardcoded emergency trigger: Ctrl+Alt+Delete centers mouse and force-opens desktop_menu
                 if ((raw_mods & (ControlMask | Mod1Mask)) == (ControlMask | Mod1Mask) &&
-                    !(raw_mods & Mod4Mask) && raw_sym == XK_Delete) {
-                    CadAction cad_act = wm_handle_cad_keypress(
-                        ev.xkey.time, ev.xkey.send_event, &cad_pending, &cad_first_time, 500);
-                    if (cad_act == CAD_ACTION_TRIGGER_MENU) {
-                        XAllowEvents(dpy, AsyncKeyboard, ev.xkey.time);
-                        cancel_active_drag(dpy);
-                        if (alttab.is_visible) {
-                            XUngrabKeyboard(dpy, CurrentTime);
-                            alttab_hide(dpy, &alttab);
-                        }
-                        if (desktop_menu.is_visible) {
-                            menu_hide(dpy, &desktop_menu);
-                            XUngrabPointer(dpy, CurrentTime);
-                        }
-                        int px = 0, py = 0;
-                        int m = get_pointer_monitor(dpy, &px, &py);
-                        if (px == 0 && py == 0) {
-                            px = (monitor_count > 0) ? (monitors[m].x + monitors[m].width / 2) : (total_screen_w / 2);
-                            py = (monitor_count > 0) ? (monitors[m].y + monitors[m].height / 2) : (total_screen_h / 2);
-                        }
-                        int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
-                        int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
-                        menu_show(dpy, &desktop_menu, px, py, mx_end, my_end);
-                        if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
-                                         GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
-                            dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
-                        }
-                    } else if (cad_act == CAD_ACTION_REPLAY_FIRST) {
-                        XAllowEvents(dpy, ReplayKeyboard, ev.xkey.time);
+                    !(raw_mods & Mod4Mask) && (raw_sym == XK_Delete || raw_sym == XK_KP_Delete)) {
+                    cancel_active_drag(dpy);
+                    if (alttab.is_visible) {
+                        XUngrabKeyboard(dpy, CurrentTime);
+                        alttab_hide(dpy, &alttab);
+                    }
+                    if (desktop_menu.is_visible) {
+                        menu_hide(dpy, &desktop_menu);
+                        XUngrabPointer(dpy, CurrentTime);
+                    }
+                    int m = get_pointer_monitor(dpy, NULL, NULL);
+                    int cx = (monitor_count > 0) ? (monitors[m].x + monitors[m].width / 2) : (total_screen_w / 2);
+                    int cy = (monitor_count > 0) ? (monitors[m].y + monitors[m].height / 2) : (total_screen_h / 2);
+                    int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
+                    int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
+                    XWarpPointer(dpy, None, root, 0, 0, 0, 0, cx, cy);
+                    menu_show(dpy, &desktop_menu, cx, cy, mx_end, my_end);
+                    if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
+                                     GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
+                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                     }
                     break;
                 }

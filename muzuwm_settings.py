@@ -1038,7 +1038,7 @@ def cli_layout_menu():
     uc = ConfigManager.get_unfocus_border_color()
     print(f"1) Master count: {masters}")
     print(f"2) Focus-follows-mouse: {'เปิด' if ffm else 'ปิด'}")
-    print(f"3) เมนูคลิกขวาพื้นหลัง (Desktop Menu): {'เปิด' if dmenu else 'ปิด'} (Ctrl+Alt + 2x Delete เปิดฉุกเฉินได้เสมอ)")
+    print(f"3) เมนูคลิกขวาพื้นหลัง (Desktop Menu): {'เปิด' if dmenu else 'ปิด'} (Ctrl+Alt+Delete เปิดฉุกเฉินได้เสมอ)")
     print(f"4) ความหนาเส้นขอบ (border_width): {bw} px")
     print(f"5) สีขอบ Focus / Unfocus: {fc} / {uc}")
     choice = input("เลือกหัวข้อ (1-5) [Enter เพื่อย้อนกลับ]: ").strip()
@@ -1924,7 +1924,7 @@ def run_gtk_gui():
 
             self.dmenu_switch = Gtk.Switch()
             self.dmenu_switch.set_active(ConfigManager.get_desktop_menu_enabled())
-            wm_form.attach(Gtk.Label(label="เมนูคลิกขวาบนพื้นหลัง (ปิดได้; Ctrl+Alt+2xDel เปิดฉุกเฉินเสมอ):", xalign=0), 0, 1, 1, 1)
+            wm_form.attach(Gtk.Label(label="เมนูคลิกขวาบนพื้นหลัง (ปิดได้; Ctrl+Alt+Del เปิดฉุกเฉินเสมอ):", xalign=0), 0, 1, 1, 1)
             wm_form.attach(self.dmenu_switch, 1, 1, 1, 1)
 
             self.bw_spin = Gtk.SpinButton.new_with_range(0, 16, 1)

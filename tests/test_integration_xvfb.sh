@@ -332,14 +332,14 @@ int main(void) {
     usleep(80000);
     assert(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
 
-    // Single Ctrl+Alt+Delete must NOT open popup
+    // Single Ctrl+Alt+Delete centers mouse pointer (640, 360) and force-opens popup menu
     send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 10000UL);
-    usleep(80000);
-    assert(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
-
-    // Second Ctrl+Alt+Delete within 500ms force-opens popup menu
-    send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 10200UL);
     WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 1);
+    Window qrr = None, qcr = None;
+    int qrx = 0, qry = 0, qwx = 0, qwy = 0;
+    unsigned int qmask = 0;
+    assert(XQueryPointer(dpy, root, &qrr, &qcr, &qrx, &qry, &qwx, &qwy, &qmask));
+    assert(qrx == 640 && qry == 360);
 
     // Escape closes popup menu cleanly and restores X11 input focus to fa
     send_key_on_root(dpy, root, 0, XK_Escape, 10300UL);
@@ -350,7 +350,6 @@ int main(void) {
 
     // Clicking outside a force-opened menu with Button3 when enable_desktop_menu=0 closes it without re-opening
     send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 20000UL);
-    send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 20200UL);
     WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 1);
     bev.xbutton.window = root;
     bev.xbutton.x = 1200; bev.xbutton.y = 650;
