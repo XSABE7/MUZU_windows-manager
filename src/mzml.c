@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "mzml.h"
 
@@ -13,6 +14,117 @@ static char *trim_ws(char *s) {
     size_t n = strlen(s);
     while (n > 0 && isspace((unsigned char)s[n - 1])) s[--n] = '\0';
     return s;
+}
+
+MzmlRunMode mzml_parse_cli_mode(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) {
+        if (!argv[i]) continue;
+        if (strcmp(argv[i], "--magic") == 0 ||
+            strcmp(argv[i], "--fallback") == 0 ||
+            strcmp(argv[i], "--emergency") == 0) {
+            return MZML_MODE_MAGIC;
+        }
+    }
+    return MZML_MODE_LAUNCHER;
+}
+
+void mzml_build_terminal_cmd(char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    snprintf(out, out_len,
+             "if command -v wezterm >/dev/null 2>&1; then "
+             "  exec wezterm start --always-new-process; "
+             "elif command -v alacritty >/dev/null 2>&1; then "
+             "  exec alacritty; "
+             "elif command -v xterm >/dev/null 2>&1; then "
+             "  exec xterm; "
+             "else "
+             "  exec x-terminal-emulator; "
+             "fi");
+}
+
+int mzml_enable_desktop_menu_in_file(const char *path) {
+    if (!path || path[0] == '\0') return 0;
+    FILE *in = fopen(path, "r");
+    size_t cap = 4096;
+    char *buf = malloc(cap);
+    if (!buf) {
+        if (in) fclose(in);
+        return 0;
+    }
+    size_t used = 0;
+    buf[0] = '\0';
+    int replaced = 0;
+
+    if (in) {
+        char line[512];
+        while (fgets(line, sizeof(line), in)) {
+            char copy[512];
+            snprintf(copy, sizeof(copy), "%s", line);
+            char *eq = strchr(copy, '=');
+            const char *write_line = line;
+            if (eq) {
+                *eq = '\0';
+                char *key = trim_ws(copy);
+                if (key[0] != '#' && strcmp(key, "enable_desktop_menu") == 0) {
+                    write_line = "enable_desktop_menu=1\n";
+                    replaced = 1;
+                }
+            }
+            size_t wlen = strlen(write_line);
+            if (used + wlen + 32 >= cap) {
+                size_t new_cap = cap * 2 + wlen + 64;
+                char *grown = realloc(buf, new_cap);
+                if (!grown) {
+                    free(buf);
+                    fclose(in);
+                    return 0;
+                }
+                buf = grown;
+                cap = new_cap;
+            }
+            memcpy(buf + used, write_line, wlen);
+            used += wlen;
+            buf[used] = '\0';
+        }
+        fclose(in);
+    }
+
+    if (!replaced) {
+        const char *add = (used > 0 && buf[used - 1] != '\n')
+                              ? "\nenable_desktop_menu=1\n"
+                              : "enable_desktop_menu=1\n";
+        size_t alen = strlen(add);
+        if (used + alen + 1 >= cap) {
+            char *grown = realloc(buf, used + alen + 64);
+            if (!grown) {
+                free(buf);
+                return 0;
+            }
+            buf = grown;
+        }
+        memcpy(buf + used, add, alen + 1);
+        used += alen;
+    }
+
+    char tmp[1024];
+    snprintf(tmp, sizeof(tmp), "%s.tmp.%ld", path, (long)getpid());
+    FILE *out = fopen(tmp, "w");
+    if (!out) {
+        free(buf);
+        return 0;
+    }
+    size_t written = fwrite(buf, 1, used, out);
+    int close_ok = (fclose(out) == 0);
+    free(buf);
+    if (written != used || !close_ok) {
+        unlink(tmp);
+        return 0;
+    }
+    if (rename(tmp, path) != 0) {
+        unlink(tmp);
+        return 0;
+    }
+    return 1;
 }
 
 static void discard_line_tail(FILE *f, const char *buf) {

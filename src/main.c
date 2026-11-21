@@ -217,15 +217,15 @@ static void find_local_mzml(char *out, size_t out_len) {
     }
 }
 
-static void spawn_mzml_fallback(void) {
+static void spawn_mzml_magic(void) {
     char mzml_path[1100] = {0};
     find_local_mzml(mzml_path, sizeof(mzml_path));
     if (mzml_path[0] != '\0') {
         char cmd[1200];
-        snprintf(cmd, sizeof(cmd), "exec \"%s\"", mzml_path);
+        snprintf(cmd, sizeof(cmd), "exec \"%s\" --magic", mzml_path);
         config_spawn_command(cmd);
     } else {
-        config_spawn_command("if command -v mzml >/dev/null 2>&1; then exec mzml; fi");
+        config_spawn_command("if command -v mzml >/dev/null 2>&1; then exec mzml --magic; fi");
     }
 }
 
@@ -270,9 +270,6 @@ static void desktop_menu_callback(int action_id, void *userdata) {
             break;
         case DESKTOP_ACTION_APPLICATIONS:
             spawn_launcher();
-            break;
-        case DESKTOP_ACTION_MZML:
-            spawn_mzml_fallback();
             break;
         case DESKTOP_ACTION_SETTINGS:
             launch_settings_app();
@@ -908,7 +905,6 @@ int main(void) {
     menu_add_item(&desktop_menu, "Terminal", DESKTOP_ACTION_TERMINAL);
     menu_add_item(&desktop_menu, "Internet", DESKTOP_ACTION_INTERNET);
     menu_add_item(&desktop_menu, "App", DESKTOP_ACTION_APPLICATIONS);
-    menu_add_item(&desktop_menu, "Fallback Launcher (mzml)", DESKTOP_ACTION_MZML);
     menu_add_separator(&desktop_menu);
     menu_add_item(&desktop_menu, "Settings", DESKTOP_ACTION_SETTINGS);
 
@@ -994,7 +990,7 @@ int main(void) {
                 KeySym raw_sym = XLookupKeysym(&ev.xkey, 0);
                 unsigned int raw_mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
 
-                // Hardcoded emergency trigger: Ctrl+Alt+Delete centers mouse and force-opens desktop_menu
+                // Hardcoded emergency trigger: Ctrl+Alt+Delete centers mouse and launches MUZUmagic_fallback (mzml --magic)
                 if ((raw_mods & (ControlMask | Mod1Mask)) == (ControlMask | Mod1Mask) &&
                     !(raw_mods & Mod4Mask) && (raw_sym == XK_Delete || raw_sym == XK_KP_Delete)) {
                     cancel_active_drag(dpy);
@@ -1003,20 +999,14 @@ int main(void) {
                         alttab_hide(dpy, &alttab);
                     }
                     if (desktop_menu.is_visible) {
-                        menu_hide(dpy, &desktop_menu);
-                        XUngrabPointer(dpy, CurrentTime);
+                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                     }
                     int m = get_pointer_monitor(dpy, NULL, NULL);
                     int cx = (monitor_count > 0) ? (monitors[m].x + monitors[m].width / 2) : (total_screen_w / 2);
                     int cy = (monitor_count > 0) ? (monitors[m].y + monitors[m].height / 2) : (total_screen_h / 2);
-                    int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
-                    int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
                     XWarpPointer(dpy, None, root, 0, 0, 0, 0, cx, cy);
-                    menu_show(dpy, &desktop_menu, cx, cy, mx_end, my_end);
-                    if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
-                                     GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
-                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
-                    }
+                    XFlush(dpy);
+                    spawn_mzml_magic();
                     break;
                 }
 

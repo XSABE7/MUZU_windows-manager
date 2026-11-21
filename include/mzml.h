@@ -3,6 +3,11 @@
 
 #include <stddef.h>
 
+typedef enum {
+    MZML_MODE_LAUNCHER = 0,
+    MZML_MODE_MAGIC = 1
+} MzmlRunMode;
+
 typedef struct {
     char name[128];
     char generic_name[128];
@@ -19,8 +24,11 @@ typedef struct {
     int capacity;
 } MzmlAppList;
 
+MzmlRunMode mzml_parse_cli_mode(int argc, char **argv);
 void mzml_clean_exec_cmd(const char *raw, char *out, size_t out_len);
+void mzml_build_terminal_cmd(char *out, size_t out_len);
 void mzml_build_launch_command(const MzmlAppEntry *app, char *out, size_t out_len);
+int mzml_enable_desktop_menu_in_file(const char *path);
 int mzml_parse_desktop_file(const char *path, const char *desktop_id, MzmlAppEntry *out);
 void mzml_scan_dir(const char *dir_path, MzmlAppList *list);
 void mzml_scan_default_dirs(MzmlAppList *list);

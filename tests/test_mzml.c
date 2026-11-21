@@ -140,6 +140,32 @@ int main(void) {
     mzml_list_free(&list);
     assert(list.entries == NULL && list.count == 0);
 
+    // 5. CLI mode parsing, terminal command builder, and emergency settings recovery
+    char *argv_norm[] = { "mzml", NULL };
+    char *argv_magic[] = { "mzml", "--magic", NULL };
+    char *argv_fb[] = { "mzml", "--fallback", NULL };
+    assert(mzml_parse_cli_mode(1, argv_norm) == MZML_MODE_LAUNCHER);
+    assert(mzml_parse_cli_mode(2, argv_magic) == MZML_MODE_MAGIC);
+    assert(mzml_parse_cli_mode(2, argv_fb) == MZML_MODE_MAGIC);
+
+    char term_cmd[1024];
+    mzml_build_terminal_cmd(term_cmd, sizeof(term_cmd));
+    assert(strstr(term_cmd, "wezterm") != NULL && strstr(term_cmd, "xterm") != NULL);
+
+    char rec_settings[600];
+    snprintf(rec_settings, sizeof(rec_settings), "%s/settings.conf", tmp_dir);
+    write_text(rec_settings, "master_count=2\nenable_desktop_menu=0\nborder_width=4\n");
+    assert(mzml_enable_desktop_menu_in_file(rec_settings) == 1);
+    FILE *rf = fopen(rec_settings, "r");
+    assert(rf != NULL);
+    char rbuf[512] = {0};
+    size_t rlen = fread(rbuf, 1, sizeof(rbuf) - 1, rf);
+    rbuf[rlen] = '\0';
+    fclose(rf);
+    assert(strstr(rbuf, "enable_desktop_menu=1") != NULL);
+    assert(strstr(rbuf, "master_count=2") != NULL);
+    assert(strstr(rbuf, "border_width=4") != NULL);
+
     char rm_cmd[600];
     snprintf(rm_cmd, sizeof(rm_cmd), "rm -rf %s", tmp_dir);
     assert(system(rm_cmd) == 0);

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <X11/Xlib.h>
@@ -26,6 +27,11 @@
 
 #define MZML_WIN_W 600
 #define MZML_WIN_H 430
+#define MZML_MAGIC_W 480
+#define MZML_MAGIC_H 336
+#define MZML_MAGIC_HEADER_H 64
+#define MZML_MAGIC_ROW_H 52
+#define MZML_MAGIC_ITEMS 4
 #define MZML_VISIBLE_ROWS 8
 #define MZML_ROW_H 40
 #define MZML_SEARCH_H 48
@@ -79,18 +85,43 @@ static void spawn_detached_cmd(const char *cmd) {
 
 typedef struct {
     Display *dpy;
+    Window root;
     Window win;
     cairo_surface_t *surface;
+    MzmlRunMode mode;
+    int mon_x, mon_y, mon_w, mon_h;
     int width;
     int height;
+    int apps_loaded;
     MzmlAppList apps;
     int *filtered;
     int filtered_count;
     int selected;
     int scroll;
     int hover_row;
+    int magic_selected;
+    int magic_hover;
     char query[128];
 } MzmlUi;
+
+static void ui_refilter(MzmlUi *ui);
+
+static void ensure_apps_loaded(MzmlUi *ui) {
+    if (ui->apps_loaded) return;
+    mzml_scan_default_dirs(&ui->apps);
+    int alloc_n = ui->apps.count > 0 ? ui->apps.count : 1;
+    ui->filtered = calloc((size_t)alloc_n, sizeof(int));
+    ui->apps_loaded = 1;
+    ui_refilter(ui);
+}
+
+static void set_wm_name_prop(Display *dpy, Window win, const char *name) {
+    if (!dpy || win == None || !name) return;
+    Atom a_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom a_utf8 = XInternAtom(dpy, "UTF8_STRING", False);
+    XChangeProperty(dpy, win, a_name, a_utf8, 8, PropModeReplace,
+                    (const unsigned char *)name, (int)strlen(name));
+}
 
 static void ui_refilter(MzmlUi *ui) {
     ui->filtered_count = mzml_filter_apps(&ui->apps, ui->query, ui->filtered,
@@ -115,8 +146,93 @@ static void ui_clamp_selection(MzmlUi *ui) {
     if (ui->scroll < 0) ui->scroll = 0;
 }
 
+static void ui_render_magic(MzmlUi *ui) {
+    if (!ui || !ui->surface) return;
+    static const char *labels[MZML_MAGIC_ITEMS] = {
+        "[1]  Terminal",
+        "[2]  App Launcher",
+        "[3]  Settings",
+        "[4]  Enable Right-Click Menu"
+    };
+    static const char *subs[MZML_MAGIC_ITEMS] = {
+        "Open terminal emulator (wezterm / alacritty / xterm)",
+        "Browse and launch installed applications",
+        "Open MUZUwm Control Centre",
+        "Restore enable_desktop_menu = 1 and reload WM"
+    };
+
+    cairo_t *cr = cairo_create(ui->surface);
+    if (!cr) return;
+
+    cairo_set_source_rgb(cr, 0.086, 0.086, 0.102);
+    cairo_paint(cr);
+
+    cairo_set_source_rgba(cr, 0.537, 0.706, 0.980, 0.85);
+    cairo_set_line_width(cr, 1.5);
+    draw_rounded_rect(cr, 1.0, 1.0, ui->width - 2.0, ui->height - 2.0, 10.0);
+    cairo_stroke(cr);
+
+    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(cr, 16.0);
+    cairo_set_source_rgb(cr, 0.537, 0.706, 0.980);
+    cairo_move_to(cr, MZML_PAD + 6.0, 32.0);
+    cairo_show_text(cr, "MUZUmagic_fallback");
+
+    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_set_font_size(cr, 11.0);
+    cairo_set_source_rgba(cr, 0.75, 0.78, 0.85, 0.75);
+    cairo_move_to(cr, MZML_PAD + 6.0, 50.0);
+    cairo_show_text(cr, "Ctrl+Alt+Delete Emergency Recovery");
+
+    double sw = ui->width - MZML_PAD * 2.0;
+    for (int i = 0; i < MZML_MAGIC_ITEMS; i++) {
+        double ry = MZML_MAGIC_HEADER_H + i * MZML_MAGIC_ROW_H;
+        int is_sel = (i == ui->magic_selected);
+        int is_hov = (i == ui->magic_hover);
+        if (is_sel) {
+            cairo_set_source_rgba(cr, 0.537, 0.706, 0.980, 0.28);
+            draw_rounded_rect(cr, MZML_PAD, ry + 3.0, sw, MZML_MAGIC_ROW_H - 6.0, 8.0);
+            cairo_fill(cr);
+            cairo_set_source_rgba(cr, 0.537, 0.706, 0.980, 0.70);
+            cairo_set_line_width(cr, 1.0);
+            draw_rounded_rect(cr, MZML_PAD + 0.5, ry + 3.5, sw - 1.0, MZML_MAGIC_ROW_H - 7.0, 8.0);
+            cairo_stroke(cr);
+        } else if (is_hov) {
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.08);
+            draw_rounded_rect(cr, MZML_PAD, ry + 3.0, sw, MZML_MAGIC_ROW_H - 6.0, 8.0);
+            cairo_fill(cr);
+        }
+
+        cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 13.5);
+        cairo_set_source_rgb(cr, is_sel ? 1.0 : 0.90, is_sel ? 1.0 : 0.92, is_sel ? 1.0 : 0.96);
+        cairo_move_to(cr, MZML_PAD + 14.0, ry + 24.0);
+        cairo_show_text(cr, labels[i]);
+
+        cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_font_size(cr, 10.5);
+        cairo_set_source_rgba(cr, 0.68, 0.71, 0.78, 0.78);
+        cairo_move_to(cr, MZML_PAD + 14.0, ry + 40.0);
+        cairo_show_text(cr, subs[i]);
+    }
+
+    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+    cairo_set_font_size(cr, 10.5);
+    cairo_set_source_rgba(cr, 0.60, 0.63, 0.70, 0.72);
+    cairo_move_to(cr, MZML_PAD + 6.0, ui->height - 14.0);
+    cairo_show_text(cr, "Up/Down or 1-4  |  Enter: Select  |  Esc: Cancel");
+
+    cairo_destroy(cr);
+    cairo_surface_flush(ui->surface);
+    XFlush(ui->dpy);
+}
+
 static void ui_render(MzmlUi *ui) {
     if (!ui || !ui->surface) return;
+    if (ui->mode == MZML_MODE_MAGIC) {
+        ui_render_magic(ui);
+        return;
+    }
     cairo_t *cr = cairo_create(ui->surface);
     if (!cr) return;
 
@@ -253,9 +369,69 @@ static void launch_selected_or_query(const MzmlUi *ui, int force_raw) {
     }
 }
 
-int main(void) {
+static int magic_row_at_y(int y) {
+    if (y < MZML_MAGIC_HEADER_H) return -1;
+    int row = (y - MZML_MAGIC_HEADER_H) / MZML_MAGIC_ROW_H;
+    if (row < 0 || row >= MZML_MAGIC_ITEMS) return -1;
+    return row;
+}
+
+static void spawn_settings_fallback(void) {
+    spawn_detached_cmd(
+        "if command -v muzuwm-settings >/dev/null 2>&1; then "
+        "  exec wezterm start --always-new-process -- muzuwm-settings || "
+        "  exec alacritty -e muzuwm-settings || exec xterm -e muzuwm-settings; "
+        "elif [ -f ./muzuwm_settings.py ]; then "
+        "  exec wezterm start --always-new-process -- python3 ./muzuwm_settings.py || "
+        "  exec alacritty -e python3 ./muzuwm_settings.py || exec xterm -e python3 ./muzuwm_settings.py; "
+        "fi");
+}
+
+static void execute_magic_action(MzmlUi *ui, int idx) {
+    if (idx == 0) {
+        char cmd[512];
+        mzml_build_terminal_cmd(cmd, sizeof(cmd));
+        spawn_detached_cmd(cmd);
+        running = 0;
+    } else if (idx == 1) {
+        ui->mode = MZML_MODE_LAUNCHER;
+        ensure_apps_loaded(ui);
+        ui->width = (ui->mon_w > 40 && MZML_WIN_W > ui->mon_w - 20) ? (ui->mon_w - 20) : MZML_WIN_W;
+        ui->height = (ui->mon_h > 40 && MZML_WIN_H > ui->mon_h - 20) ? (ui->mon_h - 20) : MZML_WIN_H;
+        int pos_x = ui->mon_x + (ui->mon_w - ui->width) / 2;
+        int pos_y = ui->mon_y + (ui->mon_h - ui->height) / 2;
+        XMoveResizeWindow(ui->dpy, ui->win, pos_x, pos_y, (unsigned int)ui->width, (unsigned int)ui->height);
+        cairo_xlib_surface_set_size(ui->surface, ui->width, ui->height);
+        set_wm_name_prop(ui->dpy, ui->win, "mzml");
+        ui->query[0] = '\0';
+        ui_refilter(ui);
+        ui_render(ui);
+    } else if (idx == 2) {
+        spawn_settings_fallback();
+        running = 0;
+    } else if (idx == 3) {
+        const char *home = getenv("HOME");
+        if (!home) home = "/tmp";
+        char dir[512], path[600];
+        snprintf(dir, sizeof(dir), "%s/.config", home);
+        mkdir(dir, 0755);
+        snprintf(dir, sizeof(dir), "%s/.config/muzuwm", home);
+        mkdir(dir, 0755);
+        snprintf(path, sizeof(path), "%s/settings.conf", dir);
+        mzml_enable_desktop_menu_in_file(path);
+        Atom a_reload = XInternAtom(ui->dpy, "_MUZU_RELOAD_SETTINGS", False);
+        unsigned long val = 1;
+        XChangeProperty(ui->dpy, ui->root, a_reload, XA_CARDINAL, 32, PropModeReplace,
+                        (unsigned char *)&val, 1);
+        XFlush(ui->dpy);
+        running = 0;
+    }
+}
+
+int main(int argc, char **argv) {
     setlocale(LC_CTYPE, "");
     XSetLocaleModifiers("");
+    MzmlRunMode initial_mode = mzml_parse_cli_mode(argc, argv);
     if (pipe2(sig_pipe, O_NONBLOCK | O_CLOEXEC) != 0) {
         sig_pipe[0] = sig_pipe[1] = -1;
     }
@@ -307,21 +483,30 @@ int main(void) {
     MzmlUi ui;
     memset(&ui, 0, sizeof(ui));
     ui.dpy = dpy;
-    ui.width = (mw > 40 && MZML_WIN_W > mw - 20) ? (mw - 20) : MZML_WIN_W;
-    ui.height = (mh > 40 && MZML_WIN_H > mh - 20) ? (mh - 20) : MZML_WIN_H;
+    ui.root = root;
+    ui.mode = initial_mode;
+    ui.mon_x = mx;
+    ui.mon_y = my;
+    ui.mon_w = mw;
+    ui.mon_h = mh;
     ui.hover_row = -1;
+    ui.magic_hover = -1;
 
-    mzml_scan_default_dirs(&ui.apps);
-    int alloc_n = ui.apps.count > 0 ? ui.apps.count : 1;
-    ui.filtered = calloc((size_t)alloc_n, sizeof(int));
-    if (!ui.filtered) {
-        mzml_list_free(&ui.apps);
-        XCloseDisplay(dpy);
-        if (sig_pipe[0] >= 0) close(sig_pipe[0]);
-        if (sig_pipe[1] >= 0) close(sig_pipe[1]);
-        return 1;
+    if (ui.mode == MZML_MODE_MAGIC) {
+        ui.width = (mw > 40 && MZML_MAGIC_W > mw - 20) ? (mw - 20) : MZML_MAGIC_W;
+        ui.height = (mh > 40 && MZML_MAGIC_H > mh - 20) ? (mh - 20) : MZML_MAGIC_H;
+    } else {
+        ui.width = (mw > 40 && MZML_WIN_W > mw - 20) ? (mw - 20) : MZML_WIN_W;
+        ui.height = (mh > 40 && MZML_WIN_H > mh - 20) ? (mh - 20) : MZML_WIN_H;
+        ensure_apps_loaded(&ui);
+        if (!ui.filtered) {
+            mzml_list_free(&ui.apps);
+            XCloseDisplay(dpy);
+            if (sig_pipe[0] >= 0) close(sig_pipe[0]);
+            if (sig_pipe[1] >= 0) close(sig_pipe[1]);
+            return 1;
+        }
     }
-    ui_refilter(&ui);
 
     int pos_x = mx + (mw - ui.width) / 2;
     int pos_y = my + (mh - ui.height) / 2;
@@ -339,6 +524,7 @@ int main(void) {
     Atom net_dialog = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
     XChangeProperty(dpy, ui.win, net_type, XA_ATOM, 32, PropModeReplace,
                     (unsigned char *)&net_dialog, 1);
+    set_wm_name_prop(dpy, ui.win, (ui.mode == MZML_MODE_MAGIC) ? "MUZUmagic_fallback" : "mzml");
 
     ui.surface = cairo_xlib_surface_create(dpy, ui.win, DefaultVisual(dpy, screen),
                                            ui.width, ui.height);
@@ -368,6 +554,15 @@ int main(void) {
                     ui_render(&ui);
                     break;
                 case MotionNotify: {
+                    if (ui.mode == MZML_MODE_MAGIC) {
+                        int row = magic_row_at_y(ev.xmotion.y);
+                        if (ev.xmotion.x < 0 || ev.xmotion.x >= ui.width) row = -1;
+                        if (row != ui.magic_hover) {
+                            ui.magic_hover = row;
+                            ui_render(&ui);
+                        }
+                        break;
+                    }
                     int row = row_at_y(&ui, ev.xmotion.y);
                     if (ev.xmotion.x < 0 || ev.xmotion.x >= ui.width) row = -1;
                     if (row != ui.hover_row) {
@@ -380,6 +575,16 @@ int main(void) {
                     if (ev.xbutton.x < 0 || ev.xbutton.x >= ui.width ||
                         ev.xbutton.y < 0 || ev.xbutton.y >= ui.height) {
                         running = 0;
+                        break;
+                    }
+                    if (ui.mode == MZML_MODE_MAGIC) {
+                        if (ev.xbutton.button == Button1) {
+                            int row = magic_row_at_y(ev.xbutton.y);
+                            if (row >= 0) {
+                                ui.magic_selected = row;
+                                execute_magic_action(&ui, row);
+                            }
+                        }
                         break;
                     }
                     if (ev.xbutton.button == Button4) {
@@ -416,6 +621,20 @@ int main(void) {
 
                     if (sym == XK_Escape) {
                         running = 0;
+                        break;
+                    }
+                    if (ui.mode == MZML_MODE_MAGIC) {
+                        if (sym == XK_Up) {
+                            ui.magic_selected = (ui.magic_selected + MZML_MAGIC_ITEMS - 1) % MZML_MAGIC_ITEMS;
+                            ui_render(&ui);
+                        } else if (sym == XK_Down) {
+                            ui.magic_selected = (ui.magic_selected + 1) % MZML_MAGIC_ITEMS;
+                            ui_render(&ui);
+                        } else if (sym >= XK_1 && sym <= XK_4) {
+                            execute_magic_action(&ui, (int)(sym - XK_1));
+                        } else if (sym == XK_Return || sym == XK_KP_Enter) {
+                            execute_magic_action(&ui, ui.magic_selected);
+                        }
                         break;
                     }
                     if (sym == XK_Return || sym == XK_KP_Enter) {

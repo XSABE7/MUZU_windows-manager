@@ -29,7 +29,11 @@ SRCS="src/wm.c src/titlebar.c src/client_props.c src/ewmh.c src/monitors.c src/w
 
 echo "Building ASan+UBSan muzuwm in $TMP_DIR..."
 gcc -Wall -Wextra -pedantic -std=c11 -O1 -g -fsanitize=address,undefined -Iinclude \
-    $CFLAGS $SRCS -o "$TMP_DIR/muzuwm_asan" -fsanitize=address,undefined $LIBS
+    $CFLAGS $SRCS -o "$TMP_DIR/muzuwm" -fsanitize=address,undefined $LIBS
+
+MZML_SRCS="src/mzml.c src/mzml_main.c src/monitors.c src/struts.c"
+gcc -Wall -Wextra -pedantic -std=c11 -O1 -g -fsanitize=address,undefined -Iinclude \
+    $CFLAGS $MZML_SRCS -o "$TMP_DIR/mzml" -fsanitize=address,undefined $LIBS
 
 cat > "$TMP_DIR/x11_driver.c" << 'EOF'
 #define _DEFAULT_SOURCE
@@ -122,7 +126,7 @@ static void send_root_client_msg(Display *dpy, Window root, Window win, Atom typ
     XSync(dpy, False);
 }
 
-static int has_visible_popup_menu(Display *dpy, Window root, Atom a_win_type, Atom a_popup) {
+static int has_visible_window_with_type(Display *dpy, Window root, Atom a_win_type, Atom a_target_type) {
     Window rr = None, pr = None, *children = NULL;
     unsigned int n = 0;
     int found = 0;
@@ -136,12 +140,34 @@ static int has_visible_popup_menu(Display *dpy, Window root, Atom a_win_type, At
             if (rt == XA_ATOM && rf == 32) {
                 Atom *atoms = (Atom *)rdata;
                 for (unsigned long j = 0; j < rn; j++) {
-                    if (atoms[j] == a_popup) found = 1;
+                    if (atoms[j] == a_target_type) found = 1;
                 }
             }
             XFree(rdata);
         }
         if (found) break;
+    }
+    XFree(children);
+    return found;
+}
+
+static Window find_visible_named_window(Display *dpy, Window root, Atom a_wm_name, Atom a_utf8, const char *expected_name) {
+    Window rr = None, pr = None, *children = NULL;
+    unsigned int n = 0;
+    Window found = None;
+    if (!XQueryTree(dpy, root, &rr, &pr, &children, &n) || !children) return None;
+    for (unsigned int i = 0; i < n; i++) {
+        XWindowAttributes wa;
+        if (!XGetWindowAttributes(dpy, children[i], &wa) || wa.map_state != IsViewable) continue;
+        Atom rt; int rf; unsigned long rn, ra; unsigned char *rdata = NULL;
+        if (XGetWindowProperty(dpy, children[i], a_wm_name, 0, 64, False, a_utf8,
+                               &rt, &rf, &rn, &ra, &rdata) == Success && rdata) {
+            if (rt == a_utf8 && rf == 8 && strcmp((char *)rdata, expected_name) == 0) {
+                found = children[i];
+            }
+            XFree(rdata);
+        }
+        if (found != None) break;
     }
     XFree(children);
     return found;
@@ -330,35 +356,31 @@ int main(void) {
     XSendEvent(dpy, root, False, ButtonPressMask, &bev);
     XSync(dpy, False);
     usleep(80000);
-    assert(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
+    assert(has_visible_window_with_type(dpy, root, a_win_type, a_type_popup) == 0);
 
-    // Single Ctrl+Alt+Delete centers mouse pointer (640, 360) and force-opens popup menu
+    // Single Ctrl+Alt+Delete centers mouse pointer (640, 360) and launches MUZUmagic_fallback (mzml --magic)
     send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 10000UL);
-    WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 1);
+    Window magic_win = None;
+    WAIT_UNTIL((magic_win = find_visible_named_window(dpy, root, a_wm_name, a_utf8, "MUZUmagic_fallback")) != None);
+    assert(has_visible_window_with_type(dpy, root, a_win_type, a_type_popup) == 0);
     Window qrr = None, qcr = None;
     int qrx = 0, qry = 0, qwx = 0, qwy = 0;
     unsigned int qmask = 0;
     assert(XQueryPointer(dpy, root, &qrr, &qcr, &qrx, &qry, &qwx, &qwy, &qmask));
     assert(qrx == 640 && qry == 360);
 
-    // Escape closes popup menu cleanly and restores X11 input focus to fa
-    send_key_on_root(dpy, root, 0, XK_Escape, 10300UL);
-    WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
-    Window focus_win = None; int revert_to = 0;
-    XGetInputFocus(dpy, &focus_win, &revert_to);
-    assert(focus_win == fa);
-
-    // Clicking outside a force-opened menu with Button3 when enable_desktop_menu=0 closes it without re-opening
-    send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 20000UL);
-    WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 1);
-    bev.xbutton.window = root;
-    bev.xbutton.x = 1200; bev.xbutton.y = 650;
-    bev.xbutton.x_root = 1200; bev.xbutton.y_root = 650;
-    XSendEvent(dpy, root, False, ButtonPressMask, &bev);
+    // Escape closes MUZUmagic_fallback cleanly
+    XEvent esc_ev;
+    memset(&esc_ev, 0, sizeof(esc_ev));
+    esc_ev.type = KeyPress;
+    esc_ev.xkey.display = dpy;
+    esc_ev.xkey.window = magic_win;
+    esc_ev.xkey.root = root;
+    esc_ev.xkey.keycode = XKeysymToKeycode(dpy, XK_Escape);
+    esc_ev.xkey.same_screen = True;
+    XSendEvent(dpy, magic_win, False, KeyPressMask, &esc_ev);
     XSync(dpy, False);
-    WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
-    XGetInputFocus(dpy, &focus_win, &revert_to);
-    assert(focus_win == fa);
+    WAIT_UNTIL(find_visible_named_window(dpy, root, a_wm_name, a_utf8, "MUZUmagic_fallback") == None);
 
     // Maximized window shrinks cleanly when border_width increases on live reload
     send_root_client_msg(dpy, root, fa, a_wm_state, 1 /* ADD */, (long)XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False), (long)XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False));
@@ -400,7 +422,7 @@ printf 'leak:_XEnq\nleak:libcairo.so\nleak:libfontconfig.so\n' > "$TMP_DIR/lsan.
 export LSAN_OPTIONS="suppressions=$TMP_DIR/lsan.supp"
 
 # 1. Start primary WM
-"$TMP_DIR/muzuwm_asan" >"$TMP_DIR/wm1.out" 2>"$TMP_DIR/wm1.err" &
+"$TMP_DIR/muzuwm" >"$TMP_DIR/wm1.out" 2>"$TMP_DIR/wm1.err" &
 WM1_PID=$!
 sleep 0.5
 kill -0 "$WM1_PID" 2>/dev/null || { echo "FAIL: WM1 exited prematurely"; cat "$TMP_DIR/wm1.err"; exit 1; }
@@ -424,7 +446,7 @@ echo "PASS: auto_allowlist executed and zero zombie child processes"
 
 # 3. Duplicate WM conflict must fail fast
 set +e
-timeout -k 1 2 "$TMP_DIR/muzuwm_asan" >"$TMP_DIR/wm2.out" 2>"$TMP_DIR/wm2.err"
+timeout -k 1 2 "$TMP_DIR/muzuwm" >"$TMP_DIR/wm2.out" 2>"$TMP_DIR/wm2.err"
 WM2_RC=$?
 set -e
 if [ "$WM2_RC" -eq 0 ] || [ "$WM2_RC" -eq 124 ] || [ "$WM2_RC" -eq 137 ]; then
@@ -465,10 +487,6 @@ fi
 echo "PASS: Idle SIGTERM clean exit (< 1.5s, rc=0)"
 
 # 6. Standalone mzml ASan+UBSan smoke test
-MZML_SRCS="src/mzml.c src/mzml_main.c src/monitors.c src/struts.c"
-gcc -Wall -Wextra -pedantic -std=c11 -O1 -g -fsanitize=address,undefined -Iinclude \
-    $CFLAGS $MZML_SRCS -o "$TMP_DIR/mzml_asan" -fsanitize=address,undefined $LIBS
-
 mkdir -p "$TMP_DIR/xdg/applications"
 cat > "$TMP_DIR/xdg/applications/hello.desktop" << 'EOF'
 [Desktop Entry]
@@ -478,7 +496,7 @@ Comment=Test entry
 Exec=true
 EOF
 
-XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml_asan" >"$TMP_DIR/mzml.out" 2>"$TMP_DIR/mzml.err" &
+XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml" >"$TMP_DIR/mzml.out" 2>"$TMP_DIR/mzml.err" &
 MZML_PID=$!
 sleep 0.4
 kill -0 "$MZML_PID" 2>/dev/null || { echo "FAIL: mzml exited prematurely"; cat "$TMP_DIR/mzml.err"; exit 1; }
@@ -500,7 +518,7 @@ fi
 echo "PASS: mzml ASan+UBSan startup and SIGTERM clean exit (rc=0)"
 
 # 7. mzml Escape key clean exit under ASan+UBSan
-XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml_asan" >"$TMP_DIR/mzml_esc.out" 2>"$TMP_DIR/mzml_esc.err" &
+XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml" >"$TMP_DIR/mzml_esc.out" 2>"$TMP_DIR/mzml_esc.err" &
 MZML_ESC_PID=$!
 cat > "$TMP_DIR/send_esc.c" << 'EOF'
 #define _DEFAULT_SOURCE
