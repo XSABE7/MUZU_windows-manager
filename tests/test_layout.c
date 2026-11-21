@@ -149,6 +149,39 @@ int main(void) {
     assert(ds.client == NULL && ds.is_resize == 0);
     free_clients(&drag_head);
 
+    // Test 11: border_width geometry compensation and small-screen clamping
+    LayoutConfig bcfg = {
+        .screen_width = 1920,
+        .screen_height = 1080,
+        .master_count = 1,
+        .border_width = 2
+    };
+    Client *bhead = NULL;
+    client_add(&bhead, 501, CLIENT_TILED);
+    layout_calculate(&bcfg, bhead, 1);
+    assert(bhead->x == 0 && bhead->y == 0);
+    assert(bhead->width == 1916 && bhead->height == 1076);
+
+    client_add(&bhead, 502, CLIENT_TILED);
+    layout_calculate(&bcfg, bhead, 2);
+    Client *bf1 = client_find(bhead, 501);
+    Client *bf2 = client_find(bhead, 502);
+    assert(bf1->width == 956 && bf1->height == 1076);
+    assert(bf2->width == 956 && bf2->height == 1076);
+    free_clients(&bhead);
+
+    LayoutConfig tiny_cfg = {
+        .screen_width = 40,
+        .screen_height = 40,
+        .master_count = 1,
+        .border_width = 16
+    };
+    Client *thead = NULL;
+    client_add(&thead, 503, CLIENT_TILED);
+    layout_calculate(&tiny_cfg, thead, 1);
+    assert(thead->width >= 10 && thead->height >= 10);
+    free_clients(&thead);
+
     printf("test_layout passed!\n");
     return 0;
 }

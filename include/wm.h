@@ -79,6 +79,7 @@ typedef struct {
     int top_inset;
     int bottom_inset;
     int current_workspace;
+    int border_width;
 } LayoutConfig;
 
 typedef struct {

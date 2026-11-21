@@ -213,4 +213,5 @@ void monitor_to_layout_config(const Monitor *mon, int master_count, int current_
     out_cfg->bottom_inset = mon->bottom_inset;
     out_cfg->master_count = master_count;
     out_cfg->current_workspace = current_workspace;
+    out_cfg->border_width = 0;
 }

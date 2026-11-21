@@ -207,6 +207,16 @@ void layout_calculate_clients(const LayoutConfig *cfg, Client **tiled, int tiled
             if (c->height < 34) c->height = 34;
         }
     }
+
+    int bw = (cfg->border_width > 0) ? cfg->border_width : 0;
+    if (bw > 0) {
+        for (int i = 0; i < tiled_count; i++) {
+            tiled[i]->width -= 2 * bw;
+            tiled[i]->height -= 2 * bw;
+            if (tiled[i]->width < 10) tiled[i]->width = 10;
+            if (tiled[i]->height < 10) tiled[i]->height = 10;
+        }
+    }
 }
 
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count) {

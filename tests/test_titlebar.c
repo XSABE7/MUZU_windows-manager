@@ -41,6 +41,23 @@ int main(void) {
     client_toggle_maximize(NULL, &dialog, &cfg);
     assert(dialog.is_maximized == 0); // maximize strictly inhibited
 
+    // Test 3: Maximize accounts for 2 * border_width
+    Client bordered = {0};
+    bordered.width = 800;
+    bordered.height = 600;
+    bordered.can_fullscreen = 1;
+    LayoutConfig bcfg = {
+        .screen_width = 1920,
+        .screen_height = 1080,
+        .top_inset = 30,
+        .bottom_inset = 60,
+        .border_width = 3
+    };
+    client_toggle_maximize(NULL, &bordered, &bcfg);
+    assert(bordered.is_maximized == 1);
+    assert(bordered.width == 1914);
+    assert(bordered.height == (1080 - 30 - 60 - 6));
+
     printf("test_titlebar passed!\n");
     return 0;
 }
