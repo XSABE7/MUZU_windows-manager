@@ -128,12 +128,12 @@ static void launch_settings_app(void) {
     if (is_exec) {
         execlp("wezterm", "wezterm", "start", "--always-new-process", "--class", "muzuwm-settings", "--", settings_cmd, (char *)NULL);
         execlp("alacritty", "alacritty", "-e", settings_cmd, (char *)NULL);
-        execlp("xterm", "xterm", "-T", "MUZUwm Settings", "-e", settings_cmd, (char *)NULL);
+        execlp("xterm", "xterm", "-bg", "black", "-fg", "white", "-T", "MUZUwm Settings", "-e", settings_cmd, (char *)NULL);
         execlp("x-terminal-emulator", "x-terminal-emulator", "-e", settings_cmd, (char *)NULL);
     } else {
         execlp("wezterm", "wezterm", "start", "--always-new-process", "--class", "muzuwm-settings", "--", "python3", settings_cmd, (char *)NULL);
         execlp("alacritty", "alacritty", "-e", "python3", settings_cmd, (char *)NULL);
-        execlp("xterm", "xterm", "-T", "MUZUwm Settings", "-e", "python3", settings_cmd, (char *)NULL);
+        execlp("xterm", "xterm", "-bg", "black", "-fg", "white", "-T", "MUZUwm Settings", "-e", "python3", settings_cmd, (char *)NULL);
         execlp("x-terminal-emulator", "x-terminal-emulator", "-e", "python3", settings_cmd, (char *)NULL);
     }
     _exit(127);

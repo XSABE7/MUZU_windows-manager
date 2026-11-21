@@ -380,10 +380,10 @@ static void spawn_settings_fallback(void) {
     spawn_detached_cmd(
         "if command -v muzuwm-settings >/dev/null 2>&1; then "
         "  exec wezterm start --always-new-process -- muzuwm-settings || "
-        "  exec alacritty -e muzuwm-settings || exec xterm -e muzuwm-settings; "
+        "  exec alacritty -e muzuwm-settings || exec xterm -bg black -fg white -e muzuwm-settings; "
         "elif [ -f ./muzuwm_settings.py ]; then "
         "  exec wezterm start --always-new-process -- python3 ./muzuwm_settings.py || "
-        "  exec alacritty -e python3 ./muzuwm_settings.py || exec xterm -e python3 ./muzuwm_settings.py; "
+        "  exec alacritty -e python3 ./muzuwm_settings.py || exec xterm -bg black -fg white -e python3 ./muzuwm_settings.py; "
         "fi");
 }
 
