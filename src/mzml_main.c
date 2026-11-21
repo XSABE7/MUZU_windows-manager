@@ -505,6 +505,7 @@ int main(void) {
     mzml_list_free(&ui.apps);
     XSync(dpy, True);
     XCloseDisplay(dpy);
+    cairo_debug_reset_static_data();
     if (sig_pipe[0] >= 0) close(sig_pipe[0]);
     if (sig_pipe[1] >= 0) close(sig_pipe[1]);
     return 0;

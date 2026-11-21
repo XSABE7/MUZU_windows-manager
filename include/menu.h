@@ -40,7 +40,8 @@ typedef enum {
     DESKTOP_ACTION_TERMINAL,
     DESKTOP_ACTION_APPLICATIONS,
     DESKTOP_ACTION_SETTINGS,
-    DESKTOP_ACTION_INTERNET
+    DESKTOP_ACTION_INTERNET,
+    DESKTOP_ACTION_MZML
 } MenuActionId;
 
 typedef void (*MenuCallback)(int action_id, void *userdata);

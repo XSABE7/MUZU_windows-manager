@@ -33,6 +33,13 @@ static int monitor_count = 0;
 static int total_screen_w = 0;
 static int total_screen_h = 0;
 static int num_workspaces = DEFAULT_WORKSPACE_COUNT;
+static int focus_follows_mouse_enabled = 1;
+static int desktop_menu_enabled = 1;
+static int current_border_width = 2;
+static unsigned long focus_border_pixel = 0;
+static unsigned long unfocus_border_pixel = 0;
+static int cad_pending = 0;
+static Time cad_first_time = 0;
 static DragState drag = {0};
 static SnapPreview snap_preview;
 
@@ -134,6 +141,113 @@ static void launch_settings_app(void) {
     _exit(127);
 }
 
+static unsigned long alloc_hex_pixel(Display *d, const char *hex, unsigned long fallback_px) {
+    if (!d) return fallback_px;
+    unsigned short r16 = 0, g16 = 0, b16 = 0;
+    if (!config_parse_hex_color(hex, &r16, &g16, &b16)) {
+        return fallback_px;
+    }
+    XColor xc;
+    memset(&xc, 0, sizeof(xc));
+    xc.red = r16;
+    xc.green = g16;
+    xc.blue = b16;
+    xc.flags = DoRed | DoGreen | DoBlue;
+    Colormap cmap = DefaultColormap(d, DefaultScreen(d));
+    if (XAllocColor(d, cmap, &xc)) {
+        return xc.pixel;
+    }
+    return fallback_px;
+}
+
+static void apply_client_border(Display *d, const Client *c, int bw) {
+    if (!d || !c || c->win == None) return;
+    Window target = (c->frame != None) ? c->frame : c->win;
+    if (c->is_fullscreen) {
+        XSetWindowBorderWidth(d, target, 0);
+        return;
+    }
+    int clamped = (bw > 0) ? bw : 0;
+    XSetWindowBorderWidth(d, target, (unsigned int)clamped);
+    if (clamped > 0) {
+        XSetWindowBorder(d, target, c->is_focused ? focus_border_pixel : unfocus_border_pixel);
+    }
+}
+
+static void load_appearance_settings(Display *d, LayoutConfig *cfg) {
+    focus_follows_mouse_enabled = config_is_focus_follows_mouse_enabled();
+    desktop_menu_enabled = config_is_desktop_menu_enabled();
+    current_border_width = config_get_border_width();
+    if (cfg) cfg->border_width = current_border_width;
+
+    if (d) {
+        int scr = DefaultScreen(d);
+        char focus_hex[32], unfocus_hex[32];
+        config_get_focus_border_color(focus_hex, sizeof(focus_hex));
+        config_get_unfocus_border_color(unfocus_hex, sizeof(unfocus_hex));
+        focus_border_pixel = alloc_hex_pixel(d, focus_hex, WhitePixel(d, scr));
+        unfocus_border_pixel = alloc_hex_pixel(d, unfocus_hex, BlackPixel(d, scr));
+    }
+}
+
+static void find_local_mzml(char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    out[0] = '\0';
+    char exe_path[1024];
+    char local_mzml[1100] = {0};
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len > 0) {
+        exe_path[len] = '\0';
+        char *slash = strrchr(exe_path, '/');
+        if (slash) {
+            *slash = '\0';
+            snprintf(local_mzml, sizeof(local_mzml), "%s/mzml", exe_path);
+        }
+    }
+    const char *candidates[] = {
+        local_mzml[0] ? local_mzml : NULL,
+        "./mzml",
+        "/usr/local/bin/mzml",
+        "/usr/bin/mzml",
+        NULL
+    };
+    for (size_t i = 0; candidates[i] != NULL || i < 4; i++) {
+        if (candidates[i] && access(candidates[i], X_OK) == 0) {
+            snprintf(out, out_len, "%s", candidates[i]);
+            return;
+        }
+    }
+}
+
+static void spawn_mzml_fallback(void) {
+    char mzml_path[1100] = {0};
+    find_local_mzml(mzml_path, sizeof(mzml_path));
+    if (mzml_path[0] != '\0') {
+        char cmd[1200];
+        snprintf(cmd, sizeof(cmd), "exec \"%s\"", mzml_path);
+        config_spawn_command(cmd);
+    } else {
+        config_spawn_command("if command -v mzml >/dev/null 2>&1; then exec mzml; fi");
+    }
+}
+
+static void spawn_launcher(void) {
+    char mzml_path[1100] = {0};
+    find_local_mzml(mzml_path, sizeof(mzml_path));
+    if (mzml_path[0] != '\0') {
+        char cmd[1400];
+        snprintf(cmd, sizeof(cmd),
+                 "if command -v mzshell >/dev/null 2>&1; then exec mzshell; "
+                 "else exec \"%s\"; fi", mzml_path);
+        config_spawn_command(cmd);
+    } else {
+        config_spawn_command(
+            "if command -v mzshell >/dev/null 2>&1; then exec mzshell; "
+            "elif command -v mzml >/dev/null 2>&1; then exec mzml; "
+            "elif command -v rofi >/dev/null 2>&1; then exec rofi -show drun; fi");
+    }
+}
+
 static void spawn_terminal(void) {
     config_spawn_command(
         "if command -v wezterm >/dev/null 2>&1; then "
@@ -157,12 +271,10 @@ static void desktop_menu_callback(int action_id, void *userdata) {
             config_spawn_command("x-www-browser || firefox || google-chrome || chromium");
             break;
         case DESKTOP_ACTION_APPLICATIONS:
-            config_spawn_command(
-                "if command -v mzshell >/dev/null 2>&1; then exec mzshell; "
-                "elif command -v wezterm >/dev/null 2>&1; then exec wezterm start --always-new-process; "
-                "elif command -v alacritty >/dev/null 2>&1; then exec alacritty; "
-                "elif command -v xterm >/dev/null 2>&1; then exec xterm; "
-                "else exec x-terminal-emulator; fi");
+            spawn_launcher();
+            break;
+        case DESKTOP_ACTION_MZML:
+            spawn_mzml_fallback();
             break;
         case DESKTOP_ACTION_SETTINGS:
             launch_settings_app();
@@ -177,8 +289,11 @@ static void set_focused_client(Display *d, Client *c, Client *head) {
     for (Client *curr = head; curr; curr = curr->next) {
         int was_focused = curr->is_focused;
         curr->is_focused = (curr == c);
-        if (curr->frame != None && was_focused != curr->is_focused) {
-            titlebar_draw(d, curr, NULL);
+        if (was_focused != curr->is_focused || curr == c) {
+            apply_client_border(d, curr, current_border_width);
+            if (curr->frame != None) {
+                titlebar_draw(d, curr, NULL);
+            }
         }
     }
     Window active_win = ewmh_resolve_active_window(c);
@@ -198,7 +313,9 @@ static void refresh_struts_and_workarea(Display *d, StrutList *strut_list, Layou
         for (int i = 0; i < monitor_count; i++) {
             if (monitors[i].primary) { prim = i; break; }
         }
+        int saved_bw = cfg->border_width;
         monitor_to_layout_config(&monitors[prim], cfg->master_count, cfg->current_workspace, cfg);
+        cfg->border_width = saved_bw;
         int wa_x = monitors[prim].x + monitors[prim].left_inset;
         int wa_y = monitors[prim].y + monitors[prim].top_inset;
         int wa_w = monitors[prim].width - monitors[prim].left_inset - monitors[prim].right_inset;
@@ -235,6 +352,7 @@ static void monitor_layout_for_client(const Client *c, const LayoutConfig *base_
     if (c && monitor_count > 0) {
         int m = monitor_find_for_rect(monitors, monitor_count, c->x, c->y, c->width, c->height);
         monitor_to_layout_config(&monitors[m], base_cfg->master_count, base_cfg->current_workspace, out_cfg);
+        out_cfg->border_width = base_cfg->border_width;
     } else {
         *out_cfg = *base_cfg;
     }
@@ -249,6 +367,7 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
         for (int m = 0; m < monitor_count; m++) {
             LayoutConfig mon_cfg;
             monitor_to_layout_config(&monitors[m], cfg->master_count, cfg->current_workspace, &mon_cfg);
+            mon_cfg.border_width = cfg->border_width;
             Client *tiled[128];
             int idx = 0;
             for (Client *curr = clients; curr && idx < 128; curr = curr->next) {
@@ -511,6 +630,7 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
     LayoutConfig mon_cfg = *cfg;
     if (monitor_count > 0) {
         monitor_to_layout_config(&monitors[mon_idx], cfg->master_count, cfg->current_workspace, &mon_cfg);
+        mon_cfg.border_width = cfg->border_width;
     }
 
     int init_x = mon_cfg.mon_x + mon_cfg.left_inset;
@@ -554,10 +674,14 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
 
     XAddToSaveSet(d, w);
     XSelectInput(d, w, PropertyChangeMask | StructureNotifyMask | FocusChangeMask | EnterWindowMask);
-    XSetWindowBorderWidth(d, w, 0);
+    apply_client_border(d, c, cfg->border_width);
 
     const unsigned int mouse_locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
     for (int l = 0; l < 4; l++) {
+        XGrabButton(d, Button1, mouse_locks[l], w, False,
+                    ButtonPressMask, GrabModeSync, GrabModeAsync, None, None);
+        XGrabButton(d, Button3, mouse_locks[l], w, False,
+                    ButtonPressMask, GrabModeSync, GrabModeAsync, None, None);
         XGrabButton(d, Button1, Mod4Mask | mouse_locks[l], w, False,
                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                     GrabModeAsync, GrabModeAsync, None, None);
@@ -664,7 +788,7 @@ int main(void) {
     wm_conflict_detected = 0;
     XSetErrorHandler(startup_xerror_handler);
     XSelectInput(dpy, root, SubstructureRedirectMask | SubstructureNotifyMask |
-                            StructureNotifyMask | ButtonPressMask | PropertyChangeMask);
+                            StructureNotifyMask | ButtonPressMask | KeyPressMask | PropertyChangeMask);
     XSync(dpy, False);
     if (wm_conflict_detected) {
         fprintf(stderr, "muzuwm: another window manager is already running\n");
@@ -756,6 +880,7 @@ int main(void) {
     menu_add_item(&desktop_menu, "Terminal", DESKTOP_ACTION_TERMINAL);
     menu_add_item(&desktop_menu, "Internet", DESKTOP_ACTION_INTERNET);
     menu_add_item(&desktop_menu, "App", DESKTOP_ACTION_APPLICATIONS);
+    menu_add_item(&desktop_menu, "Fallback Launcher (mzml)", DESKTOP_ACTION_MZML);
     menu_add_separator(&desktop_menu);
     menu_add_item(&desktop_menu, "Settings", DESKTOP_ACTION_SETTINGS);
 
@@ -765,12 +890,23 @@ int main(void) {
     ShortcutConfig sc;
     config_rules_ensure_files();
     cfg.master_count = config_get_master_count();
+    load_appearance_settings(dpy, &cfg);
     num_workspaces = config_get_workspace_count();
     workspace_publish_ewmh(dpy, root, num_workspaces, cfg.current_workspace);
     int alttab_enabled = config_is_alttab_enabled();
     shortcuts_load(&sc);
     shortcuts_grab_keys(dpy, root, &sc);
     grab_alttab_keys(dpy, root, alttab_enabled);
+
+    // Hardcoded emergency safety hatch: Ctrl+Alt + 2x Delete force-opens desktop_menu
+    KeyCode cad_kc = XKeysymToKeycode(dpy, XK_Delete);
+    if (cad_kc != 0) {
+        const unsigned int cad_locks[4] = { 0, LockMask, Mod2Mask, LockMask | Mod2Mask };
+        for (int l = 0; l < 4; l++) {
+            XGrabKey(dpy, cad_kc, ControlMask | Mod1Mask | cad_locks[l], root, True,
+                     GrabModeSync, GrabModeAsync);
+        }
+    }
 
     // Grab Super + 1..0 for calling back window slots 1-10 and Super + X, M, Z for window actions
     const KeySym action_keys[] = { XK_1, XK_2, XK_3, XK_4, XK_5, XK_6, XK_7, XK_8, XK_9, XK_0,
@@ -824,6 +960,45 @@ int main(void) {
 
             switch (ev.type) {
             case KeyPress: {
+                KeySym raw_sym = XLookupKeysym(&ev.xkey, 0);
+                unsigned int raw_mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
+
+                // Hardcoded emergency trigger: Ctrl+Alt + 2x Delete force-opens desktop_menu
+                if ((raw_mods & (ControlMask | Mod1Mask)) == (ControlMask | Mod1Mask) &&
+                    !(raw_mods & Mod4Mask) && raw_sym == XK_Delete) {
+                    if (wm_is_double_tap_within(cad_first_time, ev.xkey.time, cad_pending, 500)) {
+                        cad_pending = 0;
+                        XAllowEvents(dpy, AsyncKeyboard, ev.xkey.time);
+                        cancel_active_drag(dpy);
+                        if (alttab.is_visible) {
+                            XUngrabKeyboard(dpy, CurrentTime);
+                            alttab_hide(dpy, &alttab);
+                        }
+                        if (desktop_menu.is_visible) {
+                            menu_hide(dpy, &desktop_menu);
+                            XUngrabPointer(dpy, CurrentTime);
+                        }
+                        int px = 0, py = 0;
+                        int m = get_pointer_monitor(dpy, &px, &py);
+                        if (px == 0 && py == 0) {
+                            px = (monitor_count > 0) ? (monitors[m].x + monitors[m].width / 2) : (total_screen_w / 2);
+                            py = (monitor_count > 0) ? (monitors[m].y + monitors[m].height / 2) : (total_screen_h / 2);
+                        }
+                        int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
+                        int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
+                        menu_show(dpy, &desktop_menu, px, py, mx_end, my_end);
+                        if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
+                                         GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
+                            menu_hide(dpy, &desktop_menu);
+                        }
+                    } else {
+                        cad_pending = 1;
+                        cad_first_time = ev.xkey.time;
+                        XAllowEvents(dpy, ReplayKeyboard, ev.xkey.time);
+                    }
+                    break;
+                }
+
                 if (alttab.is_visible) {
                     KeySym sym = XLookupKeysym(&ev.xkey, 0);
                     if (sym == XK_Escape) {
@@ -870,6 +1045,14 @@ int main(void) {
                     if (sym == XK_Escape) {
                         menu_hide(dpy, &desktop_menu);
                         XUngrabPointer(dpy, CurrentTime);
+                        Client *refocus = NULL;
+                        for (Client *curr = clients; curr; curr = curr->next) {
+                            if (curr->is_focused && !curr->is_minimized && curr->workspace == cfg.current_workspace) {
+                                refocus = curr;
+                                break;
+                            }
+                        }
+                        set_focused_client(dpy, refocus, clients);
                         break;
                     }
                 }
@@ -997,7 +1180,7 @@ int main(void) {
                                                 (cfg.current_workspace + num_workspaces - 1) % num_workspaces);
                             break;
                         case SHORTCUT_ACT_LAUNCHER:
-                            config_spawn_command("if command -v mzshell >/dev/null 2>&1; then exec mzshell; fi");
+                            spawn_launcher();
                             break;
                         case SHORTCUT_ACT_EXEC:
                             if (strcmp(b->exec_cmd, "wezterm") == 0) {
@@ -1172,6 +1355,10 @@ int main(void) {
                             alttab_hide(dpy, &alttab);
                         }
                     }
+                    load_appearance_settings(dpy, &cfg);
+                    for (Client *curr = clients; curr; curr = curr->next) {
+                        apply_client_border(dpy, curr, cfg.border_width);
+                    }
                     reflow_all(dpy, clients, &cfg);
                 } else if (atom == net_wm_strut || atom == net_wm_strut_partial) {
                     StrutPartial sp;
@@ -1226,6 +1413,9 @@ int main(void) {
                 }
 
                 if (ev.xbutton.window == root && ev.xbutton.button == Button3) {
+                    if (!desktop_menu_enabled) {
+                        break;
+                    }
                     int m = monitor_find_for_point(monitors, monitor_count, ev.xbutton.x_root, ev.xbutton.y_root);
                     int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
                     int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
@@ -1281,9 +1471,24 @@ int main(void) {
                                 wm_drag_commit_if_grabbed(&drag, c, 1, ev.xbutton.x_root, ev.xbutton.y_root, gs);
                             }
                         } else {
-                            XAllowEvents(dpy, ReplayPointer, CurrentTime);
+                            XAllowEvents(dpy, ReplayPointer, ev.xbutton.time);
                         }
                     }
+                }
+                break;
+            }
+
+            case EnterNotify: {
+                Client *c = client_find_by_any(clients, ev.xcrossing.window);
+                if (wm_should_focus_on_enter(focus_follows_mouse_enabled,
+                                             ev.xcrossing.mode,
+                                             ev.xcrossing.detail,
+                                             drag.client != NULL,
+                                             desktop_menu.is_visible,
+                                             alttab.is_visible,
+                                             c,
+                                             cfg.current_workspace)) {
+                    set_focused_client(dpy, c, clients);
                 }
                 break;
             }
@@ -1379,6 +1584,7 @@ int main(void) {
                             LayoutConfig mon_cfg = cfg;
                             if (monitor_count > 0) {
                                 monitor_to_layout_config(&monitors[m], cfg.master_count, cfg.current_workspace, &mon_cfg);
+                                mon_cfg.border_width = cfg.border_width;
                             }
                             if (snap == SNAP_TOP) {
                                 client_toggle_maximize(dpy, drag.client, &mon_cfg);
@@ -1549,6 +1755,7 @@ int main(void) {
     }
     XSync(dpy, True);
     XCloseDisplay(dpy);
+    cairo_debug_reset_static_data();
     if (sig_pipe[0] >= 0) close(sig_pipe[0]);
     if (sig_pipe[1] >= 0) close(sig_pipe[1]);
     return 0;
