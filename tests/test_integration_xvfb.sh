@@ -341,9 +341,36 @@ int main(void) {
     send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 10200UL);
     WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 1);
 
-    // Escape closes popup menu cleanly
+    // Escape closes popup menu cleanly and restores X11 input focus to fa
     send_key_on_root(dpy, root, 0, XK_Escape, 10300UL);
     WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
+    Window focus_win = None; int revert_to = 0;
+    XGetInputFocus(dpy, &focus_win, &revert_to);
+    assert(focus_win == fa);
+
+    // Clicking outside a force-opened menu with Button3 when enable_desktop_menu=0 closes it without re-opening
+    send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 20000UL);
+    send_key_on_root(dpy, root, ControlMask | Mod1Mask, XK_Delete, 20200UL);
+    WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 1);
+    bev.xbutton.window = root;
+    bev.xbutton.x = 1200; bev.xbutton.y = 650;
+    bev.xbutton.x_root = 1200; bev.xbutton.y_root = 650;
+    XSendEvent(dpy, root, False, ButtonPressMask, &bev);
+    XSync(dpy, False);
+    WAIT_UNTIL(has_visible_popup_menu(dpy, root, a_win_type, a_type_popup) == 0);
+    XGetInputFocus(dpy, &focus_win, &revert_to);
+    assert(focus_win == fa);
+
+    // Maximized window shrinks cleanly when border_width increases on live reload
+    send_root_client_msg(dpy, root, fa, a_wm_state, 1 /* ADD */, (long)XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False), (long)XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False));
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.width == 1272 && wa.height == 712);
+    sf = fopen(cfg_path, "w");
+    assert(sf != NULL);
+    fprintf(sf, "border_width=8\nfocus_border_color=#89b4fa\nunfocus_border_color=#45475a\nenable_desktop_menu=0\nfocus_follows_mouse=1\n");
+    fclose(sf);
+    XChangeProperty(dpy, root, a_reload, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)&rel_val, 1);
+    XSync(dpy, False);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 8 && wa.width == 1264 && wa.height == 704);
 
     XDestroyWindow(dpy, fb);
     XDestroyWindow(dpy, fa);
@@ -472,3 +499,66 @@ if grep -qE "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:" "$TMP_
     exit 1
 fi
 echo "PASS: mzml ASan+UBSan startup and SIGTERM clean exit (rc=0)"
+
+# 7. mzml Escape key clean exit under ASan+UBSan
+XDG_DATA_HOME="$TMP_DIR/xdg" "$TMP_DIR/mzml_asan" >"$TMP_DIR/mzml_esc.out" 2>"$TMP_DIR/mzml_esc.err" &
+MZML_ESC_PID=$!
+cat > "$TMP_DIR/send_esc.c" << 'EOF'
+#define _DEFAULT_SOURCE
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/keysym.h>
+#include <string.h>
+#include <unistd.h>
+
+int main(void) {
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) return 1;
+    Window root = DefaultRootWindow(dpy);
+    Atom a_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom a_dlg = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+    Window target = None;
+    for (int t = 0; t < 60 && target == None; t++) {
+        Window rr, pr, *ch = NULL;
+        unsigned int n = 0;
+        if (XQueryTree(dpy, root, &rr, &pr, &ch, &n) && ch) {
+            for (unsigned int i = 0; i < n; i++) {
+                XWindowAttributes wa;
+                if (!XGetWindowAttributes(dpy, ch[i], &wa) || wa.map_state != IsViewable) continue;
+                Atom rt; int rf; unsigned long rn, ra; unsigned char *rd = NULL;
+                if (XGetWindowProperty(dpy, ch[i], a_type, 0, 4, False, XA_ATOM, &rt, &rf, &rn, &ra, &rd) == Success && rd) {
+                    if (rt == XA_ATOM && rf == 32 && rn >= 1 && ((Atom *)rd)[0] == a_dlg) target = ch[i];
+                    XFree(rd);
+                }
+            }
+            XFree(ch);
+        }
+        if (target == None) usleep(20000);
+    }
+    if (target == None) { XCloseDisplay(dpy); return 2; }
+    XEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = KeyPress;
+    ev.xkey.display = dpy;
+    ev.xkey.window = target;
+    ev.xkey.root = root;
+    ev.xkey.keycode = XKeysymToKeycode(dpy, XK_Escape);
+    ev.xkey.same_screen = True;
+    XSendEvent(dpy, target, False, KeyPressMask, &ev);
+    XSync(dpy, False);
+    XCloseDisplay(dpy);
+    return 0;
+}
+EOF
+gcc -Wall -Wextra -pedantic -std=c11 -O1 "$TMP_DIR/send_esc.c" -o "$TMP_DIR/send_esc" -lX11
+"$TMP_DIR/send_esc"
+set +e
+wait "$MZML_ESC_PID"
+MZML_ESC_RC=$?
+set -e
+if [ "$MZML_ESC_RC" -ne 0 ] || grep -qE "ERROR: AddressSanitizer|ERROR: LeakSanitizer|runtime error:" "$TMP_DIR/mzml_esc.err"; then
+    echo "FAIL: mzml Escape exit failed (rc=$MZML_ESC_RC)"
+    cat "$TMP_DIR/mzml_esc.err"
+    exit 1
+fi
+echo "PASS: mzml ASan+UBSan Escape clean exit (rc=0)"

@@ -165,6 +165,8 @@ int mzml_parse_desktop_file(const char *path, const char *desktop_id, MzmlAppEnt
             snprintf(out->exec_raw, sizeof(out->exec_raw), "%s", val);
         } else if (strcmp(key, "TryExec") == 0) {
             snprintf(try_exec, sizeof(try_exec), "%s", val);
+        } else if (strcmp(key, "Terminal") == 0) {
+            out->terminal = (strcasecmp(val, "true") == 0 || strcmp(val, "1") == 0) ? 1 : 0;
         } else if (strcmp(key, "NoDisplay") == 0 || strcmp(key, "Hidden") == 0) {
             if (strcasecmp(val, "true") == 0 || strcmp(val, "1") == 0) {
                 hidden = 1;
@@ -297,6 +299,40 @@ int mzml_filter_apps(const MzmlAppList *all, const char *query, int *out_indices
         }
     }
     return out_n;
+}
+
+void mzml_build_launch_command(const MzmlAppEntry *app, char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    out[0] = '\0';
+    if (!app || app->exec_clean[0] == '\0') return;
+    if (!app->terminal) {
+        snprintf(out, out_len, "%s", app->exec_clean);
+        return;
+    }
+
+    char escaped[1024];
+    size_t j = 0;
+    for (size_t i = 0; app->exec_clean[i] != '\0' && j + 5 < sizeof(escaped); i++) {
+        if (app->exec_clean[i] == '\'') {
+            memcpy(escaped + j, "'\\''", 4);
+            j += 4;
+        } else {
+            escaped[j++] = app->exec_clean[i];
+        }
+    }
+    escaped[j] = '\0';
+
+    snprintf(out, out_len,
+             "if command -v wezterm >/dev/null 2>&1; then "
+             "  exec wezterm start --always-new-process -- sh -c '%s'; "
+             "elif command -v alacritty >/dev/null 2>&1; then "
+             "  exec alacritty -e sh -c '%s'; "
+             "elif command -v xterm >/dev/null 2>&1; then "
+             "  exec xterm -e sh -c '%s'; "
+             "else "
+             "  exec x-terminal-emulator -e sh -c '%s'; "
+             "fi",
+             escaped, escaped, escaped, escaped);
 }
 
 void mzml_list_free(MzmlAppList *list) {

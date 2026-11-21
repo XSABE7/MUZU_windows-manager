@@ -56,6 +56,24 @@ int main(void) {
     assert(strcmp(entry.generic_name, "Shell Emulator") == 0);
     assert(strcmp(entry.comment, "Run command line") == 0);
     assert(strcmp(entry.exec_clean, "wezterm start") == 0);
+    assert(entry.terminal == 0);
+
+    char launch_cmd[1024];
+    mzml_build_launch_command(&entry, launch_cmd, sizeof(launch_cmd));
+    assert(strcmp(launch_cmd, "wezterm start") == 0);
+
+    snprintf(path, sizeof(path), "%s/htop.desktop", dir_user);
+    write_text(path,
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Htop\n"
+        "Exec=htop -d 10\n"
+        "Terminal=true\n");
+    assert(mzml_parse_desktop_file(path, "htop.desktop", &entry) == 1);
+    assert(entry.terminal == 1);
+    mzml_build_launch_command(&entry, launch_cmd, sizeof(launch_cmd));
+    assert(strstr(launch_cmd, "wezterm") != NULL && strstr(launch_cmd, "htop -d 10") != NULL);
+    unlink(path);
 
     // Reject NoDisplay, Hidden, Type=Link, missing Exec, missing TryExec
     snprintf(path, sizeof(path), "%s/nodisp.desktop", dir_sys);

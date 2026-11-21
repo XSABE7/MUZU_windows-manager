@@ -109,9 +109,18 @@ int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
 int wm_drag_prepare_resize(Client *c);
 int wm_drag_should_cancel(const DragState *drag, const Client *c);
 void wm_drag_reset(DragState *drag);
+typedef enum {
+    CAD_ACTION_IGNORE_REPLAY = 0,
+    CAD_ACTION_REPLAY_FIRST,
+    CAD_ACTION_TRIGGER_MENU
+} CadAction;
+
 int wm_should_focus_on_enter(int ffm_enabled, int enter_mode, int enter_detail,
                              int has_drag, int menu_visible, int alttab_visible,
                              const Client *c, int current_ws);
 int wm_is_double_tap_within(Time prev_time, Time curr_time, int has_prev, unsigned long window_ms);
+CadAction wm_handle_cad_keypress(Time ev_time, int is_send_event,
+                                 int *cad_pending, Time *cad_first_time,
+                                 unsigned long window_ms);
 
 #endif /* MUZU_WM_H */

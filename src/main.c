@@ -305,6 +305,20 @@ static void set_focused_client(Display *d, Client *c, Client *head) {
     ewmh_set_active_window(d, root, active_win);
 }
 
+static void dismiss_desktop_menu(Display *d, Menu *menu, Client *clients, int current_ws) {
+    if (!d || !menu) return;
+    menu_hide(d, menu);
+    XUngrabPointer(d, CurrentTime);
+    Client *refocus = NULL;
+    for (Client *curr = clients; curr; curr = curr->next) {
+        if (curr->is_focused && !curr->is_minimized && curr->workspace == current_ws) {
+            refocus = curr;
+            break;
+        }
+    }
+    set_focused_client(d, refocus, clients);
+}
+
 static void refresh_struts_and_workarea(Display *d, StrutList *strut_list, LayoutConfig *cfg) {
     if (!d || !cfg) return;
     if (monitor_count > 0) {
@@ -391,6 +405,19 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
     for (Client *c = clients; c; c = c->next) {
         if (c->is_minimized || c->is_fullscreen || c->workspace != cfg->current_workspace) continue;
         if (c->mode == CLIENT_TILED || c->is_maximized) {
+            if (c->is_maximized) {
+                LayoutConfig mon_cfg;
+                monitor_layout_for_client(c, cfg, &mon_cfg);
+                int bw = (mon_cfg.border_width > 0) ? mon_cfg.border_width : 0;
+                int mw = mon_cfg.screen_width - mon_cfg.left_inset - mon_cfg.right_inset - 2 * bw;
+                int mh = mon_cfg.screen_height - mon_cfg.top_inset - mon_cfg.bottom_inset - 2 * bw;
+                if (mw < 10) mw = 10;
+                if (mh < 10) mh = 10;
+                c->x = mon_cfg.mon_x + mon_cfg.left_inset;
+                c->y = mon_cfg.mon_y + mon_cfg.top_inset;
+                c->width = mw;
+                c->height = mh;
+            }
             if (c->frame != None) {
                 int ch = c->height - TITLEBAR_HEIGHT;
                 if (ch < 10) ch = 10;
@@ -636,8 +663,11 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
     int init_x = mon_cfg.mon_x + mon_cfg.left_inset;
     int init_y = mon_cfg.mon_y + mon_cfg.top_inset;
     int win_w = 600, win_h = 400;
-    int avail_w = mon_cfg.screen_width - mon_cfg.left_inset - mon_cfg.right_inset;
-    int avail_h = mon_cfg.screen_height - mon_cfg.top_inset - mon_cfg.bottom_inset;
+    int bw = (mon_cfg.border_width > 0) ? mon_cfg.border_width : 0;
+    int avail_w = mon_cfg.screen_width - mon_cfg.left_inset - mon_cfg.right_inset - 2 * bw;
+    int avail_h = mon_cfg.screen_height - mon_cfg.top_inset - mon_cfg.bottom_inset - 2 * bw;
+    if (avail_w < 10) avail_w = 10;
+    if (avail_h < 10) avail_h = 10;
 
     if (parent && ((wa.x == 0 && wa.y == 0) || wtype == WIN_TYPE_DIALOG)) {
         client_center_over_parent(parent->x, parent->y, parent->width, parent->height,
@@ -649,7 +679,7 @@ static void client_manage(Display *d, Window w, Client **clients, LayoutConfig *
         int rel_x = (wa.x > 0 || wa.y > 0) ? (wa.x - mon_cfg.mon_x - mon_cfg.left_inset) : 0;
         int rel_y = (wa.x > 0 || wa.y > 0) ? (wa.y - mon_cfg.mon_y) : 0;
         client_resolve_initial_geometry(avail_w, mon_cfg.screen_height,
-                                        mon_cfg.top_inset, mon_cfg.bottom_inset,
+                                        mon_cfg.top_inset, mon_cfg.bottom_inset + 2 * bw,
                                         rel_x, rel_y, wa.width, wa.height,
                                         1 /* borderless */,
                                         &init_x, &init_y, &win_w, &win_h);
@@ -966,8 +996,9 @@ int main(void) {
                 // Hardcoded emergency trigger: Ctrl+Alt + 2x Delete force-opens desktop_menu
                 if ((raw_mods & (ControlMask | Mod1Mask)) == (ControlMask | Mod1Mask) &&
                     !(raw_mods & Mod4Mask) && raw_sym == XK_Delete) {
-                    if (wm_is_double_tap_within(cad_first_time, ev.xkey.time, cad_pending, 500)) {
-                        cad_pending = 0;
+                    CadAction cad_act = wm_handle_cad_keypress(
+                        ev.xkey.time, ev.xkey.send_event, &cad_pending, &cad_first_time, 500);
+                    if (cad_act == CAD_ACTION_TRIGGER_MENU) {
                         XAllowEvents(dpy, AsyncKeyboard, ev.xkey.time);
                         cancel_active_drag(dpy);
                         if (alttab.is_visible) {
@@ -989,11 +1020,9 @@ int main(void) {
                         menu_show(dpy, &desktop_menu, px, py, mx_end, my_end);
                         if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
                                          GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
-                            menu_hide(dpy, &desktop_menu);
+                            dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                         }
-                    } else {
-                        cad_pending = 1;
-                        cad_first_time = ev.xkey.time;
+                    } else if (cad_act == CAD_ACTION_REPLAY_FIRST) {
                         XAllowEvents(dpy, ReplayKeyboard, ev.xkey.time);
                     }
                     break;
@@ -1043,16 +1072,7 @@ int main(void) {
                 if (desktop_menu.is_visible) {
                     KeySym sym = XLookupKeysym(&ev.xkey, 0);
                     if (sym == XK_Escape) {
-                        menu_hide(dpy, &desktop_menu);
-                        XUngrabPointer(dpy, CurrentTime);
-                        Client *refocus = NULL;
-                        for (Client *curr = clients; curr; curr = curr->next) {
-                            if (curr->is_focused && !curr->is_minimized && curr->workspace == cfg.current_workspace) {
-                                refocus = curr;
-                                break;
-                            }
-                        }
-                        set_focused_client(dpy, refocus, clients);
+                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                         break;
                     }
                 }
@@ -1063,8 +1083,7 @@ int main(void) {
                 if (alttab_enabled && (ev.xkey.state & Mod1Mask) &&
                     (sym == XK_Tab || sym == XK_grave || sym == XK_asciitilde)) {
                     if (desktop_menu.is_visible) {
-                        menu_hide(dpy, &desktop_menu);
-                        XUngrabPointer(dpy, CurrentTime);
+                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                     }
                     int same_app = (sym == XK_grave || sym == XK_asciitilde);
                     start_alttab_switcher(dpy, &alttab, clients, cfg.current_workspace,
@@ -1392,23 +1411,22 @@ int main(void) {
 
                 if (desktop_menu.is_visible) {
                     if (ev.xbutton.window == desktop_menu.win) {
-                        XUngrabPointer(dpy, CurrentTime);
                         menu_handle_click(dpy, &desktop_menu, ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
+                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                         break;
                     } else {
-                        menu_hide(dpy, &desktop_menu);
-                        XUngrabPointer(dpy, CurrentTime);
-                        if (ev.xbutton.button == Button3) {
+                        dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
+                        if (ev.xbutton.button == Button3 && desktop_menu_enabled) {
                             int m = monitor_find_for_point(monitors, monitor_count, ev.xbutton.x_root, ev.xbutton.y_root);
                             int mx_end = (monitor_count > 0) ? (monitors[m].x + monitors[m].width) : total_screen_w;
                             int my_end = (monitor_count > 0) ? (monitors[m].y + monitors[m].height) : total_screen_h;
                             menu_show(dpy, &desktop_menu, ev.xbutton.x_root, ev.xbutton.y_root, mx_end, my_end);
                             if (XGrabPointer(dpy, root, True, ButtonPressMask | PointerMotionMask,
                                              GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) {
-                                menu_hide(dpy, &desktop_menu);
+                                dismiss_desktop_menu(dpy, &desktop_menu, clients, cfg.current_workspace);
                             }
-                            break;
                         }
+                        break;
                     }
                 }
 
@@ -1653,6 +1671,7 @@ int main(void) {
                                 monitor_layout_for_client(c, &cfg, &mon_cfg);
                                 ewmh_apply_fullscreen(dpy, c, &mon_cfg, want);
                                 if (!want) {
+                                    apply_client_border(dpy, c, cfg.border_width);
                                     reflow_all(dpy, clients, &cfg);
                                 }
                             }

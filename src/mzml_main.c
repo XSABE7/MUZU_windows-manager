@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <locale.h>
 #include <math.h>
 #include <poll.h>
 #include <signal.h>
@@ -168,8 +169,8 @@ static void ui_render(MzmlUi *ui) {
         cairo_set_font_size(cr, 13.0);
         cairo_move_to(cr, sx + 12.0, list_y + 28.0);
         if (ui->query[0] != '\0') {
-            char hint[192];
-            snprintf(hint, sizeof(hint), "Press Enter to run shell command: %.96s", ui->query);
+            char hint[256];
+            snprintf(hint, sizeof(hint), "Press Enter to run shell command: %s", ui->query);
             cairo_show_text(cr, hint);
         } else {
             cairo_show_text(cr, "No desktop applications found. Type a command and press Enter.");
@@ -244,13 +245,17 @@ static void launch_selected_or_query(const MzmlUi *ui, int force_raw) {
     if (!force_raw && ui->filtered_count > 0 &&
         ui->selected >= 0 && ui->selected < ui->filtered_count) {
         const MzmlAppEntry *app = &ui->apps.entries[ui->filtered[ui->selected]];
-        spawn_detached_cmd(app->exec_clean);
+        char cmd[2048];
+        mzml_build_launch_command(app, cmd, sizeof(cmd));
+        spawn_detached_cmd(cmd);
     } else if (ui->query[0] != '\0') {
         spawn_detached_cmd(ui->query);
     }
 }
 
 int main(void) {
+    setlocale(LC_CTYPE, "");
+    XSetLocaleModifiers("");
     if (pipe2(sig_pipe, O_NONBLOCK | O_CLOEXEC) != 0) {
         sig_pipe[0] = sig_pipe[1] = -1;
     }
@@ -337,6 +342,9 @@ int main(void) {
 
     ui.surface = cairo_xlib_surface_create(dpy, ui.win, DefaultVisual(dpy, screen),
                                            ui.width, ui.height);
+    XIM xim = XOpenIM(dpy, NULL, NULL, NULL);
+    XIC xic = xim ? XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
+                              XNClientWindow, ui.win, XNFocusWindow, ui.win, NULL) : NULL;
     XMapRaised(dpy, ui.win);
     XSync(dpy, False);
 
@@ -397,9 +405,14 @@ int main(void) {
                     break;
                 }
                 case KeyPress: {
-                    char buf[32] = {0};
+                    char buf[64] = {0};
                     KeySym sym = NoSymbol;
-                    int n = XLookupString(&ev.xkey, buf, sizeof(buf) - 1, &sym, NULL);
+                    Status status = XLookupNone;
+                    int n = xic ? Xutf8LookupString(xic, &ev.xkey, buf, (int)(sizeof(buf) - 1), &sym, &status)
+                                : XLookupString(&ev.xkey, buf, (int)(sizeof(buf) - 1), &sym, NULL);
+                    if (!xic && n == 1 && (unsigned char)buf[0] >= 0x80) {
+                        n = 0; // Avoid feeding raw Latin-1 bytes to Cairo when XIM is unavailable
+                    }
 
                     if (sym == XK_Escape) {
                         running = 0;
@@ -494,6 +507,8 @@ int main(void) {
 
     XUngrabPointer(dpy, CurrentTime);
     XUngrabKeyboard(dpy, CurrentTime);
+    if (xic) XDestroyIC(xic);
+    if (xim) XCloseIM(xim);
     if (ui.surface) {
         cairo_surface_finish(ui.surface);
         cairo_surface_destroy(ui.surface);

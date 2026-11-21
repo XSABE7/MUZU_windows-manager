@@ -336,3 +336,19 @@ int wm_is_double_tap_within(Time prev_time, Time curr_time, int has_prev, unsign
     uint32_t delta = (uint32_t)curr_time - (uint32_t)prev_time;
     return ((unsigned long)delta <= window_ms) ? 1 : 0;
 }
+
+CadAction wm_handle_cad_keypress(Time ev_time, int is_send_event,
+                                 int *cad_pending, Time *cad_first_time,
+                                 unsigned long window_ms) {
+    if (!cad_pending || !cad_first_time) return CAD_ACTION_IGNORE_REPLAY;
+    if (!is_send_event && *cad_pending && ev_time == *cad_first_time) {
+        return CAD_ACTION_IGNORE_REPLAY;
+    }
+    if (wm_is_double_tap_within(*cad_first_time, ev_time, *cad_pending, window_ms)) {
+        *cad_pending = 0;
+        return CAD_ACTION_TRIGGER_MENU;
+    }
+    *cad_pending = 1;
+    *cad_first_time = ev_time;
+    return CAD_ACTION_REPLAY_FIRST;
+}

@@ -211,6 +211,21 @@ int main(void) {
     assert(wm_is_double_tap_within((Time)0xFFFFFF00UL, (Time)100UL, 1, 500) == 1);
     assert(wm_is_double_tap_within((Time)0xFFFFFF00UL, (Time)300UL, 1, 500) == 0);
 
+    // Test 13: Ctrl+Alt+Delete state machine ignores ReplayKeyboard bounce on same timestamp
+    int cad_pend = 0;
+    Time cad_t = 0;
+    assert(wm_handle_cad_keypress(1000UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(cad_pend == 1 && cad_t == 1000UL);
+    assert(wm_handle_cad_keypress(1000UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_IGNORE_REPLAY);
+    assert(cad_pend == 1 && cad_t == 1000UL);
+    assert(wm_handle_cad_keypress(1200UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_TRIGGER_MENU);
+    assert(cad_pend == 0);
+    assert(wm_handle_cad_keypress(2000UL, 1, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(wm_handle_cad_keypress(2250UL, 1, &cad_pend, &cad_t, 500) == CAD_ACTION_TRIGGER_MENU);
+    assert(wm_handle_cad_keypress(3000UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(wm_handle_cad_keypress(3600UL, 0, &cad_pend, &cad_t, 500) == CAD_ACTION_REPLAY_FIRST);
+    assert(cad_t == 3600UL);
+
     printf("test_layout passed!\n");
     return 0;
 }
