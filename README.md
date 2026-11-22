@@ -12,10 +12,11 @@ MUZUwm focuses strictly on core window management, EWMH/ICCCM compliance, multi-
 - **Click-to-Focus, Focus-Follows-Mouse & Focus Borders:** Supports both click-to-focus (replaying clicks to clients) and pointer focus-follows-mouse (`focus_follows_mouse = 1` by default), with configurable focused/unfocused border colors (`border_width`, `focus_border_color`, `unfocus_border_color`).
 - **XRandR Multi-Monitor & Per-Monitor Struts:** Detects connected monitors via `XRandR` (`RRScreenChangeNotify`), calculates per-monitor insets/snap zones, and respects external panel/dock struts.
 - **Multi-Workspace Support:** Configurable workspaces (`workspace_count = 4` by default, up to 10) with `_NET_NUMBER_OF_DESKTOPS`, `_NET_CURRENT_DESKTOP`, and `_NET_WM_DESKTOP`.
-- **Borderless Client Management & EWMH Support:** Exposes `_NET_SUPPORTED`, `_NET_SUPPORTING_WM_CHECK`, `_NET_WM_NAME`, `_NET_ACTIVE_WINDOW`, `_NET_CLIENT_LIST`, `_NET_WORKAREA`, `_NET_WM_STATE` (`ClientMessage`), `_NET_CLOSE_WINDOW`, `_NET_WM_WINDOW_TYPE`, and `WM_TRANSIENT_FOR` dialog stacking.
+- **Borderless Client, CSD & EWMH Support:** Exposes `_NET_SUPPORTED`, `_NET_SUPPORTING_WM_CHECK`, `_NET_WM_NAME`, `_NET_ACTIVE_WINDOW`, `_NET_CLIENT_LIST`, `_NET_WORKAREA`, `_NET_FRAME_EXTENTS`, `_NET_WM_ALLOWED_ACTIONS`, `_NET_WM_STATE` (`_NET_WM_STATE_FOCUSED`, maximized, fullscreen, hidden), `WM_CHANGE_STATE`, `_NET_WM_MOVERESIZE`, `_NET_CLOSE_WINDOW`, `_NET_WM_WINDOW_TYPE`, and `WM_TRANSIENT_FOR` dialog stacking — supporting CSD/Electron/GTK titlebar controls and border dragging with direct pointer delivery on focused windows.
 - **Optional `Alt+Tab` / `Alt+\`` Switcher:** Built-in Cairo window switcher (including intra-app switching with `Alt+\``), toggleable via `enable_alttab = 1 | 0` in config.
-- **Toggleable Desktop Context Menu & Emergency `Ctrl+Alt+Delete` (`MUZUmagic_fallback`):** Right-clicking empty desktop space opens quick actions (`Terminal`, `Internet`, `App`, `Settings`). Can be disabled (`enable_desktop_menu = 0`) when using `mzshell`, while pressing `Ctrl+Alt+Delete` is hardcoded to center the mouse pointer and launch `mzml --magic` (`MUZUmagic_fallback`) with quick access to Terminal, App Launcher, Settings, and restoring the right-click menu.
-- **Bundled Fallback Launcher (`mzml`):** Standalone C11 + Cairo `.desktop` application launcher installed alongside `muzuwm`; `Super+space` and `App` try `mzshell` first and automatically fall back to `mzml` on clean installs.
+- **Toggleable Desktop Context Menu & Emergency `Ctrl+Alt+Delete` (`MUZUmagic_fallback`):** Right-clicking empty desktop space opens quick actions (`Terminal`, `Internet`, `Settings`). Can be disabled (`enable_desktop_menu = 0`) when using `mzshell`, while pressing `Ctrl+Alt+Delete` is hardcoded to center the mouse pointer and launch `mzml --magic` (`MUZUmagic_fallback`) with quick access to Terminal, App Launcher (`mzml`), Settings, and restoring the right-click menu.
+- **Bundled Fallback Launcher (`mzml`):** Standalone C11 + Cairo `.desktop` application launcher installed alongside `muzuwm`, accessible via `Ctrl+Alt+Delete` (`MUZUmagic_fallback`).
+- **Terminal Settings, Updater & Unified `muzu` CLI:** Pure-black terminal TUI utilities (`muzuwm-settings` / `muzu-s`, `muzuwm-updater`) and unified `muzu` CLI (`muzu -u`, `muzu -c`, `muzu -s`, `muzu -v`, `muzu --uninstall`) supporting updates from GitHub `Stable` and `unstable`.
 - **Configurable Rules & Shortcuts:** Per-class `fullscreen_allowlist`, startup `auto_allowlist`, `shortcuts.conf`, and `muzuwm.conf` / `settings.conf`.
 
 ---
@@ -28,7 +29,7 @@ MUZUwm focuses strictly on core window management, EWMH/ICCCM compliance, multi-
 | :--- | :--- |
 | `Super + Left-Drag` | Move floating window; drag to left, right, or top screen edge to snap |
 | `Super + Right-Drag` | Resize resizable window |
-| `Desktop Right-Click` | Open desktop context menu (`Terminal`, `Internet`, `App`, `Settings`) |
+| `Desktop Right-Click` | Open desktop context menu (`Terminal`, `Internet`, `Settings`) |
 
 ### Default Shortcuts (`config/muzuwm.conf` / `~/.config/muzuwm/shortcuts.conf`)
 
@@ -42,8 +43,7 @@ MUZUwm focuses strictly on core window management, EWMH/ICCCM compliance, multi-
 | `Super + 1..0` | Recall / focus client slot |
 | `Super + Return` | Launch terminal (`wezterm` / `alacritty` / `xterm`) |
 | `Super + b` | Launch browser |
-| `Super + space` | Launch external launcher (`mzshell`, falls back to `mzml`) |
-| `Ctrl + Alt + Delete` | Hardcoded emergency trigger: center mouse pointer and launch `mzml --magic` (`MUZUmagic_fallback`) |
+| `Ctrl + Alt + Delete` | Hardcoded emergency trigger: center mouse pointer and launch `mzml --magic` (`MUZUmagic_fallback`, including Apps / `mzml`) |
 | `Super + Ctrl + 1..4` | Switch to workspace 1..4 (`workspace_1..4`) |
 | `Super + Shift + 1..4` | Move focused window to workspace 1..4 (`move_workspace_1..4`) |
 | `Super + Page_Up` / `Page_Down` | Switch to previous / next workspace (`workspace_prev` / `workspace_next`) |
@@ -96,7 +96,20 @@ sudo make install
 sudo make uninstall
 ```
 
-`make install` installs `muzuwm`, `mzml`, `muzu-session`, `muzuwm-settings`, `/usr/share/xsessions/muzuwm.desktop`, and `/etc/muzuwm/muzuwm.conf`.
+`make install` installs `muzuwm`, `mzml`, `muzu-session`, `muzu`, `muzu-s`, `muzuwm-settings`, `muzuwm-updater`, `/usr/share/xsessions/muzuwm.desktop`, and `/etc/muzuwm/muzuwm.conf`.
+
+### CLI (`muzu` / `muzu-s`)
+
+```bash
+muzu -s                 # Open MUZUwm Settings (or run: muzu-s)
+muzu -c                 # Check GitHub Stable & unstable versions
+muzu -u                 # Open interactive MUZUwm Updater (GitHub Stable / unstable)
+muzu -u Stable          # Build & install directly from GitHub Stable
+muzu -u unstable        # Build & install directly from GitHub unstable
+muzu -v                 # Show installed MUZUwm version and channel
+muzu --uninstall        # Uninstall MUZUwm (--purge to also remove user config/cache)
+muzu --help             # Show CLI usage
+```
 
 ---
 

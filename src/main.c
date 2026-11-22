@@ -269,9 +269,6 @@ static void desktop_menu_callback(int action_id, void *userdata) {
         case DESKTOP_ACTION_INTERNET:
             config_spawn_command("x-www-browser || firefox || google-chrome || chromium");
             break;
-        case DESKTOP_ACTION_APPLICATIONS:
-            spawn_launcher();
-            break;
         case DESKTOP_ACTION_SETTINGS:
             launch_settings_app();
             break;
@@ -967,7 +964,6 @@ int main(void) {
     menu_init(dpy, &desktop_menu, NULL, desktop_menu_callback, NULL);
     menu_add_item(&desktop_menu, "Terminal", DESKTOP_ACTION_TERMINAL);
     menu_add_item(&desktop_menu, "Internet", DESKTOP_ACTION_INTERNET);
-    menu_add_item(&desktop_menu, "App", DESKTOP_ACTION_APPLICATIONS);
     menu_add_separator(&desktop_menu);
     menu_add_item(&desktop_menu, "Settings", DESKTOP_ACTION_SETTINGS);
 

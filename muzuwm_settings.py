@@ -24,7 +24,6 @@ DEFAULT_SHORTCUT_LINES = [
     "Super+Up = fullscreen",
     "Super+Down = float",
     "Super+Return = exec wezterm",
-    "Super+space = launcher",
     "Super+b = exec google-chrome",
     "Super+q = close_window",
     "Super+x = close_window",

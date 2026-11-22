@@ -77,7 +77,6 @@ void config_rules_ensure_files(void) {
         "Super+Up = fullscreen\n"
         "Super+Down = float\n"
         "Super+Return = exec wezterm\n"
-        "Super+space = launcher\n"
         "Super+b = exec google-chrome\n"
         "Super+q = close_window\n"
         "Super+x = close_window\n"
@@ -446,7 +445,6 @@ void shortcuts_init_defaults(ShortcutConfig *sc) {
     shortcuts_set(sc, Mod4Mask, XK_Up, SHORTCUT_ACT_FULLSCREEN, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Down, SHORTCUT_ACT_FLOAT, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Return, SHORTCUT_ACT_EXEC, 0, "wezterm");
-    shortcuts_set(sc, Mod4Mask, XK_space, SHORTCUT_ACT_LAUNCHER, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_b, SHORTCUT_ACT_EXEC, 0, "google-chrome");
     shortcuts_set(sc, Mod4Mask, XK_q, SHORTCUT_ACT_CLOSE, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_x, SHORTCUT_ACT_CLOSE, 0, NULL);
