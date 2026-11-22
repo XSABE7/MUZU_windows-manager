@@ -393,10 +393,48 @@ int main(void) {
     XSync(dpy, False);
     WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.border_width == 8 && wa.width == 1264 && wa.height == 704);
 
+    // 7. CSD protocols: _NET_FRAME_EXTENTS, _NET_WM_ALLOWED_ACTIONS, _NET_WM_STATE_FOCUSED, and WM_CHANGE_STATE (IconicState -> NormalState)
+    Atom a_frame_extents = XInternAtom(dpy, "_NET_FRAME_EXTENTS", False);
+    Atom a_allowed = XInternAtom(dpy, "_NET_WM_ALLOWED_ACTIONS", False);
+    Atom a_wm_change_state = XInternAtom(dpy, "WM_CHANGE_STATE", False);
+    Atom a_wm_state_hidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+    Atom a_wm_state_focused = XInternAtom(dpy, "_NET_WM_STATE_FOCUSED", False);
+    unsigned long fe_len = 0;
+    rdata = NULL;
+    assert(XGetWindowProperty(dpy, fa, a_frame_extents, 0, 4, False, XA_CARDINAL, &rt, &rf, &fe_len, &ra, &rdata) == Success && rdata);
+    assert(rt == XA_CARDINAL && rf == 32 && fe_len == 4);
+    XFree(rdata);
+    rdata = NULL;
+    assert(XGetWindowProperty(dpy, fa, a_allowed, 0, 16, False, XA_ATOM, &rt, &rf, &rn, &ra, &rdata) == Success && rdata);
+    assert(rt == XA_ATOM && rf == 32 && rn >= 4);
+    XFree(rdata);
+    rdata = NULL;
+    assert(XGetWindowProperty(dpy, fa, a_wm_state, 0, 8, False, XA_ATOM, &rt, &rf, &rn, &ra, &rdata) == Success && rdata);
+    int has_focused_atom = 0;
+    for (unsigned long i = 0; i < rn; i++) {
+        if (((Atom *)rdata)[i] == a_wm_state_focused) has_focused_atom = 1;
+    }
+    assert(has_focused_atom == 1);
+    XFree(rdata);
+
+    send_root_client_msg(dpy, root, fa, a_wm_change_state, IconicState, 0, 0);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.map_state == IsUnmapped);
+    rdata = NULL;
+    assert(XGetWindowProperty(dpy, fa, a_wm_state, 0, 8, False, XA_ATOM, &rt, &rf, &rn, &ra, &rdata) == Success && rdata);
+    int has_hidden_atom = 0;
+    for (unsigned long i = 0; i < rn; i++) {
+        if (((Atom *)rdata)[i] == a_wm_state_hidden) has_hidden_atom = 1;
+    }
+    assert(has_hidden_atom == 1);
+    XFree(rdata);
+
+    send_root_client_msg(dpy, root, fa, a_wm_change_state, NormalState, 0, 0);
+    WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.map_state == IsViewable);
+
     XDestroyWindow(dpy, fb);
     XDestroyWindow(dpy, fa);
     XCloseDisplay(dpy);
-    printf("PASS: Focus borders, EnterNotify, live reload, and Ctrl+Alt+2xDel verified\n");
+    printf("PASS: Focus borders, EnterNotify, live reload, CSD protocols, and Ctrl+Alt+2xDel verified\n");
     return 0;
 }
 EOF

@@ -21,8 +21,24 @@ EwmhStateFlags ewmh_parse_state_atoms(Atom prop1, Atom prop2,
 // Publish _NET_WM_STATE on a client window reflecting fullscreen/maximized/hidden flags
 void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_maximized, int is_minimized);
 
+// Publish _NET_WM_STATE including _NET_WM_STATE_FOCUSED
+void ewmh_sync_client_state_ex(Display *dpy, Window win, int is_fullscreen, int is_maximized,
+                               int is_minimized, int is_focused);
+
+// Publish _NET_FRAME_EXTENTS (left, right, top, bottom) on a client window
+void ewmh_set_frame_extents(Display *dpy, Window win, int left, int right, int top, int bottom);
+
+// Publish _NET_WM_ALLOWED_ACTIONS on a client window
+void ewmh_set_allowed_actions(Display *dpy, Window win, int can_fullscreen);
+
+// Publish ICCCM WM_STATE property (NormalState / IconicState / WithdrawnState)
+void ewmh_set_wm_state(Display *dpy, Window win, long state);
+
 // Check whether a client window already has _NET_WM_STATE_FULLSCREEN set prior to mapping
 int ewmh_window_has_fullscreen_state(Display *dpy, Window win);
+
+// Check whether a client window already has _NET_WM_STATE_MAXIMIZED_HORZ/VERT set prior to mapping
+int ewmh_window_has_maximized_state(Display *dpy, Window win);
 
 // Validate an XA_ATOM/32 property buffer and check whether it contains target
 int ewmh_atoms_contain(const unsigned char *prop, unsigned long nitems,

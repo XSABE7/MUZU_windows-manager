@@ -24,11 +24,12 @@ EwmhStateFlags ewmh_parse_state_atoms(Atom prop1, Atom prop2,
     return flags;
 }
 
-void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_maximized, int is_minimized) {
+void ewmh_sync_client_state_ex(Display *dpy, Window win, int is_fullscreen, int is_maximized,
+                               int is_minimized, int is_focused) {
     if (!dpy || win == None) return;
 
     Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
-    Atom atoms[4];
+    Atom atoms[5];
     int count = 0;
 
     if (is_fullscreen) {
@@ -41,6 +42,9 @@ void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_
     if (is_minimized) {
         atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
     }
+    if (is_focused && !is_minimized) {
+        atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_FOCUSED", False);
+    }
 
     if (count == 0) {
         XDeleteProperty(dpy, win, net_wm_state);
@@ -48,6 +52,74 @@ void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_
         XChangeProperty(dpy, win, net_wm_state, XA_ATOM, 32, PropModeReplace,
                         (unsigned char *)atoms, count);
     }
+}
+
+void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_maximized, int is_minimized) {
+    ewmh_sync_client_state_ex(dpy, win, is_fullscreen, is_maximized, is_minimized, 0);
+}
+
+void ewmh_set_frame_extents(Display *dpy, Window win, int left, int right, int top, int bottom) {
+    if (!dpy || win == None) return;
+    Atom net_frame_extents = XInternAtom(dpy, "_NET_FRAME_EXTENTS", False);
+    unsigned long extents[4] = {
+        (unsigned long)(left > 0 ? left : 0),
+        (unsigned long)(right > 0 ? right : 0),
+        (unsigned long)(top > 0 ? top : 0),
+        (unsigned long)(bottom > 0 ? bottom : 0)
+    };
+    XChangeProperty(dpy, win, net_frame_extents, XA_CARDINAL, 32, PropModeReplace,
+                    (unsigned char *)extents, 4);
+}
+
+void ewmh_set_allowed_actions(Display *dpy, Window win, int can_fullscreen) {
+    if (!dpy || win == None) return;
+    Atom net_allowed = XInternAtom(dpy, "_NET_WM_ALLOWED_ACTIONS", False);
+    Atom atoms[8];
+    int count = 0;
+    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MOVE", False);
+    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MINIMIZE", False);
+    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_CLOSE", False);
+    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_CHANGE_DESKTOP", False);
+    if (can_fullscreen) {
+        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_RESIZE", False);
+        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MAXIMIZE_HORZ", False);
+        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MAXIMIZE_VERT", False);
+        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_FULLSCREEN", False);
+    }
+    XChangeProperty(dpy, win, net_allowed, XA_ATOM, 32, PropModeReplace,
+                    (unsigned char *)atoms, count);
+}
+
+void ewmh_set_wm_state(Display *dpy, Window win, long state) {
+    if (!dpy || win == None) return;
+    Atom wm_state = XInternAtom(dpy, "WM_STATE", False);
+    unsigned long data[2] = { (unsigned long)state, (unsigned long)None };
+    XChangeProperty(dpy, win, wm_state, wm_state, 32, PropModeReplace,
+                    (unsigned char *)data, 2);
+}
+
+int ewmh_window_has_maximized_state(Display *dpy, Window win) {
+    if (!dpy || win == None) return 0;
+
+    Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+    Atom net_wm_mh = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    Atom net_wm_mv = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *prop = NULL;
+    int found = 0;
+
+    if (XGetWindowProperty(dpy, win, net_wm_state, 0, (~0L), False,
+                           XA_ATOM, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &prop) == Success && prop) {
+        if (ewmh_atoms_contain(prop, nitems, actual_type, actual_format, net_wm_mh) ||
+            ewmh_atoms_contain(prop, nitems, actual_type, actual_format, net_wm_mv)) {
+            found = 1;
+        }
+        XFree(prop);
+    }
+    return found;
 }
 
 int ewmh_atoms_contain(const unsigned char *prop, unsigned long nitems,

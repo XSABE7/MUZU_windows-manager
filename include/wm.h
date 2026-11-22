@@ -85,6 +85,7 @@ typedef struct {
 typedef struct {
     Client *client;
     int is_resize;
+    int resize_dir;
     int start_x;
     int start_y;
     int orig_x;
@@ -92,6 +93,18 @@ typedef struct {
     int orig_w;
     int orig_h;
 } DragState;
+
+/* EWMH _NET_WM_MOVERESIZE direction constants */
+#define WM_MOVERESIZE_SIZE_TOPLEFT     0
+#define WM_MOVERESIZE_SIZE_TOP         1
+#define WM_MOVERESIZE_SIZE_TOPRIGHT    2
+#define WM_MOVERESIZE_SIZE_RIGHT       3
+#define WM_MOVERESIZE_SIZE_BOTTOMRIGHT 4
+#define WM_MOVERESIZE_SIZE_BOTTOM      5
+#define WM_MOVERESIZE_SIZE_BOTTOMLEFT  6
+#define WM_MOVERESIZE_SIZE_LEFT        7
+#define WM_MOVERESIZE_MOVE             8
+#define WM_MOVERESIZE_CANCEL           11
 
 void layout_calculate_clients(const LayoutConfig *cfg, Client **tiled, int tiled_count);
 void layout_calculate(const LayoutConfig *cfg, Client *head, int count);
@@ -106,6 +119,11 @@ int wm_find_readable_path(const char *const *candidates, size_t count, char *out
 int wm_wait_x11_or_signal(int x11_fd, int sig_fd);
 int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
                               int start_x, int start_y, int grab_status);
+int wm_drag_commit_with_dir(DragState *drag, Client *c, int is_resize, int resize_dir,
+                            int start_x, int start_y, int grab_status);
+void wm_compute_resize_rect(int orig_x, int orig_y, int orig_w, int orig_h,
+                            int dx, int dy, int dir, int min_w, int min_h,
+                            int *out_x, int *out_y, int *out_w, int *out_h);
 int wm_drag_prepare_resize(Client *c);
 int wm_drag_should_cancel(const DragState *drag, const Client *c);
 void wm_drag_reset(DragState *drag);
