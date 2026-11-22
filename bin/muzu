@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""
+MUZUwm Unified CLI (`muzu` / `muzu-s`)
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+BASE_VERSION = "5.2.445720"
+CONFIG_DIR = os.path.expanduser("~/.config/muzuwm")
+CACHE_DIR = os.path.expanduser("~/.cache/muzuwm")
+STATE_FILE = os.path.join(CONFIG_DIR, "update_state.json")
+
+
+def _find_tool(binary_name, repo_script_name):
+    self_dir = os.path.dirname(os.path.abspath(__file__))
+    real_dir = os.path.dirname(os.path.realpath(__file__))
+    repo_root = os.path.dirname(real_dir)
+
+    candidates = [
+        os.path.join(self_dir, binary_name),
+        os.path.join(real_dir, binary_name),
+        os.path.join(repo_root, repo_script_name),
+    ]
+    for path in candidates:
+        if os.path.isfile(path) and os.access(path, os.R_OK):
+            return path
+
+    found = shutil.which(binary_name)
+    if found:
+        return found
+    return None
+
+
+def _exec_helper(binary_name, repo_script_name, extra_args):
+    target = _find_tool(binary_name, repo_script_name)
+    if not target:
+        print(f"Error: could not find '{binary_name}' or '{repo_script_name}'.", file=sys.stderr)
+        sys.exit(1)
+
+    if target.endswith(".py") and not os.access(target, os.X_OK):
+        cmd = [sys.executable, target] + extra_args
+    elif target.endswith(".py"):
+        cmd = [sys.executable, target] + extra_args
+    else:
+        cmd = [target] + extra_args
+
+    os.execvp(cmd[0], cmd)
+
+
+def _detect_prefix(explicit_prefix=None):
+    if explicit_prefix:
+        return explicit_prefix.rstrip("/") or "/"
+    wm_bin = shutil.which("muzuwm")
+    if wm_bin:
+        real = os.path.realpath(wm_bin)
+        if real.startswith("/usr/local/bin/"):
+            return "/usr/local"
+        if real.startswith("/usr/bin/"):
+            return "/usr"
+        parent = os.path.dirname(os.path.dirname(real))
+        if parent:
+            return parent
+    real_self = os.path.realpath(__file__)
+    if real_self.startswith("/usr/local/bin/"):
+        return "/usr/local"
+    if real_self.startswith("/usr/bin/"):
+        return "/usr"
+    return "/usr/local"
+
+
+def cmd_version():
+    state = {}
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                state = data
+        except Exception:
+            pass
+
+    real_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    git_desc = ""
+    git_branch = ""
+    if os.path.isdir(os.path.join(real_root, ".git")) and shutil.which("git"):
+        try:
+            git_desc = subprocess.check_output(
+                ["git", "-C", real_root, "describe", "--tags", "--always"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=2,
+            ).strip()
+            git_branch = subprocess.check_output(
+                ["git", "-C", real_root, "rev-parse", "--abbrev-ref", "HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=2,
+            ).strip()
+        except Exception:
+            pass
+
+    ver = git_desc or BASE_VERSION
+    wm_bin = shutil.which("muzuwm") or os.path.join(_detect_prefix(), "bin", "muzuwm")
+    channel = state.get("channel") or git_branch or "local"
+    sha = state.get("short_sha") or ""
+
+    print(f"MUZUwm {ver}")
+    details = [f"channel={channel}"]
+    if sha:
+        details.append(f"commit={sha}")
+    if state.get("updated_at"):
+        details.append(f"updated={state['updated_at']}")
+    print(f"Status : {', '.join(details)}")
+    print(f"Binary : {wm_bin}")
+
+
+def cmd_help():
+    print(
+        """MUZUwm CLI
+
+Usage:
+  muzu [options]
+  muzu-s [settings options]
+
+Options:
+  -s, --settings          Open MUZUwm Settings
+  -u, --update [CHANNEL]  Open Updater or update from GitHub (Stable | unstable)
+  -c, --check             Check GitHub Stable and unstable versions
+  -v, --version           Show MUZUwm version and channel info
+  -h, --help              Show this help message
+      --uninstall         Uninstall MUZUwm from the system
+
+Uninstall options:
+      --prefix DIR        Override install prefix (default: detected /usr/local or /usr)
+      --purge             Also remove ~/.config/muzuwm and ~/.cache/muzuwm
+      --dry-run           Show files that would be removed without deleting
+  -y, --yes               Skip confirmation prompt
+"""
+    )
+
+
+def _needs_root(paths):
+    if os.geteuid() == 0:
+        return False
+    for p in paths:
+        check = p if os.path.exists(p) else os.path.dirname(p)
+        while check and not os.path.exists(check):
+            parent = os.path.dirname(check)
+            if parent == check:
+                break
+            check = parent
+        if check and not os.access(check, os.W_OK):
+            return True
+    return False
+
+
+def cmd_uninstall(args):
+    explicit_prefix = None
+    purge = False
+    dry_run = False
+    assume_yes = False
+
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--prefix" and i + 1 < len(args):
+            explicit_prefix = args[i + 1]
+            i += 2
+            continue
+        if a.startswith("--prefix="):
+            explicit_prefix = a.split("=", 1)[1]
+        elif a == "--purge":
+            purge = True
+        elif a == "--dry-run":
+            dry_run = True
+        elif a in ("-y", "--yes"):
+            assume_yes = True
+        else:
+            print(f"Unknown option for --uninstall: {a}", file=sys.stderr)
+            sys.exit(2)
+        i += 1
+
+    prefix = _detect_prefix(explicit_prefix)
+    bindir = os.path.join(prefix, "bin")
+
+    system_targets = [
+        os.path.join(bindir, "muzuwm"),
+        os.path.join(bindir, "mzml"),
+        os.path.join(bindir, "muzu-session"),
+        os.path.join(bindir, "muzuwm-settings"),
+        os.path.join(bindir, "muzuwm-updater"),
+        os.path.join(bindir, "muzu"),
+        os.path.join(bindir, "muzu-s"),
+        os.path.join(prefix, "share", "xsessions", "muzuwm.desktop"),
+    ]
+    if prefix in ("/usr", "/usr/local"):
+        system_targets.append("/usr/share/xsessions/muzuwm.desktop")
+        system_targets.append("/etc/muzuwm")
+    else:
+        parent = os.path.dirname(prefix)
+        if os.path.basename(prefix) == "usr" and parent:
+            system_targets.append(os.path.join(parent, "etc", "muzuwm"))
+        else:
+            system_targets.append(os.path.join(prefix, "etc", "muzuwm"))
+    # Deduplicate preserving order
+    seen = set()
+    unique_targets = []
+    for t in system_targets:
+        if t not in seen:
+            seen.add(t)
+            unique_targets.append(t)
+
+    existing_sys = [p for p in unique_targets if os.path.lexists(p)]
+    user_targets = [p for p in (CONFIG_DIR, CACHE_DIR) if os.path.exists(p)]
+
+    if not existing_sys and not (purge and user_targets):
+        print(f"No installed MUZUwm files found under prefix '{prefix}'.")
+        return
+
+    print("MUZUwm Uninstall")
+    print(f"Install prefix: {prefix}")
+    if existing_sys:
+        print("System files to remove:")
+        for p in existing_sys:
+            print(f"  - {p}")
+    else:
+        print("System files to remove: (none found)")
+
+    if purge and user_targets:
+        print("User config/cache directories to remove (--purge):")
+        for p in user_targets:
+            print(f"  - {p}")
+    elif user_targets:
+        print("Kept user directories (use --purge to remove):")
+        for p in user_targets:
+            print(f"  - {p}")
+
+    if dry_run:
+        print("[dry-run] No files were deleted.")
+        return
+
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            print("Error: --yes is required when running --uninstall non-interactively.", file=sys.stderr)
+            sys.exit(1)
+        ans = input("Proceed with uninstall? [y/N]: ").strip().lower()
+        if ans not in ("y", "yes"):
+            print("Cancelled.")
+            return
+        if not purge and user_targets:
+            ans_cfg = input("Also remove ~/.config/muzuwm and ~/.cache/muzuwm? [y/N]: ").strip().lower()
+            if ans_cfg in ("y", "yes"):
+                purge = True
+
+    if existing_sys:
+        rm_cmd = ["rm", "-rf"] + existing_sys
+        if _needs_root(existing_sys):
+            if shutil.which("sudo"):
+                rm_cmd = ["sudo"] + rm_cmd
+            elif shutil.which("pkexec"):
+                rm_cmd = ["pkexec"] + rm_cmd
+        proc = subprocess.run(rm_cmd)
+        if proc.returncode != 0:
+            print("Uninstall failed while removing system files.", file=sys.stderr)
+            sys.exit(proc.returncode)
+
+    if purge and user_targets:
+        for p in user_targets:
+            shutil.rmtree(p, ignore_errors=True)
+
+    print("MUZUwm uninstalled successfully.")
+
+
+def main():
+    prog = os.path.basename(sys.argv[0])
+    args = sys.argv[1:]
+
+    if prog == "muzu-s":
+        _exec_helper("muzuwm-settings", "muzuwm_settings.py", args)
+
+    if not args:
+        cmd_help()
+        return
+
+    first = args[0]
+    rest = args[1:]
+
+    if first in ("-h", "--help"):
+        cmd_help()
+    elif first in ("-v", "--version"):
+        cmd_version()
+    elif first in ("-s", "--settings"):
+        _exec_helper("muzuwm-settings", "muzuwm_settings.py", rest)
+    elif first in ("-c", "--check"):
+        _exec_helper("muzuwm-updater", "muzuwm_updater.py", ["--check"] + rest)
+    elif first in ("-u", "--update"):
+        if rest and not rest[0].startswith("-"):
+            channel = rest[0]
+            _exec_helper("muzuwm-updater", "muzuwm_updater.py", ["--update", channel] + rest[1:])
+        else:
+            _exec_helper("muzuwm-updater", "muzuwm_updater.py", rest)
+    elif first == "--uninstall":
+        cmd_uninstall(rest)
+    else:
+        print(f"Unknown option: {first}\n", file=sys.stderr)
+        cmd_help()
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

@@ -439,11 +439,12 @@ def run_cli_menu():
         print("9. Wallpaper")
         print("10. Backup & Reset")
         print("11. Reload MUZUwm")
+        print("12. Update MUZUwm (GitHub)")
         print("0. Exit")
         print("-" * 54)
 
         try:
-            choice = input("Select (0-11): ").strip()
+            choice = input("Select (0-12): ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -511,6 +512,12 @@ def run_cli_menu():
         elif choice == "11":
             ConfigManager.reload_muzuwm_settings()
             ConfigManager.reload_muzuwm_wallpaper()
+        elif choice == "12":
+            local_up = os.path.join(os.path.dirname(os.path.abspath(__file__)), "muzuwm_updater.py")
+            if os.path.exists(local_up):
+                subprocess.run([sys.executable, local_up, "--cli"])
+            else:
+                subprocess.run(["muzuwm-updater", "--cli"])
 
 
 # ==============================================================================
@@ -886,6 +893,7 @@ def run_tui_menu():
                 f"8. Autostart Commands   : {auto_active}/{len(auto_entries)} enabled",
                 f"9. Wallpaper Image      : {wall_state}",
                 f"10. Backup & Reset      : {len(backups)} archives",
+                "U. Update MUZUwm        : GitHub (Stable / unstable)",
                 "R. Reload MUZUwm Config : Apply changes now",
                 "Q. Exit"
             ]
@@ -896,7 +904,7 @@ def run_tui_menu():
                 "[Up/Down] Move  [Enter/Space] Select/Toggle  [R] Reload  [Q] Quit",
                 has_color
             )
-            win = make_panel(stdscr, 20, 76, "MUZUwm Settings", has_color)
+            win = make_panel(stdscr, 21, 76, "MUZUwm Settings", has_color)
             ph, pw = win.getmaxyx()
             accent_attr = (curses.color_pair(6) | curses.A_BOLD) if has_color else curses.A_BOLD
             sel_attr = (curses.color_pair(3) | curses.A_BOLD) if has_color else curses.A_REVERSE
@@ -959,10 +967,22 @@ def run_tui_menu():
                 elif sel == 9:
                     tui_backup_sub(stdscr, has_color)
                 elif sel == 10:
+                    curses.endwin()
+                    local_up = os.path.join(os.path.dirname(os.path.abspath(__file__)), "muzuwm_updater.py")
+                    try:
+                        if os.path.exists(local_up):
+                            subprocess.run([sys.executable, local_up])
+                        else:
+                            subprocess.run(["muzuwm-updater"])
+                    except Exception as exc:
+                        print(f"Updater error: {exc}")
+                        input("Press Enter...")
+                    stdscr.refresh()
+                elif sel == 11:
                     ConfigManager.reload_muzuwm_settings()
                     ConfigManager.reload_muzuwm_wallpaper()
                     tui_message(stdscr, "RELOAD", ["Sent _MUZU_RELOAD_SETTINGS to MUZUwm."], has_color)
-                elif sel == 11:
+                elif sel == 12:
                     break
 
     curses.wrapper(_tui_main)
