@@ -55,6 +55,22 @@ int main(void) {
     fclose(f);
     assert(config_is_alttab_enabled() == 1);
 
+    // Keyboard global layout settings & XKB switch option normalization
+    char kbd_buf[64];
+    config_get_keyboard_layouts(kbd_buf, sizeof(kbd_buf));
+    assert(strcmp(kbd_buf, "us,th") == 0);
+    config_get_layout_switch_option(kbd_buf, sizeof(kbd_buf));
+    assert(strcmp(kbd_buf, "grp:win_space_toggle") == 0);
+
+    assert(config_normalize_layout_switch_option("super_space", kbd_buf, sizeof(kbd_buf)) == 1);
+    assert(strcmp(kbd_buf, "grp:win_space_toggle") == 0);
+    assert(config_normalize_layout_switch_option("alt_shift", kbd_buf, sizeof(kbd_buf)) == 1);
+    assert(strcmp(kbd_buf, "grp:alt_shift_toggle") == 0);
+    assert(config_normalize_layout_switch_option("none", kbd_buf, sizeof(kbd_buf)) == 1);
+    assert(kbd_buf[0] == '\0');
+    assert(config_normalize_layout_switch_option("us; rm -rf /", kbd_buf, sizeof(kbd_buf)) == 0);
+    assert(strcmp(kbd_buf, "grp:win_space_toggle") == 0);
+
     // Fallback to muzuwm.conf when key is absent in settings.conf
     f = fopen(settings_path, "w");
     assert(f != NULL);

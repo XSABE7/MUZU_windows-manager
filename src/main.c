@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
@@ -186,6 +187,63 @@ static void load_appearance_settings(Display *d, LayoutConfig *cfg) {
         config_get_unfocus_border_color(unfocus_hex, sizeof(unfocus_hex));
         focus_border_pixel = alloc_hex_pixel(d, focus_hex, WhitePixel(d, scr));
         unfocus_border_pixel = alloc_hex_pixel(d, unfocus_hex, BlackPixel(d, scr));
+    }
+}
+
+static void apply_global_keyboard_layout(int force) {
+    static char applied_layouts[128] = {0};
+    static char applied_option[128] = {0};
+    static int has_applied = 0;
+
+    char layouts[128];
+    char option[128];
+    config_get_keyboard_layouts(layouts, sizeof(layouts));
+    config_get_layout_switch_option(option, sizeof(option));
+
+    if (!force && has_applied &&
+        strcmp(applied_layouts, layouts) == 0 &&
+        strcmp(applied_option, option) == 0) {
+        return;
+    }
+
+    snprintf(applied_layouts, sizeof(applied_layouts), "%s", layouts);
+    snprintf(applied_option, sizeof(applied_option), "%s", option);
+    has_applied = 1;
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        signal(SIGCHLD, SIG_DFL);
+        signal(SIGPIPE, SIG_DFL);
+        if (option[0] != '\0') {
+            execlp("setxkbmap", "setxkbmap", "-layout", layouts, "-option", "", "-option", option, (char *)NULL);
+        } else {
+            execlp("setxkbmap", "setxkbmap", "-layout", layouts, "-option", "", (char *)NULL);
+        }
+        _exit(127);
+    }
+}
+
+static void cycle_global_xkb_group(Display *d) {
+    if (!d) return;
+    int xkb_op = 0, xkb_ev = 0, xkb_err = 0, maj = XkbMajorVersion, min = XkbMinorVersion;
+    if (!XkbQueryExtension(d, &xkb_op, &xkb_ev, &xkb_err, &maj, &min)) return;
+
+    int num_groups = 2;
+    XkbDescPtr desc = XkbGetKeyboard(d, XkbControlsMask, XkbUseCoreKbd);
+    if (desc) {
+        if (desc->ctrls && desc->ctrls->num_groups > 0) {
+            num_groups = (int)desc->ctrls->num_groups;
+        }
+        XkbFreeKeyboard(desc, 0, True);
+    }
+    if (num_groups <= 1) return;
+
+    XkbStateRec st;
+    if (XkbGetState(d, XkbUseCoreKbd, &st) == Success) {
+        unsigned int next = (unsigned int)((st.locked_group + 1) % (unsigned int)num_groups);
+        XkbLockGroup(d, XkbUseCoreKbd, next);
+        XFlush(d);
     }
 }
 
@@ -961,6 +1019,7 @@ int main(void) {
     config_rules_ensure_files();
     cfg.master_count = config_get_master_count();
     load_appearance_settings(dpy, &cfg);
+    apply_global_keyboard_layout(1);
     num_workspaces = config_get_workspace_count();
     workspace_publish_ewmh(dpy, root, num_workspaces, cfg.current_workspace);
     int alttab_enabled = config_is_alttab_enabled();
@@ -1245,6 +1304,9 @@ int main(void) {
                         case SHORTCUT_ACT_LAUNCHER:
                             spawn_launcher();
                             break;
+                        case SHORTCUT_ACT_LAYOUT_NEXT:
+                            cycle_global_xkb_group(dpy);
+                            break;
                         case SHORTCUT_ACT_EXEC:
                             if (strcmp(b->exec_cmd, "wezterm") == 0) {
                                 spawn_terminal();
@@ -1405,6 +1467,7 @@ int main(void) {
                         }
                     }
                     load_appearance_settings(dpy, &cfg);
+                    apply_global_keyboard_layout(0);
                     for (Client *curr = clients; curr; curr = curr->next) {
                         apply_client_border(dpy, curr, cfg.border_width);
                     }

@@ -63,6 +63,8 @@ MUZUwm checks `~/.config/muzuwm/settings.conf`, `~/.config/muzuwm/muzuwm.conf`, 
 - `border_width = 2` — Window border width in pixels (`0` to `16`).
 - `focus_border_color = #89b4fa` — Focused window border hex color.
 - `unfocus_border_color = #45475a` — Unfocused window border hex color.
+- `keyboard_layouts = us,th` — Global XKB layouts applied across all apps (`setxkbmap`).
+- `layout_switch_option = super_space` — Global language switch key across all apps (`super_space` -> `grp:win_space_toggle`, or `grp:alt_shift_toggle`, `grp:caps_toggle`, `grp:ctrl_shift_toggle`, `none`).
 - `~/.config/muzuwm/shortcuts.conf` — Custom keybindings (`none` to unbind).
 - `~/.config/muzuwm/fullscreen_allowlist` — Window classes/titles to maximize automatically on map.
 - `~/.config/muzuwm/auto_allowlist` — Commands to run at WM startup.
