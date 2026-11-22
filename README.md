@@ -1,7 +1,12 @@
-# UNSTABLE USE ON YOUR OWN RISK             Fix_blk is for backup it old code
-# UNSTABLE USE ON YOUR OWN RISK             Fix_blk is for backup it old code
-# UNSTABLE USE ON YOUR OWN RISK             Fix_blk is for backup it old code
-# UNSTABLE USE ON YOUR OWN RISK             Fix_blk is for backup it old code
+# WARNING: DO NOT USE `fix_blk` AS A BACKUP — UNSTABLE & OUTDATED
+# คำเตือน: อย่าใช้ branch `fix_blk` นี้เป็น backup — ไม่เสถียรและเก่าแล้ว
 
+> **DO NOT use this branch as a backup.**
+> This branch (`fix_blk`) contains **legacy, unstable, and outdated code** with known bugs and is no longer maintained.
+>
+> **อย่าใช้ branch `fix_blk` นี้เป็น backup เด็ดขาด**
+> โค้ดใน branch นี้ **ไม่เสถียร เก่า และไม่ได้อัปเดตแล้ว**
 
-Fix_blk is For backup if unstble go boom this Branch not get often update and it old code may has bug and Bug
+Please switch to **`Stable`** or **`unstable`** instead:
+- **`Stable`** — Recommended stable branch
+- **`unstable`** — Active development branch
