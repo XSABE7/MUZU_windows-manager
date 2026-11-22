@@ -36,7 +36,7 @@ MUZUwm focuses strictly on core window management, EWMH/ICCCM compliance, multi-
 | Shortcut | Action |
 | :--- | :--- |
 | `Super + Left` / `Right` | Snap window to left / right half (`tile_left` / `tile_right`) |
-| `Super + Up` / `Super + m` | Toggle fullscreen / maximize (`fullscreen`) |
+| `Super + Up` / `Super + m` | Toggle maximize (`maximize`, respects panels & borders) |
 | `Super + Down` | Restore to floating (`float`) |
 | `Super + q` / `Super + x` | Close focused window (`close_window`) |
 | `Super + z` | Minimize / iconify focused window (`minimize`) |

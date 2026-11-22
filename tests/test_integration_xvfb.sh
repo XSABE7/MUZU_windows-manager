@@ -431,10 +431,39 @@ int main(void) {
     send_root_client_msg(dpy, root, fa, a_wm_change_state, NormalState, 0, 0);
     WAIT_UNTIL(XGetWindowAttributes(dpy, fa, &wa) && wa.map_state == IsViewable);
 
+    // 8. ICCCM WM_TAKE_FOCUS delivery for Globally Active clients (InputHint=False + WM_TAKE_FOCUS)
+    Atom a_wm_protocols = XInternAtom(dpy, "WM_PROTOCOLS", False);
+    Atom a_wm_take_focus = XInternAtom(dpy, "WM_TAKE_FOCUS", False);
+    Window tf_win = XCreateSimpleWindow(dpy, root, 100, 100, 300, 200, 0, 0, 0);
+    XWMHints tf_hints;
+    memset(&tf_hints, 0, sizeof(tf_hints));
+    tf_hints.flags = InputHint;
+    tf_hints.input = False;
+    XSetWMHints(dpy, tf_win, &tf_hints);
+    XSetWMProtocols(dpy, tf_win, &a_wm_take_focus, 1);
+    XMapWindow(dpy, tf_win);
+    XSync(dpy, False);
+    int got_take_focus = 0;
+    for (int t = 0; t < 100 && !got_take_focus; t++) {
+        while (XPending(dpy) > 0) {
+            XEvent tev;
+            XNextEvent(dpy, &tev);
+            if (tev.type == ClientMessage &&
+                tev.xclient.window == tf_win &&
+                tev.xclient.message_type == a_wm_protocols &&
+                (Atom)tev.xclient.data.l[0] == a_wm_take_focus) {
+                got_take_focus = 1;
+            }
+        }
+        if (!got_take_focus) { usleep(20000); XSync(dpy, False); }
+    }
+    assert(got_take_focus == 1);
+    XDestroyWindow(dpy, tf_win);
+
     XDestroyWindow(dpy, fb);
     XDestroyWindow(dpy, fa);
     XCloseDisplay(dpy);
-    printf("PASS: Focus borders, EnterNotify, live reload, CSD protocols, and Ctrl+Alt+2xDel verified\n");
+    printf("PASS: Focus borders, EnterNotify, WM_TAKE_FOCUS, live reload, CSD protocols, and Ctrl+Alt+2xDel verified\n");
     return 0;
 }
 EOF

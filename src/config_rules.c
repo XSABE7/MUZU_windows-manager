@@ -70,17 +70,17 @@ void config_rules_ensure_files(void) {
     write_default("shortcuts.conf",
         "# MUZUwm keyboard shortcuts:  MODS+KEY = ACTION\n"
         "# Modifiers: Super, Alt, Ctrl, Shift\n"
-        "# Actions: tile_left tile_right fullscreen float close_window launcher exec <command>\n"
+        "# Actions: tile_left tile_right maximize fullscreen float close_window launcher exec <command>\n"
         "#          workspace_1..workspace_10 move_workspace_1..move_workspace_10 workspace_next workspace_prev\n"
         "Super+Left = tile_left\n"
         "Super+Right = tile_right\n"
-        "Super+Up = fullscreen\n"
+        "Super+Up = maximize\n"
         "Super+Down = float\n"
         "Super+Return = exec wezterm\n"
         "Super+b = exec google-chrome\n"
         "Super+q = close_window\n"
         "Super+x = close_window\n"
-        "Super+m = fullscreen\n"
+        "Super+m = maximize\n"
         "Super+z = minimize\n"
         "Super+Ctrl+1 = workspace_1\n"
         "Super+Ctrl+2 = workspace_2\n"
@@ -386,7 +386,8 @@ static int parse_action(char *action, ShortcutActionType *type, int *target_ws, 
     if (strcasecmp(action, "none") == 0) *type = SHORTCUT_ACT_NONE;
     else if (strcmp(action, "tile_left") == 0) *type = SHORTCUT_ACT_TILE_LEFT;
     else if (strcmp(action, "tile_right") == 0) *type = SHORTCUT_ACT_TILE_RIGHT;
-    else if (strcmp(action, "fullscreen") == 0 || strcmp(action, "maximize") == 0) *type = SHORTCUT_ACT_FULLSCREEN;
+    else if (strcmp(action, "maximize") == 0) *type = SHORTCUT_ACT_MAXIMIZE;
+    else if (strcmp(action, "fullscreen") == 0) *type = SHORTCUT_ACT_FULLSCREEN;
     else if (strcmp(action, "float") == 0) *type = SHORTCUT_ACT_FLOAT;
     else if (strcmp(action, "close_window") == 0 || strcmp(action, "close") == 0) *type = SHORTCUT_ACT_CLOSE;
     else if (strcmp(action, "minimize") == 0 || strcmp(action, "hide") == 0) *type = SHORTCUT_ACT_MINIMIZE;
@@ -442,13 +443,13 @@ void shortcuts_init_defaults(ShortcutConfig *sc) {
     sc->count = 0;
     shortcuts_set(sc, Mod4Mask, XK_Left, SHORTCUT_ACT_TILE_LEFT, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Right, SHORTCUT_ACT_TILE_RIGHT, 0, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_Up, SHORTCUT_ACT_FULLSCREEN, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_Up, SHORTCUT_ACT_MAXIMIZE, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Down, SHORTCUT_ACT_FLOAT, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_Return, SHORTCUT_ACT_EXEC, 0, "wezterm");
     shortcuts_set(sc, Mod4Mask, XK_b, SHORTCUT_ACT_EXEC, 0, "google-chrome");
     shortcuts_set(sc, Mod4Mask, XK_q, SHORTCUT_ACT_CLOSE, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_x, SHORTCUT_ACT_CLOSE, 0, NULL);
-    shortcuts_set(sc, Mod4Mask, XK_m, SHORTCUT_ACT_FULLSCREEN, 0, NULL);
+    shortcuts_set(sc, Mod4Mask, XK_m, SHORTCUT_ACT_MAXIMIZE, 0, NULL);
     shortcuts_set(sc, Mod4Mask, XK_z, SHORTCUT_ACT_MINIMIZE, 0, NULL);
     shortcuts_set(sc, Mod4Mask | ControlMask, XK_1, SHORTCUT_ACT_WS_SWITCH, 0, NULL);
     shortcuts_set(sc, Mod4Mask | ControlMask, XK_2, SHORTCUT_ACT_WS_SWITCH, 1, NULL);

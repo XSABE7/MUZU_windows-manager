@@ -8,6 +8,55 @@
 #include <X11/Xutil.h>
 #include "client_props.h"
 
+typedef struct {
+    Display *dpy;
+    Atom wm_protocols;
+    Atom wm_delete;
+    Atom wm_take_focus;
+    Atom net_wm_name;
+    Atom utf8_string;
+    Atom net_wm_window_type;
+    Atom a_desktop;
+    Atom a_dock;
+    Atom a_toolbar;
+    Atom a_menu;
+    Atom a_utility;
+    Atom a_splash;
+    Atom a_dialog;
+    Atom a_notify;
+    Atom a_normal;
+    Atom motif_hints;
+    Atom gtk_frame_extents;
+    Atom net_opacity;
+} ClientPropsAtoms;
+
+static ClientPropsAtoms g_cp_atoms;
+
+static const ClientPropsAtoms *cp_atoms(Display *dpy) {
+    if (g_cp_atoms.dpy != dpy) {
+        g_cp_atoms.dpy = dpy;
+        g_cp_atoms.wm_protocols = XInternAtom(dpy, "WM_PROTOCOLS", False);
+        g_cp_atoms.wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+        g_cp_atoms.wm_take_focus = XInternAtom(dpy, "WM_TAKE_FOCUS", False);
+        g_cp_atoms.net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
+        g_cp_atoms.utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
+        g_cp_atoms.net_wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+        g_cp_atoms.a_desktop = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+        g_cp_atoms.a_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+        g_cp_atoms.a_toolbar = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLBAR", False);
+        g_cp_atoms.a_menu = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_MENU", False);
+        g_cp_atoms.a_utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+        g_cp_atoms.a_splash = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_SPLASH", False);
+        g_cp_atoms.a_dialog = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
+        g_cp_atoms.a_notify = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
+        g_cp_atoms.a_normal = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NORMAL", False);
+        g_cp_atoms.motif_hints = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
+        g_cp_atoms.gtk_frame_extents = XInternAtom(dpy, "_GTK_FRAME_EXTENTS", False);
+        g_cp_atoms.net_opacity = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
+    }
+    return &g_cp_atoms;
+}
+
 int client_protocols_contain(const Atom *protocols, int count, Atom target) {
     if (!protocols || count <= 0) return 0;
     for (int i = 0; i < count; i++) {
@@ -116,14 +165,13 @@ void client_resolve_initial_geometry(int screen_w, int screen_h,
 void client_close(Display *dpy, Window win) {
     if (!dpy || win == None) return;
 
-    Atom wm_protocols = XInternAtom(dpy, "WM_PROTOCOLS", False);
-    Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+    const ClientPropsAtoms *at = cp_atoms(dpy);
     Atom *protocols = NULL;
     int count = 0;
     int supports_delete = 0;
 
     if (XGetWMProtocols(dpy, win, &protocols, &count) && protocols) {
-        supports_delete = client_protocols_contain(protocols, count, wm_delete);
+        supports_delete = client_protocols_contain(protocols, count, at->wm_delete);
         XFree(protocols);
     }
 
@@ -132,9 +180,9 @@ void client_close(Display *dpy, Window win) {
         memset(&ev, 0, sizeof(ev));
         ev.type = ClientMessage;
         ev.xclient.window = win;
-        ev.xclient.message_type = wm_protocols;
+        ev.xclient.message_type = at->wm_protocols;
         ev.xclient.format = 32;
-        ev.xclient.data.l[0] = wm_delete;
+        ev.xclient.data.l[0] = (long)at->wm_delete;
         ev.xclient.data.l[1] = CurrentTime;
         XSendEvent(dpy, win, False, NoEventMask, &ev);
     } else {
@@ -146,18 +194,17 @@ void client_close(Display *dpy, Window win) {
 void client_get_title(Display *dpy, Window win, char *out_buf, size_t maxlen) {
     if (!dpy || win == None || !out_buf || maxlen == 0) return;
 
-    Atom net_wm_name = XInternAtom(dpy, "_NET_WM_NAME", False);
-    Atom utf8_string = XInternAtom(dpy, "UTF8_STRING", False);
+    const ClientPropsAtoms *at = cp_atoms(dpy);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *prop = NULL;
 
     // 1. Try _NET_WM_NAME (UTF-8)
-    if (XGetWindowProperty(dpy, win, net_wm_name, 0, (~0L), False,
-                           utf8_string, &actual_type, &actual_format,
+    if (XGetWindowProperty(dpy, win, at->net_wm_name, 0, (~0L), False,
+                           at->utf8_string, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        int ok = client_copy_utf8_prop(out_buf, maxlen, prop, nitems, actual_type, actual_format, utf8_string);
+        int ok = client_copy_utf8_prop(out_buf, maxlen, prop, nitems, actual_type, actual_format, at->utf8_string);
         XFree(prop);
         if (ok) return;
     }
@@ -232,17 +279,7 @@ WindowType client_get_window_type(Display *dpy, Window win) {
     if (!dpy || win == None) return WIN_TYPE_NORMAL;
 
     int has_transient = (client_get_transient_for(dpy, win) != None);
-
-    Atom net_wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
-    Atom a_desktop = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
-    Atom a_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
-    Atom a_toolbar = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLBAR", False);
-    Atom a_menu = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_MENU", False);
-    Atom a_utility = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
-    Atom a_splash = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_SPLASH", False);
-    Atom a_dialog = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
-    Atom a_notify = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NOTIFICATION", False);
-    Atom a_normal = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_NORMAL", False);
+    const ClientPropsAtoms *at = cp_atoms(dpy);
 
     Atom actual_type;
     int actual_format;
@@ -250,14 +287,14 @@ WindowType client_get_window_type(Display *dpy, Window win) {
     unsigned char *prop = NULL;
     WindowType result = has_transient ? WIN_TYPE_DIALOG : WIN_TYPE_NORMAL;
 
-    if (XGetWindowProperty(dpy, win, net_wm_window_type, 0, (~0L), False,
+    if (XGetWindowProperty(dpy, win, at->net_wm_window_type, 0, (~0L), False,
                            XA_ATOM, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (actual_type == XA_ATOM && actual_format == 32 && nitems > 0) {
             result = client_classify_window_type_atoms((const Atom *)prop, nitems,
-                                                       a_desktop, a_dock, a_toolbar, a_menu,
-                                                       a_utility, a_splash, a_dialog, a_notify,
-                                                       a_normal, has_transient);
+                                                       at->a_desktop, at->a_dock, at->a_toolbar, at->a_menu,
+                                                       at->a_utility, at->a_splash, at->a_dialog, at->a_notify,
+                                                       at->a_normal, has_transient);
         }
         XFree(prop);
     }
@@ -321,14 +358,14 @@ int client_parse_motif_decorations(const unsigned long *hints, unsigned long nit
 int client_is_csd(Display *dpy, Window win) {
     if (!dpy || win == None) return 0;
 
-    // 1. Check _MOTIF_WM_HINTS
-    Atom motif_hints = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
+    const ClientPropsAtoms *at = cp_atoms(dpy);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *prop = NULL;
 
-    if (XGetWindowProperty(dpy, win, motif_hints, 0, (~0L), False,
+    // 1. Check _MOTIF_WM_HINTS
+    if (XGetWindowProperty(dpy, win, at->motif_hints, 0, (~0L), False,
                            AnyPropertyType, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (nitems >= 3 && actual_format == 32) {
@@ -342,9 +379,8 @@ int client_is_csd(Display *dpy, Window win) {
     }
 
     // 2. Check _GTK_FRAME_EXTENTS
-    Atom gtk_frame_extents = XInternAtom(dpy, "_GTK_FRAME_EXTENTS", False);
     prop = NULL;
-    if (XGetWindowProperty(dpy, win, gtk_frame_extents, 0, 4, False,
+    if (XGetWindowProperty(dpy, win, at->gtk_frame_extents, 0, 4, False,
                            XA_CARDINAL, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (nitems == 4 && actual_format == 32) {
@@ -383,15 +419,62 @@ int client_supports_fullscreen(Display *dpy, Window win) {
 
 void client_set_opacity(Display *dpy, Window win, unsigned int opacity) {
     if (!dpy || win == None) return;
-    static Atom net_opacity = None;
-    if (net_opacity == None) {
-        net_opacity = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
-    }
+    const ClientPropsAtoms *at = cp_atoms(dpy);
     if (opacity >= 0xFFFFFFFF) {
-        XDeleteProperty(dpy, win, net_opacity);
+        XDeleteProperty(dpy, win, at->net_opacity);
     } else {
         unsigned long val = opacity;
-        XChangeProperty(dpy, win, net_opacity, XA_CARDINAL, 32, PropModeReplace,
+        XChangeProperty(dpy, win, at->net_opacity, XA_CARDINAL, 32, PropModeReplace,
                         (unsigned char *)&val, 1);
     }
+}
+
+void client_resolve_focus_model(int has_input_hint, int input_val, int has_take_focus,
+                                int *out_set_input, int *out_send_take_focus) {
+    int set_input = has_input_hint ? (input_val != 0 ? 1 : 0) : 1;
+    int take_focus = has_take_focus ? 1 : 0;
+    if (out_set_input) *out_set_input = set_input;
+    if (out_send_take_focus) *out_send_take_focus = take_focus;
+}
+
+void client_get_focus_model(Display *dpy, Window win, int *out_set_input, int *out_send_take_focus) {
+    int has_input_hint = 0;
+    int input_val = 1;
+    int has_take_focus = 0;
+
+    if (dpy && win != None) {
+        XWMHints *hints = XGetWMHints(dpy, win);
+        if (hints) {
+            if (hints->flags & InputHint) {
+                has_input_hint = 1;
+                input_val = (hints->input != False) ? 1 : 0;
+            }
+            XFree(hints);
+        }
+
+        const ClientPropsAtoms *at = cp_atoms(dpy);
+        Atom *protocols = NULL;
+        int count = 0;
+        if (XGetWMProtocols(dpy, win, &protocols, &count) && protocols) {
+            has_take_focus = client_protocols_contain(protocols, count, at->wm_take_focus);
+            XFree(protocols);
+        }
+    }
+
+    client_resolve_focus_model(has_input_hint, input_val, has_take_focus,
+                               out_set_input, out_send_take_focus);
+}
+
+int client_send_take_focus(Display *dpy, Window win, Time timestamp) {
+    if (!dpy || win == None) return 0;
+    const ClientPropsAtoms *at = cp_atoms(dpy);
+    XEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = ClientMessage;
+    ev.xclient.window = win;
+    ev.xclient.message_type = at->wm_protocols;
+    ev.xclient.format = 32;
+    ev.xclient.data.l[0] = (long)at->wm_take_focus;
+    ev.xclient.data.l[1] = (long)timestamp;
+    return XSendEvent(dpy, win, False, NoEventMask, &ev) ? 1 : 0;
 }

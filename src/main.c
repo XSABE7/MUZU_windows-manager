@@ -41,6 +41,7 @@ static unsigned long focus_border_pixel = 0;
 static unsigned long unfocus_border_pixel = 0;
 static DragState drag = {0};
 static SnapPreview snap_preview;
+static Time last_x_time = CurrentTime;
 
 static void sig_handler(int sig) {
     (void)sig;
@@ -161,15 +162,14 @@ static unsigned long alloc_hex_pixel(Display *d, const char *hex, unsigned long 
 
 static void apply_client_border(Display *d, const Client *c, int bw) {
     if (!d || !c || c->win == None) return;
-    Window target = (c->frame != None) ? c->frame : c->win;
     if (c->is_fullscreen) {
-        XSetWindowBorderWidth(d, target, 0);
+        XSetWindowBorderWidth(d, c->win, 0);
         return;
     }
     int clamped = (bw > 0) ? bw : 0;
-    XSetWindowBorderWidth(d, target, (unsigned int)clamped);
+    XSetWindowBorderWidth(d, c->win, (unsigned int)clamped);
     if (clamped > 0) {
-        XSetWindowBorder(d, target, c->is_focused ? focus_border_pixel : unfocus_border_pixel);
+        XSetWindowBorder(d, c->win, c->is_focused ? focus_border_pixel : unfocus_border_pixel);
     }
 }
 
@@ -329,14 +329,18 @@ static void set_focused_client(Display *d, Client *c, Client *head) {
         }
         if (was_focused != curr->is_focused || curr == c) {
             apply_client_border(d, curr, current_border_width);
-            if (curr->frame != None) {
-                titlebar_draw(d, curr, NULL);
-            }
         }
     }
     Window active_win = ewmh_resolve_active_window(c);
     if (c && active_win != None) {
-        XSetInputFocus(d, c->win, RevertToPointerRoot, CurrentTime);
+        int set_input = 1, send_take_focus = 0;
+        client_get_focus_model(d, c->win, &set_input, &send_take_focus);
+        if (set_input) {
+            XSetInputFocus(d, c->win, RevertToPointerRoot, CurrentTime);
+        }
+        if (send_take_focus) {
+            client_send_take_focus(d, c->win, last_x_time);
+        }
     } else {
         XSetInputFocus(d, root, RevertToPointerRoot, CurrentTime);
     }
@@ -368,10 +372,10 @@ static void refresh_struts_and_workarea(Display *d, StrutList *strut_list, Layou
         int saved_bw = cfg->border_width;
         monitor_to_layout_config(&monitors[prim], cfg->master_count, cfg->current_workspace, cfg);
         cfg->border_width = saved_bw;
-        int wa_x = monitors[prim].x + monitors[prim].left_inset;
-        int wa_y = monitors[prim].y + monitors[prim].top_inset;
-        int wa_w = monitors[prim].width - monitors[prim].left_inset - monitors[prim].right_inset;
-        int wa_h = monitors[prim].height - monitors[prim].top_inset - monitors[prim].bottom_inset;
+        int wa_x = 0, wa_y = 0, wa_w = total_screen_w, wa_h = total_screen_h;
+        monitor_calculate_global_workarea(monitors, monitor_count, strut_list,
+                                          total_screen_w, total_screen_h,
+                                          &wa_x, &wa_y, &wa_w, &wa_h);
         strut_apply_workarea_rect_desktops(d, root, wa_x, wa_y, wa_w, wa_h, num_workspaces);
     } else {
         int l = 0, r = 0, t = 0, b = 0;
@@ -456,15 +460,7 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
                 c->width = mw;
                 c->height = mh;
             }
-            if (c->frame != None) {
-                int ch = c->height - TITLEBAR_HEIGHT;
-                if (ch < 10) ch = 10;
-                XMoveResizeWindow(d, c->frame, c->x, c->y, c->width, c->height);
-                XMoveResizeWindow(d, c->win, 0, TITLEBAR_HEIGHT, c->width, ch);
-                titlebar_draw(d, c, NULL);
-            } else {
-                XMoveResizeWindow(d, c->win, c->x, c->y, c->width, c->height);
-            }
+            XMoveResizeWindow(d, c->win, c->x, c->y, c->width, c->height);
         }
     }
     XFlush(d);
@@ -472,19 +468,16 @@ static void reflow_all(Display *d, Client *clients, LayoutConfig *cfg) {
 
 static void raise_client_with_transients(Display *d, Client *target_c, Client *clients) {
     if (!d || !target_c) return;
-    Window target = target_c->frame != None ? target_c->frame : target_c->win;
-    XRaiseWindow(d, target);
+    XRaiseWindow(d, target_c->win);
 
     for (Client *c = clients; c; c = c->next) {
         if (c == target_c || c->is_minimized || c->workspace != target_c->workspace) continue;
         if (c->transient_for == target_c->win) {
-            Window child_w = c->frame != None ? c->frame : c->win;
-            XRaiseWindow(d, child_w);
+            XRaiseWindow(d, c->win);
             for (Client *gc = clients; gc; gc = gc->next) {
                 if (gc == c || gc == target_c || gc->is_minimized || gc->workspace != target_c->workspace) continue;
                 if (gc->transient_for == c->win) {
-                    Window gc_w = gc->frame != None ? gc->frame : gc->win;
-                    XRaiseWindow(d, gc_w);
+                    XRaiseWindow(d, gc->win);
                 }
             }
         }
@@ -501,9 +494,7 @@ static void activate_client(Display *d, Client *target_c, Client *clients, Layou
 
     if (target_c->is_minimized) {
         target_c->is_minimized = 0;
-        Window target = target_c->frame != None ? target_c->frame : target_c->win;
-        XMapWindow(d, target);
-        if (target_c->frame != None && target_c->win != None) {
+        if (target_c->win != None) {
             XMapWindow(d, target_c->win);
         }
         ewmh_set_wm_state(d, target_c->win, NormalState);
@@ -554,9 +545,7 @@ static void minimize_client(Display *d, Client *c, Client *clients, LayoutConfig
         cancel_active_drag(d);
     }
     c->is_minimized = 1;
-    Window unmap_target = c->frame != None ? c->frame : c->win;
-    XUnmapWindow(d, unmap_target);
-    if (c->frame != None && c->win != None) {
+    if (c->win != None) {
         XUnmapWindow(d, c->win);
     }
     ewmh_set_wm_state(d, c->win, IconicState);
@@ -644,7 +633,12 @@ static void start_alttab_switcher(Display *d, AltTab *at, Client *clients,
 
 static void update_ewmh_client_list(Display *d, Client *clients) {
     if (!d || root == None) return;
-    Atom net_client_list = XInternAtom(d, "_NET_CLIENT_LIST", False);
+    static Display *cached_dpy = NULL;
+    static Atom net_client_list = None;
+    if (cached_dpy != d) {
+        cached_dpy = d;
+        net_client_list = XInternAtom(d, "_NET_CLIENT_LIST", False);
+    }
     int count = 0;
     for (Client *c = clients; c; c = c->next) count++;
     if (count == 0) {
@@ -786,14 +780,7 @@ static void client_teardown(Display *d, Client **clients, Window w, LayoutConfig
         if (preview) snap_preview_hide(d, preview);
     }
 
-    Window frame = c->frame;
     Window win = c->win;
-
-    if (frame != None) {
-        XUnmapWindow(d, frame);
-        XReparentWindow(d, win, root, c->x, c->y);
-        XDestroyWindow(d, frame);
-    }
 
     int was_focused = c->is_focused;
     client_remove(clients, win);
@@ -1046,6 +1033,7 @@ int main(void) {
 
             switch (ev.type) {
             case KeyPress: {
+                last_x_time = ev.xkey.time;
                 KeySym raw_sym = XLookupKeysym(&ev.xkey, 0);
                 unsigned int raw_mods = ev.xkey.state & (Mod1Mask | Mod4Mask | ControlMask | ShiftMask);
 
@@ -1164,7 +1152,6 @@ int main(void) {
                             ewmh_sync_client_state_ex(dpy, focused_win->win, focused_win->is_fullscreen,
                                                       focused_win->is_maximized, focused_win->is_minimized,
                                                       focused_win->is_focused);
-                            if (focused_win->frame != None) titlebar_draw(dpy, focused_win, NULL);
                             reflow_all(dpy, clients, &cfg);
                             break;
                         }
@@ -1198,7 +1185,7 @@ int main(void) {
                                 reflow_all(dpy, clients, &cfg);
                             }
                             break;
-                        case SHORTCUT_ACT_FULLSCREEN:
+                        case SHORTCUT_ACT_MAXIMIZE:
                             if (focused && focused->can_fullscreen && !focused->is_fullscreen) {
                                 LayoutConfig mon_cfg;
                                 monitor_layout_for_client(focused, &cfg, &mon_cfg);
@@ -1206,8 +1193,22 @@ int main(void) {
                                 ewmh_sync_client_state_ex(dpy, focused->win, focused->is_fullscreen,
                                                           focused->is_maximized, focused->is_minimized,
                                                           focused->is_focused);
-                                if (focused->frame != None) titlebar_draw(dpy, focused, NULL);
                                 reflow_all(dpy, clients, &cfg);
+                            }
+                            break;
+                        case SHORTCUT_ACT_FULLSCREEN:
+                            if (focused && focused->can_fullscreen) {
+                                int want = !focused->is_fullscreen;
+                                if (want && wm_drag_should_cancel(&drag, focused)) {
+                                    cancel_active_drag(dpy);
+                                }
+                                LayoutConfig mon_cfg;
+                                monitor_layout_for_client(focused, &cfg, &mon_cfg);
+                                ewmh_apply_fullscreen(dpy, focused, &mon_cfg, want);
+                                if (!want) {
+                                    apply_client_border(dpy, focused, cfg.border_width);
+                                    reflow_all(dpy, clients, &cfg);
+                                }
                             }
                             break;
                         case SHORTCUT_ACT_FLOAT:
@@ -1259,6 +1260,7 @@ int main(void) {
             }
 
             case KeyRelease: {
+                last_x_time = ev.xkey.time;
                 KeySym rsym = XLookupKeysym(&ev.xkey, 0);
                 if (alttab.is_visible && (rsym == XK_Alt_L || rsym == XK_Alt_R ||
                                           rsym == XK_Meta_L || rsym == XK_Meta_R)) {
@@ -1301,31 +1303,20 @@ int main(void) {
                     if (cre->value_mask & CWY) c->y = cre->y;
                     if (cre->value_mask & CWWidth) c->width = cre->width > 10 ? cre->width : 10;
                     if (cre->value_mask & CWHeight) {
-                        int req_h = cre->height > 10 ? cre->height : 10;
-                        c->height = c->frame != None ? (req_h + TITLEBAR_HEIGHT) : req_h;
+                        c->height = cre->height > 10 ? cre->height : 10;
                     }
-                    if (c->frame != None) {
-                        int ch = c->height - TITLEBAR_HEIGHT;
-                        if (ch < 10) ch = 10;
-                        XMoveResizeWindow(dpy, c->frame, c->x, c->y, c->width, c->height);
-                        XMoveResizeWindow(dpy, c->win, 0, TITLEBAR_HEIGHT, c->width, ch);
-                        titlebar_draw(dpy, c, NULL);
-                    } else {
-                        XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
-                    }
+                    XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
                 } else if (c && (c->is_fullscreen || c->is_maximized)) {
-                    int ch = (c->frame != None && !c->is_fullscreen) ? (c->height - TITLEBAR_HEIGHT) : c->height;
-                    if (ch < 10) ch = 10;
                     XEvent ce;
                     memset(&ce, 0, sizeof(ce));
                     ce.type = ConfigureNotify;
                     ce.xconfigure.display = dpy;
                     ce.xconfigure.event = c->win;
                     ce.xconfigure.window = c->win;
-                    ce.xconfigure.x = (c->frame != None) ? 0 : c->x;
-                    ce.xconfigure.y = (c->frame != None && !c->is_fullscreen) ? TITLEBAR_HEIGHT : (c->frame != None ? 0 : c->y);
+                    ce.xconfigure.x = c->x;
+                    ce.xconfigure.y = c->y;
                     ce.xconfigure.width = c->width;
-                    ce.xconfigure.height = ch;
+                    ce.xconfigure.height = c->height;
                     ce.xconfigure.border_width = 0;
                     ce.xconfigure.above = None;
                     ce.xconfigure.override_redirect = False;
@@ -1377,6 +1368,7 @@ int main(void) {
             }
 
             case PropertyNotify: {
+                last_x_time = ev.xproperty.time;
                 Atom atom = ev.xproperty.atom;
                 Window w = ev.xproperty.window;
                 if (w == root && atom == muzu_reload_settings) {
@@ -1390,13 +1382,8 @@ int main(void) {
                                 workspace_set_client_desktop(dpy, curr->win, curr->workspace);
                                 if (curr->workspace == cfg.current_workspace && curr->ws_hidden) {
                                     curr->ws_hidden = 0;
-                                    if (!curr->is_minimized) {
-                                        if (curr->frame != None) {
-                                            XMapWindow(dpy, curr->frame);
-                                            if (curr->win != None) XMapWindow(dpy, curr->win);
-                                        } else if (curr->win != None) {
-                                            XMapWindow(dpy, curr->win);
-                                        }
+                                    if (!curr->is_minimized && curr->win != None) {
+                                        XMapWindow(dpy, curr->win);
                                     }
                                 }
                             }
@@ -1436,10 +1423,8 @@ int main(void) {
                     if (c) {
                         if (atom == XA_WM_NAME || atom == net_wm_name) {
                             client_get_title(dpy, c->win, c->title, sizeof(c->title));
-                            if (c->frame != None) titlebar_draw(dpy, c, NULL);
                         } else if (atom == XA_WM_NORMAL_HINTS) {
                             c->can_fullscreen = client_supports_fullscreen(dpy, c->win);
-                            if (c->frame != None) titlebar_draw(dpy, c, NULL);
                         }
                     }
                 }
@@ -1447,6 +1432,7 @@ int main(void) {
             }
 
             case ButtonPress: {
+                last_x_time = ev.xbutton.time;
                 if (alttab.is_visible) {
                     XUngrabKeyboard(dpy, CurrentTime);
                     alttab_hide(dpy, &alttab);
@@ -1493,27 +1479,7 @@ int main(void) {
                     set_focused_client(dpy, c, clients);
                     raise_client_with_transients(dpy, c, clients);
 
-                    if (c->frame != None && ev.xbutton.window == c->frame) {
-                        TitlebarAction act = titlebar_get_action_for_client(ev.xbutton.x, c->width, c);
-                        if (act == TITLEBAR_CLICK_CLOSE) {
-                            client_close(dpy, c->win);
-                        } else if (act == TITLEBAR_CLICK_MAXIMIZE) {
-                            if (!c->is_fullscreen) {
-                                LayoutConfig mon_cfg;
-                                monitor_layout_for_client(c, &cfg, &mon_cfg);
-                                client_toggle_maximize(dpy, c, &mon_cfg);
-                                ewmh_sync_client_state_ex(dpy, c->win, c->is_fullscreen,
-                                                          c->is_maximized, c->is_minimized, c->is_focused);
-                                titlebar_draw(dpy, c, NULL);
-                                reflow_all(dpy, clients, &cfg);
-                            }
-                        } else if (act == TITLEBAR_CLICK_MINIMIZE) {
-                            minimize_client(dpy, c, clients, &cfg);
-                        } else if (ev.xbutton.button == Button1 && ewmh_can_drag_client(c)) {
-                            start_client_drag(dpy, c, 0, WM_MOVERESIZE_MOVE,
-                                              ev.xbutton.x_root, ev.xbutton.y_root);
-                        }
-                    } else if (ev.xbutton.window == c->win) {
+                    if (ev.xbutton.window == c->win) {
                         if ((ev.xbutton.state & Mod4Mask) && ewmh_can_drag_client(c)) {
                             if (ev.xbutton.button == Button1) {
                                 start_client_drag(dpy, c, 0, WM_MOVERESIZE_MOVE,
@@ -1531,6 +1497,7 @@ int main(void) {
             }
 
             case EnterNotify: {
+                last_x_time = ev.xcrossing.time;
                 Client *c = client_find_by_any(clients, ev.xcrossing.window);
                 if (wm_should_focus_on_enter(focus_follows_mouse_enabled,
                                              ev.xcrossing.mode,
@@ -1546,6 +1513,7 @@ int main(void) {
             }
 
             case MotionNotify: {
+                last_x_time = ev.xmotion.time;
                 if (desktop_menu.is_visible) {
                     if (ev.xmotion.window == desktop_menu.win) {
                         menu_handle_motion(dpy, &desktop_menu, ev.xmotion.x, ev.xmotion.y);
@@ -1564,7 +1532,6 @@ int main(void) {
                             ewmh_sync_client_state_ex(dpy, drag.client->win, drag.client->is_fullscreen,
                                                       drag.client->is_maximized, drag.client->is_minimized,
                                                       drag.client->is_focused);
-                            if (drag.client->frame != None) titlebar_draw(dpy, drag.client, NULL);
                             reflow_all(dpy, clients, &cfg);
                         }
                         int nx = drag.client->x, ny = drag.client->y;
@@ -1576,23 +1543,13 @@ int main(void) {
                         drag.client->y = ny;
                         drag.client->width = nw;
                         drag.client->height = nh;
-                        if (drag.client->frame != None) {
-                            int ch = nh - TITLEBAR_HEIGHT;
-                            if (ch < 10) ch = 10;
-                            XMoveResizeWindow(dpy, drag.client->frame, drag.client->x, drag.client->y,
-                                              drag.client->width, drag.client->height);
-                            XResizeWindow(dpy, drag.client->win, drag.client->width, ch);
-                            titlebar_draw(dpy, drag.client, NULL);
-                        } else {
-                            XMoveResizeWindow(dpy, drag.client->win, drag.client->x, drag.client->y,
-                                              drag.client->width, drag.client->height);
-                        }
+                        XMoveResizeWindow(dpy, drag.client->win, drag.client->x, drag.client->y,
+                                          drag.client->width, drag.client->height);
                     } else if (abs(dx) > 4 || abs(dy) > 4) {
                         if (ewmh_begin_move_clears_maximized(drag.client)) {
                             ewmh_sync_client_state_ex(dpy, drag.client->win, drag.client->is_fullscreen,
                                                       drag.client->is_maximized, drag.client->is_minimized,
                                                       drag.client->is_focused);
-                            if (drag.client->frame != None) titlebar_draw(dpy, drag.client, NULL);
                         }
                         if (drag.client->mode == CLIENT_TILED) {
                             drag.client->mode = CLIENT_FLOATING;
@@ -1601,8 +1558,7 @@ int main(void) {
                         }
                         drag.client->x = drag.orig_x + dx;
                         drag.client->y = drag.orig_y + dy;
-                        Window target = drag.client->frame != None ? drag.client->frame : drag.client->win;
-                        XMoveWindow(dpy, target, drag.client->x, drag.client->y);
+                        XMoveWindow(dpy, drag.client->win, drag.client->x, drag.client->y);
 
                         // Review Focus #2: Suppress snap preview on fixed-size windows
                         if (drag.client->can_fullscreen) {
@@ -1626,6 +1582,7 @@ int main(void) {
             }
 
             case ButtonRelease: {
+                last_x_time = ev.xbutton.time;
                 if (desktop_menu.is_visible) {
                     break;
                 }
@@ -1650,7 +1607,6 @@ int main(void) {
                                 ewmh_sync_client_state_ex(dpy, drag.client->win, drag.client->is_fullscreen,
                                                           drag.client->is_maximized, drag.client->is_minimized,
                                                           drag.client->is_focused);
-                                if (drag.client->frame != None) titlebar_draw(dpy, drag.client, NULL);
                                 reflow_all(dpy, clients, &cfg);
                             } else if (snap == SNAP_LEFT || snap == SNAP_RIGHT) {
                                 if (monitor_count > 0) {
@@ -1679,11 +1635,6 @@ int main(void) {
                 if (desktop_menu.is_visible && ev.xexpose.window == desktop_menu.win) {
                     menu_render(dpy, &desktop_menu);
                     break;
-                }
-
-                Client *c = client_find_by_any(clients, ev.xexpose.window);
-                if (c && c->frame != None && ev.xexpose.window == c->frame) {
-                    titlebar_draw(dpy, c, NULL);
                 }
                 break;
             }
@@ -1729,7 +1680,6 @@ int main(void) {
                                 client_toggle_maximize(dpy, c, &mon_cfg);
                                 ewmh_sync_client_state_ex(dpy, c->win, c->is_fullscreen,
                                                           c->is_maximized, c->is_minimized, c->is_focused);
-                                if (c->frame != None) titlebar_draw(dpy, c, NULL);
                                 reflow_all(dpy, clients, &cfg);
                             }
                         }
