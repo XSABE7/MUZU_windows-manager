@@ -274,11 +274,15 @@ class ConfigManager:
         ConfigManager.set_key(SETTINGS_FILE, "keyboard_layouts", layouts)
         ConfigManager.set_key(SETTINGS_FILE, "layout_switch_option", option)
 
-        cmd = ["setxkbmap", "-layout", layouts]
-        if option and option not in ("super_space", "none"):
-            cmd += ["-option", option]
-        elif option in ("none", "super_space"):
-            cmd += ["-option", ""]
+        xkb_opt = ""
+        if option == "super_space":
+            xkb_opt = "grp:win_space_toggle"
+        elif option and option != "none":
+            xkb_opt = option
+
+        cmd = ["setxkbmap", "-layout", layouts, "-option", ""]
+        if xkb_opt:
+            cmd += ["-option", xkb_opt]
 
         try:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -806,12 +810,13 @@ def run_tui_menu():
                 "Layout Preset : us,th(pat)    (US + Thai Pattachote)",
                 "Layout Preset : us            (US English only)",
                 f"Layout Preset : custom        (Current: {curr_l})",
-                "Switch Option : super_space   (Super + Space)",
-                "Switch Option : alt_shift     (Alt + Shift)",
-                "Switch Option : caps_toggle   (Caps Lock)",
+                "Global Switch : super_space   (Super + Space, All Apps)",
+                "Global Switch : alt_shift     (Alt + Shift, All Apps)",
+                "Global Switch : caps_toggle   (Caps Lock, All Apps)",
+                "Global Switch : ctrl_shift    (Ctrl + Shift, All Apps)",
                 "< Back"
             ]
-            idx, _ = tui_list_menu(stdscr, "KEYBOARD & LANGUAGE", f"Active: layout={curr_l}  option={curr_o}", items, has_color)
+            idx, _ = tui_list_menu(stdscr, "GLOBAL KEYBOARD & LANGUAGE", f"Global across all apps: layout={curr_l}  option={curr_o}", items, has_color)
             if idx < 0 or idx == len(items) - 1:
                 return
             new_l, new_o = curr_l, curr_o
@@ -832,6 +837,8 @@ def run_tui_menu():
                 new_o = "grp:alt_shift_toggle"
             elif idx == 6:
                 new_o = "grp:caps_toggle"
+            elif idx == 7:
+                new_o = "grp:ctrl_shift_toggle"
             ConfigManager.apply_keyboard_settings(new_l, new_o)
 
     def tui_backup_sub(stdscr, has_color):

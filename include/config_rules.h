@@ -17,6 +17,7 @@ typedef enum {
     SHORTCUT_ACT_CLOSE,
     SHORTCUT_ACT_MINIMIZE,
     SHORTCUT_ACT_LAUNCHER,
+    SHORTCUT_ACT_LAYOUT_NEXT,
     SHORTCUT_ACT_EXEC,
     SHORTCUT_ACT_WS_SWITCH,
     SHORTCUT_ACT_WS_MOVE,
@@ -51,6 +52,9 @@ int config_get_border_width(void);
 int config_parse_hex_color(const char *hex, unsigned short *r16, unsigned short *g16, unsigned short *b16);
 void config_get_focus_border_color(char *out, size_t out_len);
 void config_get_unfocus_border_color(char *out, size_t out_len);
+void config_get_keyboard_layouts(char *out, size_t out_len);
+int config_normalize_layout_switch_option(const char *raw, char *out, size_t out_len);
+void config_get_layout_switch_option(char *out, size_t out_len);
 
 // Returns 1 if any non-empty entry in `path` equals (case-insensitive) res_name, res_class or title
 int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_name, const char *res_class, const char *title);

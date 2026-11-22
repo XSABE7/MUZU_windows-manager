@@ -248,6 +248,67 @@ void config_get_unfocus_border_color(char *out, size_t out_len) {
     read_validated_hex_setting("unfocus_border_color", "#45475a", out, out_len);
 }
 
+static int is_safe_xkb_chars(const char *s, int allow_colon) {
+    if (!s || s[0] == '\0') return 0;
+    for (size_t i = 0; s[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)s[i];
+        int ok = isalnum(c) || c == ',' || c == '_' || c == '-' || c == '(' || c == ')';
+        if (allow_colon && c == ':') ok = 1;
+        if (!ok) return 0;
+    }
+    return 1;
+}
+
+void config_get_keyboard_layouts(char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    char val[128];
+    if (config_get_setting("keyboard_layouts", val, sizeof(val)) && is_safe_xkb_chars(val, 0)) {
+        snprintf(out, out_len, "%s", val);
+        return;
+    }
+    snprintf(out, out_len, "%s", "us,th");
+}
+
+int config_normalize_layout_switch_option(const char *raw, char *out, size_t out_len) {
+    if (!out || out_len == 0) return 0;
+    if (!raw || raw[0] == '\0' || strcasecmp(raw, "super_space") == 0) {
+        snprintf(out, out_len, "%s", "grp:win_space_toggle");
+        return 1;
+    }
+    if (strcasecmp(raw, "none") == 0) {
+        out[0] = '\0';
+        return 1;
+    }
+    if (strcasecmp(raw, "alt_shift") == 0) {
+        snprintf(out, out_len, "%s", "grp:alt_shift_toggle");
+        return 1;
+    }
+    if (strcasecmp(raw, "caps_toggle") == 0) {
+        snprintf(out, out_len, "%s", "grp:caps_toggle");
+        return 1;
+    }
+    if (strcasecmp(raw, "ctrl_shift") == 0) {
+        snprintf(out, out_len, "%s", "grp:ctrl_shift_toggle");
+        return 1;
+    }
+    if (is_safe_xkb_chars(raw, 1)) {
+        snprintf(out, out_len, "%s", raw);
+        return 1;
+    }
+    snprintf(out, out_len, "%s", "grp:win_space_toggle");
+    return 0;
+}
+
+void config_get_layout_switch_option(char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    char val[128] = {0};
+    if (!config_get_setting("layout_switch_option", val, sizeof(val))) {
+        config_normalize_layout_switch_option("super_space", out, out_len);
+        return;
+    }
+    config_normalize_layout_switch_option(val, out, out_len);
+}
+
 int config_is_in_fullscreen_allowlist_file(const char *path, const char *res_name, const char *res_class, const char *title) {
     if (!path) return 0;
     FILE *f = fopen(path, "r");
@@ -392,6 +453,7 @@ static int parse_action(char *action, ShortcutActionType *type, int *target_ws, 
     else if (strcmp(action, "close_window") == 0 || strcmp(action, "close") == 0) *type = SHORTCUT_ACT_CLOSE;
     else if (strcmp(action, "minimize") == 0 || strcmp(action, "hide") == 0) *type = SHORTCUT_ACT_MINIMIZE;
     else if (strcmp(action, "launcher") == 0) *type = SHORTCUT_ACT_LAUNCHER;
+    else if (strcmp(action, "layout_next") == 0 || strcmp(action, "layout_toggle") == 0) *type = SHORTCUT_ACT_LAYOUT_NEXT;
     else if (strcmp(action, "workspace_next") == 0) *type = SHORTCUT_ACT_WS_NEXT;
     else if (strcmp(action, "workspace_prev") == 0) *type = SHORTCUT_ACT_WS_PREV;
     else if (strncmp(action, "workspace_", 10) == 0) {

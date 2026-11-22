@@ -43,6 +43,7 @@ cat > "$TMP_DIR/x11_driver.c" << 'EOF'
 #include <string.h>
 #include <unistd.h>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -460,10 +461,25 @@ int main(void) {
     assert(got_take_focus == 1);
     XDestroyWindow(dpy, tf_win);
 
+    // 9. Global keyboard group persists across window focus changes (never per-app)
+    XkbLockGroup(dpy, XkbUseCoreKbd, 1);
+    XSync(dpy, False);
+    XSetInputFocus(dpy, fb, RevertToPointerRoot, CurrentTime);
+    XSync(dpy, False);
+    usleep(60000);
+    XSetInputFocus(dpy, fa, RevertToPointerRoot, CurrentTime);
+    XSync(dpy, False);
+    usleep(60000);
+    XkbStateRec xkb_st;
+    assert(XkbGetState(dpy, XkbUseCoreKbd, &xkb_st) == Success);
+    assert(xkb_st.locked_group == 1);
+    XkbLockGroup(dpy, XkbUseCoreKbd, 0);
+    XSync(dpy, False);
+
     XDestroyWindow(dpy, fb);
     XDestroyWindow(dpy, fa);
     XCloseDisplay(dpy);
-    printf("PASS: Focus borders, EnterNotify, WM_TAKE_FOCUS, live reload, CSD protocols, and Ctrl+Alt+2xDel verified\n");
+    printf("PASS: Focus borders, EnterNotify, WM_TAKE_FOCUS, global XKB group, live reload, CSD protocols, and Ctrl+Alt+2xDel verified\n");
     return 0;
 }
 EOF
@@ -590,6 +606,7 @@ MZML_ESC_PID=$!
 cat > "$TMP_DIR/send_esc.c" << 'EOF'
 #define _DEFAULT_SOURCE
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/Xatom.h>
 #include <X11/keysym.h>
 #include <string.h>
