@@ -76,7 +76,10 @@ install: muzuwm mzml
 	install -m 755 muzuwm $(DESTDIR)$(BINDIR)/muzuwm
 	install -m 755 mzml $(DESTDIR)$(BINDIR)/mzml
 	install -m 755 bin/muzu-session $(DESTDIR)$(BINDIR)/muzu-session
+	install -m 755 bin/muzu $(DESTDIR)$(BINDIR)/muzu
+	ln -sf muzu $(DESTDIR)$(BINDIR)/muzu-s
 	install -m 755 muzuwm_settings.py $(DESTDIR)$(BINDIR)/muzuwm-settings
+	install -m 755 muzuwm_updater.py $(DESTDIR)$(BINDIR)/muzuwm-updater
 	install -d $(DESTDIR)$(XSESSIONSDIR)
 	install -m 644 desktop/muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
 	install -d $(DESTDIR)/etc/muzuwm
@@ -86,7 +89,10 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm
 	rm -f $(DESTDIR)$(BINDIR)/mzml
 	rm -f $(DESTDIR)$(BINDIR)/muzu-session
+	rm -f $(DESTDIR)$(BINDIR)/muzu
+	rm -f $(DESTDIR)$(BINDIR)/muzu-s
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm-settings
+	rm -f $(DESTDIR)$(BINDIR)/muzuwm-updater
 	rm -f $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
 	rm -rf $(DESTDIR)/etc/muzuwm
 

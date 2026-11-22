@@ -281,11 +281,12 @@ int wm_wait_x11_or_signal(int x11_fd, int sig_fd) {
     return 0;
 }
 
-int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
-                              int start_x, int start_y, int grab_status) {
+int wm_drag_commit_with_dir(DragState *drag, Client *c, int is_resize, int resize_dir,
+                            int start_x, int start_y, int grab_status) {
     if (!drag || !c || grab_status != GrabSuccess) return 0;
     drag->client = c;
     drag->is_resize = is_resize ? 1 : 0;
+    drag->resize_dir = resize_dir;
     drag->start_x = start_x;
     drag->start_y = start_y;
     drag->orig_x = c->x;
@@ -293,6 +294,61 @@ int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
     drag->orig_w = c->width;
     drag->orig_h = c->height;
     return 1;
+}
+
+int wm_drag_commit_if_grabbed(DragState *drag, Client *c, int is_resize,
+                              int start_x, int start_y, int grab_status) {
+    return wm_drag_commit_with_dir(drag, c, is_resize, WM_MOVERESIZE_SIZE_BOTTOMRIGHT,
+                                   start_x, start_y, grab_status);
+}
+
+void wm_compute_resize_rect(int orig_x, int orig_y, int orig_w, int orig_h,
+                            int dx, int dy, int dir, int min_w, int min_h,
+                            int *out_x, int *out_y, int *out_w, int *out_h) {
+    if (min_w < 1) min_w = 1;
+    if (min_h < 1) min_h = 1;
+    int nx = orig_x;
+    int ny = orig_y;
+    int nw = orig_w;
+    int nh = orig_h;
+
+    int resizes_left = (dir == WM_MOVERESIZE_SIZE_TOPLEFT ||
+                        dir == WM_MOVERESIZE_SIZE_BOTTOMLEFT ||
+                        dir == WM_MOVERESIZE_SIZE_LEFT);
+    int resizes_right = (dir == WM_MOVERESIZE_SIZE_TOPRIGHT ||
+                         dir == WM_MOVERESIZE_SIZE_RIGHT ||
+                         dir == WM_MOVERESIZE_SIZE_BOTTOMRIGHT);
+    int resizes_top = (dir == WM_MOVERESIZE_SIZE_TOPLEFT ||
+                       dir == WM_MOVERESIZE_SIZE_TOP ||
+                       dir == WM_MOVERESIZE_SIZE_TOPRIGHT);
+    int resizes_bottom = (dir == WM_MOVERESIZE_SIZE_BOTTOMRIGHT ||
+                          dir == WM_MOVERESIZE_SIZE_BOTTOM ||
+                          dir == WM_MOVERESIZE_SIZE_BOTTOMLEFT);
+
+    if (resizes_left) {
+        int right = orig_x + orig_w;
+        nx = orig_x + dx;
+        if (right - nx < min_w) nx = right - min_w;
+        nw = right - nx;
+    } else if (resizes_right) {
+        nw = orig_w + dx;
+        if (nw < min_w) nw = min_w;
+    }
+
+    if (resizes_top) {
+        int bottom = orig_y + orig_h;
+        ny = orig_y + dy;
+        if (bottom - ny < min_h) ny = bottom - min_h;
+        nh = bottom - ny;
+    } else if (resizes_bottom) {
+        nh = orig_h + dy;
+        if (nh < min_h) nh = min_h;
+    }
+
+    if (out_x) *out_x = nx;
+    if (out_y) *out_y = ny;
+    if (out_w) *out_w = nw;
+    if (out_h) *out_h = nh;
 }
 
 int wm_drag_prepare_resize(Client *c) {

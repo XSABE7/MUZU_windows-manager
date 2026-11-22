@@ -147,6 +147,26 @@ int main(void) {
     assert(c->is_fullscreen == 1);
     assert(c->x == 0 && c->y == 0 && c->width == 1920 && c->height == 1080);
 
+    // Test 9: Null-safe EWMH extended helpers & directional _NET_WM_MOVERESIZE geometry
+    ewmh_sync_client_state_ex(NULL, None, 1, 1, 0, 1);
+    ewmh_set_frame_extents(NULL, None, 0, 0, 0, 0);
+    ewmh_set_allowed_actions(NULL, None, 1);
+    ewmh_set_wm_state(NULL, None, 1);
+    assert(ewmh_window_has_maximized_state(NULL, None) == 0);
+
+    int rx = 0, ry = 0, rw = 0, rh = 0;
+    // Top-left resize moves x/y and shrinks w/h, clamped at min 100x60
+    wm_compute_resize_rect(100, 100, 400, 300, 50, 30, WM_MOVERESIZE_SIZE_TOPLEFT, 100, 60, &rx, &ry, &rw, &rh);
+    assert(rx == 150 && ry == 130 && rw == 350 && rh == 270);
+    wm_compute_resize_rect(100, 100, 400, 300, 350, 280, WM_MOVERESIZE_SIZE_TOPLEFT, 100, 60, &rx, &ry, &rw, &rh);
+    assert(rx == 400 && ry == 340 && rw == 100 && rh == 60);
+    // Right/bottom resize keeps x/y fixed
+    wm_compute_resize_rect(100, 100, 400, 300, -350, -280, WM_MOVERESIZE_SIZE_BOTTOMRIGHT, 100, 60, &rx, &ry, &rw, &rh);
+    assert(rx == 100 && ry == 100 && rw == 100 && rh == 60);
+    // Left-edge resize changes only x and width
+    wm_compute_resize_rect(200, 150, 300, 200, -40, 25, WM_MOVERESIZE_SIZE_LEFT, 100, 60, &rx, &ry, &rw, &rh);
+    assert(rx == 160 && ry == 150 && rw == 340 && rh == 200);
+
     client_remove(&head, 501);
     printf("test_ewmh passed!\n");
     return 0;

@@ -133,8 +133,8 @@ int main(void) {
     const ShortcutBinding *b_z = shortcuts_match_event(&sc, Mod4Mask, XK_z);
     assert(b_z && b_z->type == SHORTCUT_ACT_MINIMIZE);
 
-    const ShortcutBinding *b_space = shortcuts_match_event(&sc, Mod4Mask, XK_space);
-    assert(b_space && b_space->type == SHORTCUT_ACT_LAUNCHER);
+    // Super+space is intentionally unbound by default (reserved for keyboard layout switch; use Ctrl+Alt+Delete for mzml)
+    assert(shortcuts_match_event(&sc, Mod4Mask, XK_space) == NULL);
 
     // Unbound combination matches nothing
     assert(shortcuts_match_event(&sc, Mod4Mask | ShiftMask, XK_Left) == NULL);
