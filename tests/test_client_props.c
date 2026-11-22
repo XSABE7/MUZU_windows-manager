@@ -214,6 +214,21 @@ int main(void) {
     assert(client_copy_utf8_prop(utf8_title_buf, sizeof(utf8_title_buf), raw_title, 5, XA_ATOM, 8, A_UTF8) == 0);
     assert(client_copy_utf8_prop(utf8_title_buf, sizeof(utf8_title_buf), raw_title, 0, A_UTF8, 8, A_UTF8) == 0);
 
+    // Test 11: ICCCM focus model resolution (Passive / Locally Active / Globally Active / No Input)
+    int set_input = 0, send_tf = 0;
+    client_resolve_focus_model(0, 0, 0, &set_input, &send_tf); // Unset InputHint defaults to Passive
+    assert(set_input == 1 && send_tf == 0);
+    client_resolve_focus_model(1, 1, 1, &set_input, &send_tf); // Locally Active
+    assert(set_input == 1 && send_tf == 1);
+    client_resolve_focus_model(1, 0, 1, &set_input, &send_tf); // Globally Active (Java/Swing)
+    assert(set_input == 0 && send_tf == 1);
+    client_resolve_focus_model(1, 0, 0, &set_input, &send_tf); // No Input
+    assert(set_input == 0 && send_tf == 0);
+
+    client_get_focus_model(NULL, None, &set_input, &send_tf);
+    assert(set_input == 1 && send_tf == 0);
+    assert(client_send_take_focus(NULL, None, CurrentTime) == 0);
+
     printf("test_client_props passed!\n");
     return 0;
 }

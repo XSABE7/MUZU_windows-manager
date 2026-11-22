@@ -1,6 +1,54 @@
 #include <X11/Xatom.h>
 #include "ewmh.h"
-#include "titlebar.h"
+
+typedef struct {
+    Display *dpy;
+    Atom net_wm_state;
+    Atom net_wm_state_fs;
+    Atom net_wm_state_max_h;
+    Atom net_wm_state_max_v;
+    Atom net_wm_state_hidden;
+    Atom net_wm_state_focused;
+    Atom net_frame_extents;
+    Atom net_allowed_actions;
+    Atom net_action_move;
+    Atom net_action_resize;
+    Atom net_action_min;
+    Atom net_action_max_h;
+    Atom net_action_max_v;
+    Atom net_action_fs;
+    Atom net_action_close;
+    Atom net_action_desk;
+    Atom wm_state;
+    Atom net_active;
+} EwmhAtoms;
+
+static EwmhAtoms g_ewmh_atoms;
+
+static const EwmhAtoms *ewmh_atoms(Display *dpy) {
+    if (g_ewmh_atoms.dpy != dpy) {
+        g_ewmh_atoms.dpy = dpy;
+        g_ewmh_atoms.net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+        g_ewmh_atoms.net_wm_state_fs = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+        g_ewmh_atoms.net_wm_state_max_h = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+        g_ewmh_atoms.net_wm_state_max_v = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+        g_ewmh_atoms.net_wm_state_hidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+        g_ewmh_atoms.net_wm_state_focused = XInternAtom(dpy, "_NET_WM_STATE_FOCUSED", False);
+        g_ewmh_atoms.net_frame_extents = XInternAtom(dpy, "_NET_FRAME_EXTENTS", False);
+        g_ewmh_atoms.net_allowed_actions = XInternAtom(dpy, "_NET_WM_ALLOWED_ACTIONS", False);
+        g_ewmh_atoms.net_action_move = XInternAtom(dpy, "_NET_WM_ACTION_MOVE", False);
+        g_ewmh_atoms.net_action_resize = XInternAtom(dpy, "_NET_WM_ACTION_RESIZE", False);
+        g_ewmh_atoms.net_action_min = XInternAtom(dpy, "_NET_WM_ACTION_MINIMIZE", False);
+        g_ewmh_atoms.net_action_max_h = XInternAtom(dpy, "_NET_WM_ACTION_MAXIMIZE_HORZ", False);
+        g_ewmh_atoms.net_action_max_v = XInternAtom(dpy, "_NET_WM_ACTION_MAXIMIZE_VERT", False);
+        g_ewmh_atoms.net_action_fs = XInternAtom(dpy, "_NET_WM_ACTION_FULLSCREEN", False);
+        g_ewmh_atoms.net_action_close = XInternAtom(dpy, "_NET_WM_ACTION_CLOSE", False);
+        g_ewmh_atoms.net_action_desk = XInternAtom(dpy, "_NET_WM_ACTION_CHANGE_DESKTOP", False);
+        g_ewmh_atoms.wm_state = XInternAtom(dpy, "WM_STATE", False);
+        g_ewmh_atoms.net_active = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+    }
+    return &g_ewmh_atoms;
+}
 
 int ewmh_resolve_state_action(long action, int current_val) {
     if (action == 0) return 0; // _NET_WM_STATE_REMOVE
@@ -28,28 +76,28 @@ void ewmh_sync_client_state_ex(Display *dpy, Window win, int is_fullscreen, int 
                                int is_minimized, int is_focused) {
     if (!dpy || win == None) return;
 
-    Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+    const EwmhAtoms *at = ewmh_atoms(dpy);
     Atom atoms[5];
     int count = 0;
 
     if (is_fullscreen) {
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+        atoms[count++] = at->net_wm_state_fs;
     }
     if (is_maximized) {
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+        atoms[count++] = at->net_wm_state_max_h;
+        atoms[count++] = at->net_wm_state_max_v;
     }
     if (is_minimized) {
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+        atoms[count++] = at->net_wm_state_hidden;
     }
     if (is_focused && !is_minimized) {
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_STATE_FOCUSED", False);
+        atoms[count++] = at->net_wm_state_focused;
     }
 
     if (count == 0) {
-        XDeleteProperty(dpy, win, net_wm_state);
+        XDeleteProperty(dpy, win, at->net_wm_state);
     } else {
-        XChangeProperty(dpy, win, net_wm_state, XA_ATOM, 32, PropModeReplace,
+        XChangeProperty(dpy, win, at->net_wm_state, XA_ATOM, 32, PropModeReplace,
                         (unsigned char *)atoms, count);
     }
 }
@@ -60,61 +108,59 @@ void ewmh_sync_client_state(Display *dpy, Window win, int is_fullscreen, int is_
 
 void ewmh_set_frame_extents(Display *dpy, Window win, int left, int right, int top, int bottom) {
     if (!dpy || win == None) return;
-    Atom net_frame_extents = XInternAtom(dpy, "_NET_FRAME_EXTENTS", False);
+    const EwmhAtoms *at = ewmh_atoms(dpy);
     unsigned long extents[4] = {
         (unsigned long)(left > 0 ? left : 0),
         (unsigned long)(right > 0 ? right : 0),
         (unsigned long)(top > 0 ? top : 0),
         (unsigned long)(bottom > 0 ? bottom : 0)
     };
-    XChangeProperty(dpy, win, net_frame_extents, XA_CARDINAL, 32, PropModeReplace,
+    XChangeProperty(dpy, win, at->net_frame_extents, XA_CARDINAL, 32, PropModeReplace,
                     (unsigned char *)extents, 4);
 }
 
 void ewmh_set_allowed_actions(Display *dpy, Window win, int can_fullscreen) {
     if (!dpy || win == None) return;
-    Atom net_allowed = XInternAtom(dpy, "_NET_WM_ALLOWED_ACTIONS", False);
+    const EwmhAtoms *at = ewmh_atoms(dpy);
     Atom atoms[8];
     int count = 0;
-    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MOVE", False);
-    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MINIMIZE", False);
-    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_CLOSE", False);
-    atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_CHANGE_DESKTOP", False);
+    atoms[count++] = at->net_action_move;
+    atoms[count++] = at->net_action_min;
+    atoms[count++] = at->net_action_close;
+    atoms[count++] = at->net_action_desk;
     if (can_fullscreen) {
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_RESIZE", False);
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MAXIMIZE_HORZ", False);
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_MAXIMIZE_VERT", False);
-        atoms[count++] = XInternAtom(dpy, "_NET_WM_ACTION_FULLSCREEN", False);
+        atoms[count++] = at->net_action_resize;
+        atoms[count++] = at->net_action_max_h;
+        atoms[count++] = at->net_action_max_v;
+        atoms[count++] = at->net_action_fs;
     }
-    XChangeProperty(dpy, win, net_allowed, XA_ATOM, 32, PropModeReplace,
+    XChangeProperty(dpy, win, at->net_allowed_actions, XA_ATOM, 32, PropModeReplace,
                     (unsigned char *)atoms, count);
 }
 
 void ewmh_set_wm_state(Display *dpy, Window win, long state) {
     if (!dpy || win == None) return;
-    Atom wm_state = XInternAtom(dpy, "WM_STATE", False);
+    const EwmhAtoms *at = ewmh_atoms(dpy);
     unsigned long data[2] = { (unsigned long)state, (unsigned long)None };
-    XChangeProperty(dpy, win, wm_state, wm_state, 32, PropModeReplace,
+    XChangeProperty(dpy, win, at->wm_state, at->wm_state, 32, PropModeReplace,
                     (unsigned char *)data, 2);
 }
 
 int ewmh_window_has_maximized_state(Display *dpy, Window win) {
     if (!dpy || win == None) return 0;
 
-    Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
-    Atom net_wm_mh = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-    Atom net_wm_mv = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+    const EwmhAtoms *at = ewmh_atoms(dpy);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *prop = NULL;
     int found = 0;
 
-    if (XGetWindowProperty(dpy, win, net_wm_state, 0, (~0L), False,
+    if (XGetWindowProperty(dpy, win, at->net_wm_state, 0, (~0L), False,
                            XA_ATOM, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        if (ewmh_atoms_contain(prop, nitems, actual_type, actual_format, net_wm_mh) ||
-            ewmh_atoms_contain(prop, nitems, actual_type, actual_format, net_wm_mv)) {
+        if (ewmh_atoms_contain(prop, nitems, actual_type, actual_format, at->net_wm_state_max_h) ||
+            ewmh_atoms_contain(prop, nitems, actual_type, actual_format, at->net_wm_state_max_v)) {
             found = 1;
         }
         XFree(prop);
@@ -158,18 +204,17 @@ int ewmh_begin_move_clears_maximized(Client *c) {
 int ewmh_window_has_fullscreen_state(Display *dpy, Window win) {
     if (!dpy || win == None) return 0;
 
-    Atom net_wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
-    Atom net_wm_fs = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
+    const EwmhAtoms *at = ewmh_atoms(dpy);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *prop = NULL;
     int found = 0;
 
-    if (XGetWindowProperty(dpy, win, net_wm_state, 0, (~0L), False,
+    if (XGetWindowProperty(dpy, win, at->net_wm_state, 0, (~0L), False,
                            XA_ATOM, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
-        found = ewmh_atoms_contain(prop, nitems, actual_type, actual_format, net_wm_fs);
+        found = ewmh_atoms_contain(prop, nitems, actual_type, actual_format, at->net_wm_state_fs);
         XFree(prop);
     }
     return found;
@@ -196,17 +241,11 @@ void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enabl
         c->height = cfg->screen_height;
 
         if (dpy && c->win != None) {
-            Window target = (c->frame != None) ? c->frame : c->win;
-            XSetWindowBorderWidth(dpy, target, 0);
-            if (c->frame != None) {
-                XMoveResizeWindow(dpy, c->frame, c->x, c->y, c->width, c->height);
-                XMoveResizeWindow(dpy, c->win, 0, 0, c->width, c->height);
-                XRaiseWindow(dpy, c->frame);
-            } else {
-                XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
-                XRaiseWindow(dpy, c->win);
-            }
-            ewmh_sync_client_state(dpy, c->win, c->is_fullscreen, c->is_maximized, c->is_minimized);
+            XSetWindowBorderWidth(dpy, c->win, 0);
+            XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
+            XRaiseWindow(dpy, c->win);
+            ewmh_sync_client_state_ex(dpy, c->win, c->is_fullscreen, c->is_maximized,
+                                      c->is_minimized, c->is_focused);
         }
     } else if (!enable && c->is_fullscreen) {
         c->is_fullscreen = 0;
@@ -219,18 +258,11 @@ void ewmh_apply_fullscreen(Display *dpy, Client *c, LayoutConfig *cfg, int enabl
         c->is_maximized = c->saved_fs_maximized;
 
         if (dpy && c->win != None) {
-            Window target = (c->frame != None) ? c->frame : c->win;
             int bw = (cfg->border_width > 0) ? cfg->border_width : 0;
-            XSetWindowBorderWidth(dpy, target, (unsigned int)bw);
-            if (c->frame != None) {
-                int ch = c->height - TITLEBAR_HEIGHT;
-                if (ch < 10) ch = 10;
-                XMoveResizeWindow(dpy, c->frame, c->x, c->y, c->width, c->height);
-                XMoveResizeWindow(dpy, c->win, 0, TITLEBAR_HEIGHT, c->width, ch);
-            } else {
-                XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
-            }
-            ewmh_sync_client_state(dpy, c->win, c->is_fullscreen, c->is_maximized, c->is_minimized);
+            XSetWindowBorderWidth(dpy, c->win, (unsigned int)bw);
+            XMoveResizeWindow(dpy, c->win, c->x, c->y, c->width, c->height);
+            ewmh_sync_client_state_ex(dpy, c->win, c->is_fullscreen, c->is_maximized,
+                                      c->is_minimized, c->is_focused);
         }
     }
 }
@@ -242,7 +274,7 @@ Window ewmh_resolve_active_window(const Client *c) {
 
 void ewmh_set_active_window(Display *dpy, Window root, Window win) {
     if (!dpy || root == None) return;
-    Atom net_active = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
-    XChangeProperty(dpy, root, net_active, XA_WINDOW, 32, PropModeReplace,
+    const EwmhAtoms *at = ewmh_atoms(dpy);
+    XChangeProperty(dpy, root, at->net_active, XA_WINDOW, 32, PropModeReplace,
                     (unsigned char *)&win, 1);
 }

@@ -31,4 +31,9 @@ void monitor_apply_struts(Monitor *mons, int count, const StrutList *struts, int
 // Populate a LayoutConfig scoped to a single monitor
 void monitor_to_layout_config(const Monitor *mon, int master_count, int current_workspace, LayoutConfig *out_cfg);
 
+// Compute global desktop _NET_WORKAREA rect spanning all active monitors minus global struts
+void monitor_calculate_global_workarea(const Monitor *mons, int count, const StrutList *struts,
+                                       int total_w, int total_h,
+                                       int *out_x, int *out_y, int *out_w, int *out_h);
+
 #endif /* MUZU_MONITORS_H */

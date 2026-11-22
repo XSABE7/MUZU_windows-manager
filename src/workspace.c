@@ -1,6 +1,25 @@
 #include <X11/Xatom.h>
 #include "workspace.h"
 
+typedef struct {
+    Display *dpy;
+    Atom net_num_desktops;
+    Atom net_cur_desktop;
+    Atom net_wm_desktop;
+} WorkspaceAtoms;
+
+static WorkspaceAtoms g_ws_atoms;
+
+static const WorkspaceAtoms *ws_atoms(Display *dpy) {
+    if (g_ws_atoms.dpy != dpy) {
+        g_ws_atoms.dpy = dpy;
+        g_ws_atoms.net_num_desktops = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
+        g_ws_atoms.net_cur_desktop = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
+        g_ws_atoms.net_wm_desktop = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
+    }
+    return &g_ws_atoms;
+}
+
 int workspace_clamp_index(int ws, int num_ws) {
     if (num_ws <= 0 || ws < 0 || ws >= num_ws) return -1;
     return ws;
@@ -9,43 +28,32 @@ int workspace_clamp_index(int ws, int num_ws) {
 void workspace_publish_ewmh(Display *dpy, Window root, int num_ws, int current_ws) {
     if (!dpy || root == None || num_ws <= 0) return;
 
-    Atom net_num_desktops = XInternAtom(dpy, "_NET_NUMBER_OF_DESKTOPS", False);
-    Atom net_cur_desktop = XInternAtom(dpy, "_NET_CURRENT_DESKTOP", False);
-
+    const WorkspaceAtoms *at = ws_atoms(dpy);
     unsigned long n = (unsigned long)num_ws;
     unsigned long cur = (unsigned long)(current_ws >= 0 && current_ws < num_ws ? current_ws : 0);
 
-    XChangeProperty(dpy, root, net_num_desktops, XA_CARDINAL, 32,
+    XChangeProperty(dpy, root, at->net_num_desktops, XA_CARDINAL, 32,
                     PropModeReplace, (unsigned char *)&n, 1);
-    XChangeProperty(dpy, root, net_cur_desktop, XA_CARDINAL, 32,
+    XChangeProperty(dpy, root, at->net_cur_desktop, XA_CARDINAL, 32,
                     PropModeReplace, (unsigned char *)&cur, 1);
 }
 
 void workspace_set_client_desktop(Display *dpy, Window win, int ws) {
     if (!dpy || win == None) return;
-    Atom net_wm_desktop = XInternAtom(dpy, "_NET_WM_DESKTOP", False);
+    const WorkspaceAtoms *at = ws_atoms(dpy);
     unsigned long val = (unsigned long)(ws >= 0 ? ws : 0);
-    XChangeProperty(dpy, win, net_wm_desktop, XA_CARDINAL, 32,
+    XChangeProperty(dpy, win, at->net_wm_desktop, XA_CARDINAL, 32,
                     PropModeReplace, (unsigned char *)&val, 1);
 }
 
 static void map_client_windows(Display *dpy, Client *c) {
-    if (!dpy || !c) return;
-    if (c->frame != None) {
-        XMapWindow(dpy, c->frame);
-        if (c->win != None) XMapWindow(dpy, c->win);
-    } else if (c->win != None) {
-        XMapWindow(dpy, c->win);
-    }
+    if (!dpy || !c || c->win == None) return;
+    XMapWindow(dpy, c->win);
 }
 
 static void unmap_client_windows(Display *dpy, Client *c) {
-    if (!dpy || !c) return;
-    Window target = (c->frame != None) ? c->frame : c->win;
-    if (target != None) XUnmapWindow(dpy, target);
-    if (c->frame != None && c->win != None) {
-        XUnmapWindow(dpy, c->win);
-    }
+    if (!dpy || !c || c->win == None) return;
+    XUnmapWindow(dpy, c->win);
 }
 
 int workspace_switch(Display *dpy, Window root, Client *clients, LayoutConfig *cfg,

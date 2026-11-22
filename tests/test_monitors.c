@@ -59,6 +59,26 @@ int main(void) {
     Monitor fallback[MAX_MONITORS];
     assert(monitors_query_xrandr(NULL, None, fallback, MAX_MONITORS) == 0);
 
+    // Test 6: Multi-monitor global _NET_WORKAREA spans all monitors minus global edge struts
+    int gwx = 0, gwy = 0, gww = 0, gwh = 0;
+    Monitor dual[2] = {
+        { .x = 0, .y = 0, .width = 1920, .height = 1080, .primary = 1 },
+        { .x = 1920, .y = 0, .width = 1280, .height = 720, .primary = 0 }
+    };
+    StrutList *gstruts = NULL;
+    StrutPartial top_bar = { .top = 32, .top_start_x = 0, .top_end_x = 1919 };
+    strut_list_add_or_update(&gstruts, 3001, &top_bar);
+    monitor_apply_struts(dual, 2, gstruts, 3200, 1080);
+    monitor_calculate_global_workarea(dual, 2, gstruts, 3200, 1080, &gwx, &gwy, &gww, &gwh);
+    assert(gwx == 0 && gwy == 32 && gww == 3200 && gwh == 1048);
+    strut_list_remove(&gstruts, 3001);
+
+    // Single monitor honors that monitor's inset
+    dual[0].left_inset = 10;
+    dual[0].top_inset = 28;
+    monitor_calculate_global_workarea(dual, 1, NULL, 1920, 1080, &gwx, &gwy, &gww, &gwh);
+    assert(gwx == 10 && gwy == 28 && gww == 1910 && gwh == 1052);
+
     printf("test_monitors passed!\n");
     return 0;
 }

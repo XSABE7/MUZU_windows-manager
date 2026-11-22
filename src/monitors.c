@@ -215,3 +215,47 @@ void monitor_to_layout_config(const Monitor *mon, int master_count, int current_
     out_cfg->current_workspace = current_workspace;
     out_cfg->border_width = 0;
 }
+
+void monitor_calculate_global_workarea(const Monitor *mons, int count, const StrutList *struts,
+                                       int total_w, int total_h,
+                                       int *out_x, int *out_y, int *out_w, int *out_h) {
+    int wa_x = 0, wa_y = 0, wa_w = total_w, wa_h = total_h;
+    if (mons && count == 1) {
+        wa_x = mons[0].x + mons[0].left_inset;
+        wa_y = mons[0].y + mons[0].top_inset;
+        wa_w = mons[0].width - mons[0].left_inset - mons[0].right_inset;
+        wa_h = mons[0].height - mons[0].top_inset - mons[0].bottom_inset;
+    } else if (mons && count > 1) {
+        int min_x = mons[0].x;
+        int min_y = mons[0].y;
+        int max_x = mons[0].x + mons[0].width;
+        int max_y = mons[0].y + mons[0].height;
+        for (int i = 1; i < count; i++) {
+            if (mons[i].x < min_x) min_x = mons[i].x;
+            if (mons[i].y < min_y) min_y = mons[i].y;
+            if (mons[i].x + mons[i].width > max_x) max_x = mons[i].x + mons[i].width;
+            if (mons[i].y + mons[i].height > max_y) max_y = mons[i].y + mons[i].height;
+        }
+        int bw = max_x - min_x;
+        int bh = max_y - min_y;
+        int l = 0, r = 0, t = 0, b = 0;
+        strut_calculate_insets(struts, bw, bh, &l, &r, &t, &b);
+        wa_x = min_x + l;
+        wa_y = min_y + t;
+        wa_w = bw - l - r;
+        wa_h = bh - t - b;
+    } else {
+        int l = 0, r = 0, t = 0, b = 0;
+        strut_calculate_insets(struts, total_w, total_h, &l, &r, &t, &b);
+        wa_x = l;
+        wa_y = t;
+        wa_w = total_w - l - r;
+        wa_h = total_h - t - b;
+    }
+    if (wa_w < 100) wa_w = 100;
+    if (wa_h < 100) wa_h = 100;
+    if (out_x) *out_x = wa_x;
+    if (out_y) *out_y = wa_y;
+    if (out_w) *out_w = wa_w;
+    if (out_h) *out_h = wa_h;
+}

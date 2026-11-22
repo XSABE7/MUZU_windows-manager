@@ -111,7 +111,7 @@ int main(void) {
     assert(b_right && b_right->type == SHORTCUT_ACT_TILE_RIGHT);
 
     const ShortcutBinding *b_up = shortcuts_match_event(&sc, Mod4Mask, XK_Up);
-    assert(b_up && b_up->type == SHORTCUT_ACT_FULLSCREEN);
+    assert(b_up && b_up->type == SHORTCUT_ACT_MAXIMIZE);
 
     const ShortcutBinding *b_down = shortcuts_match_event(&sc, Mod4Mask, XK_Down);
     assert(b_down && b_down->type == SHORTCUT_ACT_FLOAT);
@@ -128,7 +128,7 @@ int main(void) {
     assert(b_x && b_x->type == SHORTCUT_ACT_CLOSE);
 
     const ShortcutBinding *b_m = shortcuts_match_event(&sc, Mod4Mask, XK_m);
-    assert(b_m && b_m->type == SHORTCUT_ACT_FULLSCREEN);
+    assert(b_m && b_m->type == SHORTCUT_ACT_MAXIMIZE);
 
     const ShortcutBinding *b_z = shortcuts_match_event(&sc, Mod4Mask, XK_z);
     assert(b_z && b_z->type == SHORTCUT_ACT_MINIMIZE);
@@ -142,7 +142,7 @@ int main(void) {
     // 4. Malformed / empty lines in shortcuts.conf, plus override, unbind (none), and new binding
     f = fopen(sc_path, "w");
     assert(f != NULL);
-    fprintf(f, "=tile_left\nSuper+Up=\n=\n   =   \nCtrl+Alt+t = exec wezterm\nSuper+q = close_window\nSuper+Return = exec xterm\nSuper+b = none\n");
+    fprintf(f, "=tile_left\nSuper+Up=\n=\n   =   \nCtrl+Alt+t = exec wezterm\nSuper+q = close_window\nSuper+Return = exec xterm\nSuper+f = fullscreen\nSuper+b = none\n");
     fclose(f);
 
     shortcuts_load_file(&sc, sc_path);
@@ -153,11 +153,13 @@ int main(void) {
     const ShortcutBinding *b_close = shortcuts_match_event(&sc, Mod4Mask, XK_q);
     assert(b_close && b_close->type == SHORTCUT_ACT_CLOSE);
 
-    // Override replaces in place; empty action line leaves default Super+Up intact; none unbinds Super+b
+    // Override replaces in place; empty action line leaves default Super+Up intact; fullscreen != maximize; none unbinds Super+b
     const ShortcutBinding *b_over = shortcuts_match_event(&sc, Mod4Mask, XK_Return);
     assert(b_over && strcmp(b_over->exec_cmd, "xterm") == 0);
     b_up = shortcuts_match_event(&sc, Mod4Mask, XK_Up);
-    assert(b_up && b_up->type == SHORTCUT_ACT_FULLSCREEN);
+    assert(b_up && b_up->type == SHORTCUT_ACT_MAXIMIZE);
+    const ShortcutBinding *b_fs = shortcuts_match_event(&sc, Mod4Mask, XK_f);
+    assert(b_fs && b_fs->type == SHORTCUT_ACT_FULLSCREEN);
     b_browser = shortcuts_match_event(&sc, Mod4Mask, XK_b);
     assert(b_browser && b_browser->type == SHORTCUT_ACT_NONE);
 

@@ -4,6 +4,25 @@
 
 #define STRUT_MAX_VALUE 32768UL
 
+typedef struct {
+    Display *dpy;
+    Atom net_wm_strut_partial;
+    Atom net_wm_strut;
+    Atom net_workarea;
+} StrutAtoms;
+
+static StrutAtoms g_strut_atoms;
+
+static const StrutAtoms *strut_atoms(Display *dpy) {
+    if (g_strut_atoms.dpy != dpy) {
+        g_strut_atoms.dpy = dpy;
+        g_strut_atoms.net_wm_strut_partial = XInternAtom(dpy, "_NET_WM_STRUT_PARTIAL", False);
+        g_strut_atoms.net_wm_strut = XInternAtom(dpy, "_NET_WM_STRUT", False);
+        g_strut_atoms.net_workarea = XInternAtom(dpy, "_NET_WORKAREA", False);
+    }
+    return &g_strut_atoms;
+}
+
 int strut_clamp_value(unsigned long raw) {
     if (raw > STRUT_MAX_VALUE) return (int)STRUT_MAX_VALUE;
     return (int)raw;
@@ -76,15 +95,14 @@ int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut
     if (!dpy || win == None || !out_strut) return 0;
     memset(out_strut, 0, sizeof(StrutPartial));
 
-    Atom net_wm_strut_partial = XInternAtom(dpy, "_NET_WM_STRUT_PARTIAL", False);
-    Atom net_wm_strut = XInternAtom(dpy, "_NET_WM_STRUT", False);
+    const StrutAtoms *at = strut_atoms(dpy);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *prop = NULL;
 
     // Try _NET_WM_STRUT_PARTIAL (12 cardinals)
-    if (XGetWindowProperty(dpy, win, net_wm_strut_partial, 0, 12, False,
+    if (XGetWindowProperty(dpy, win, at->net_wm_strut_partial, 0, 12, False,
                            XA_CARDINAL, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (nitems >= 12 && actual_format == 32) {
@@ -108,7 +126,7 @@ int strut_read_window_property(Display *dpy, Window win, StrutPartial *out_strut
     }
 
     // Fallback to legacy _NET_WM_STRUT (4 cardinals)
-    if (XGetWindowProperty(dpy, win, net_wm_strut, 0, 4, False,
+    if (XGetWindowProperty(dpy, win, at->net_wm_strut, 0, 4, False,
                            XA_CARDINAL, &actual_type, &actual_format,
                            &nitems, &bytes_after, &prop) == Success && prop) {
         if (nitems >= 4 && actual_format == 32) {
@@ -154,11 +172,11 @@ void strut_apply_workarea_rect_desktops(Display *dpy, Window root,
                                         int num_desktops) {
     if (!dpy || root == None) return;
 
-    Atom net_workarea = XInternAtom(dpy, "_NET_WORKAREA", False);
+    const StrutAtoms *at = strut_atoms(dpy);
     unsigned long workarea[64];
     int nelems = strut_build_workarea_array(wa_x, wa_y, wa_w, wa_h, num_desktops, workarea, 64);
     if (nelems > 0) {
-        XChangeProperty(dpy, root, net_workarea, XA_CARDINAL, 32,
+        XChangeProperty(dpy, root, at->net_workarea, XA_CARDINAL, 32,
                         PropModeReplace, (unsigned char *)workarea, nelems);
     }
 }

@@ -87,4 +87,14 @@ int client_supports_fullscreen(Display *dpy, Window win);
 // Set or clear window opacity using _NET_WM_WINDOW_OPACITY (0xFFFFFFFF = opaque / property removed)
 void client_set_opacity(Display *dpy, Window win, unsigned int opacity);
 
+// Resolve ICCCM focus policy from WM_HINTS InputHint and WM_PROTOCOLS WM_TAKE_FOCUS
+void client_resolve_focus_model(int has_input_hint, int input_val, int has_take_focus,
+                                int *out_set_input, int *out_send_take_focus);
+
+// Query WM_HINTS and WM_PROTOCOLS on a window to decide how focus should be delivered
+void client_get_focus_model(Display *dpy, Window win, int *out_set_input, int *out_send_take_focus);
+
+// Send ICCCM WM_TAKE_FOCUS ClientMessage to win
+int client_send_take_focus(Display *dpy, Window win, Time timestamp);
+
 #endif // CLIENT_PROPS_H
