@@ -4,7 +4,9 @@
 .superpowers/
 *.o
 muzuwm
+mzml
 test_layout
+test_mzml
 test_trigger
 test_easter_egg
 test_calendar
@@ -25,3 +27,15 @@ docs/
 MUZUwm.md
 *.d
 test_config_rules
+test_ricemain
+test_alttab
+test_confirm_dialog
+test_dock_menu
+test_kbd_layout
+test_struts
+test_titlebar
+test_snap_preview
+test_menu
+test_ewmh
+test_monitors
+test_workspace

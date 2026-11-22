@@ -5,70 +5,63 @@ XSESSIONSDIR ?= $(DATADIR)/xsessions
 
 CC ?= gcc
 CFLAGS ?= -Wall -Wextra -pedantic -std=c11 -O2
-CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext xcursor fontconfig gdk-pixbuf-2.0)
-LIBS = $(shell pkg-config --libs cairo x11 xext xcursor fontconfig gdk-pixbuf-2.0) -lm
+CFLAGS += -Iinclude $(shell pkg-config --cflags cairo x11 xext xcursor xrandr fontconfig)
+LIBS = $(shell pkg-config --libs cairo x11 xext xcursor xrandr fontconfig) -lm
 
-SRCS = src/wm.c src/titlebar.c src/trigger.c src/rofi_launcher.c src/dock.c src/client_props.c src/icon_fetcher.c src/gtk_theme.c src/wallpaper.c src/menu.c src/compositor.c src/tint2_panel.c src/config_rules.c src/alttab.c src/kbd_layout.c src/confirm_dialog.c src/main.c
+SRCS = src/wm.c src/titlebar.c src/client_props.c src/ewmh.c src/monitors.c src/workspace.c src/config_rules.c src/struts.c src/snap_preview.c src/menu.c src/alttab.c src/main.c
 OBJS = $(SRCS:.c=.o)
+MZML_SRCS = src/mzml.c src/mzml_main.c src/monitors.c src/struts.c
+MZML_OBJS = $(MZML_SRCS:.c=.o)
 
-all: muzuwm
+all: muzuwm mzml
 
-tests: test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_compositor test_tint2_panel test_config_rules test_kbd_layout test_confirm_dialog test_x11_stress
+tests: test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
-test_layout: tests/test_layout.c src/wm.c src/dock.c src/menu.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/titlebar.c
+test_struts: tests/test_struts.c src/struts.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_trigger: tests/test_trigger.c src/trigger.c
+test_titlebar: tests/test_titlebar.c src/titlebar.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_rofi_launcher: tests/test_rofi_launcher.c src/rofi_launcher.c src/icon_fetcher.c src/gtk_theme.c
+test_snap_preview: tests/test_snap_preview.c src/snap_preview.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_wallpaper: tests/test_wallpaper.c src/wallpaper.c
+test_layout: tests/test_layout.c src/wm.c src/titlebar.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_client_props: tests/test_client_props.c src/client_props.c src/icon_fetcher.c
+test_client_props: tests/test_client_props.c src/client_props.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_icon_fetcher: tests/test_icon_fetcher.c src/icon_fetcher.c
+test_ewmh: tests/test_ewmh.c src/ewmh.c src/wm.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_gtk_theme: tests/test_gtk_theme.c src/gtk_theme.c
+test_monitors: tests/test_monitors.c src/monitors.c src/struts.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_menu: tests/test_menu.c src/menu.c src/gtk_theme.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
-
-test_dock_menu: tests/test_dock_menu.c src/dock.c src/menu.c src/gtk_theme.c src/icon_fetcher.c src/rofi_launcher.c src/wm.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
-
-test_alttab: tests/test_alttab.c src/alttab.c src/gtk_theme.c src/icon_fetcher.c src/wm.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
-
-test_compositor: tests/test_compositor.c src/compositor.c
-	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
-
-test_tint2_panel: tests/test_tint2_panel.c src/tint2_panel.c src/wm.c
+test_workspace: tests/test_workspace.c src/workspace.c src/wm.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 test_config_rules: tests/test_config_rules.c src/config_rules.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_kbd_layout: tests/test_kbd_layout.c src/kbd_layout.c
+test_menu: tests/test_menu.c src/menu.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_confirm_dialog: tests/test_confirm_dialog.c src/confirm_dialog.c
+test_alttab: tests/test_alttab.c src/alttab.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
-test_x11_stress: tests/test_x11_stress.c
+test_mzml: tests/test_mzml.c src/mzml.c
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(MZML_OBJS:.o=.d)
 
 muzuwm: $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
+
+mzml: $(MZML_OBJS)
 	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 asan: CFLAGS += -fsanitize=address -g -O1
@@ -76,21 +69,31 @@ asan: LIBS += -fsanitize=address
 asan: clean all
 
 clean:
-	rm -f src/*.o src/*.d test_layout test_trigger test_rofi_launcher test_wallpaper test_client_props test_icon_fetcher test_gtk_theme test_menu test_dock_menu test_alttab test_compositor test_tint2_panel test_config_rules test_kbd_layout test_confirm_dialog test_x11_stress muzuwm
+	rm -f src/*.o src/*.d test_struts test_titlebar test_snap_preview test_layout test_client_props test_ewmh test_monitors test_workspace test_config_rules test_menu test_alttab test_mzml muzuwm mzml
 
-install: muzuwm
+install: muzuwm mzml
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 muzuwm $(DESTDIR)$(BINDIR)/muzuwm
-	install -m 755 tools/muzuwm-settings $(DESTDIR)$(BINDIR)/muzuwm-settings
+	install -m 755 mzml $(DESTDIR)$(BINDIR)/mzml
+	install -m 755 bin/muzu-session $(DESTDIR)$(BINDIR)/muzu-session
+	install -m 755 bin/muzu $(DESTDIR)$(BINDIR)/muzu
+	ln -sf muzu $(DESTDIR)$(BINDIR)/muzu-s
+	install -m 755 muzuwm_settings.py $(DESTDIR)$(BINDIR)/muzuwm-settings
+	install -m 755 muzuwm_updater.py $(DESTDIR)$(BINDIR)/muzuwm-updater
 	install -d $(DESTDIR)$(XSESSIONSDIR)
-	install -m 644 muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
+	install -m 644 desktop/muzuwm.desktop $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
+	install -d $(DESTDIR)/etc/muzuwm
+	install -m 644 config/muzuwm.conf $(DESTDIR)/etc/muzuwm/muzuwm.conf
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm
+	rm -f $(DESTDIR)$(BINDIR)/mzml
+	rm -f $(DESTDIR)$(BINDIR)/muzu-session
+	rm -f $(DESTDIR)$(BINDIR)/muzu
+	rm -f $(DESTDIR)$(BINDIR)/muzu-s
 	rm -f $(DESTDIR)$(BINDIR)/muzuwm-settings
+	rm -f $(DESTDIR)$(BINDIR)/muzuwm-updater
 	rm -f $(DESTDIR)$(XSESSIONSDIR)/muzuwm.desktop
+	rm -rf $(DESTDIR)/etc/muzuwm
 
-purge: uninstall
-	@rm -rf $(HOME)/.config/muzuwm
-
-.PHONY: all tests clean asan install uninstall purge
+.PHONY: all tests clean asan install uninstall

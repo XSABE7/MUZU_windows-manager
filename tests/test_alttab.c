@@ -51,6 +51,36 @@ int main(void) {
     // Window retrieval
     assert(at.selected_idx == 0);
     assert(alttab_get_selected_window(&at) == 101);
+    assert(strcmp(at.apps[0].win_titles[1], "Terminal 2") == 0);
+
+    // Same-app window cycling (Alt+` behavior)
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 102);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 103);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 101);
+    alttab_select_prev_win(&at);
+    assert(alttab_get_selected_window(&at) == 103);
+
+    // Selecting a specific window focuses its app & slot
+    alttab_select_window(&at, 102);
+    assert(at.selected_idx == 0);
+    assert(alttab_get_selected_window(&at) == 102);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 103);
+
+    alttab_select_window(&at, 201);
+    assert(at.selected_idx == 1);
+    assert(alttab_get_selected_window(&at) == 201);
+    alttab_select_next_win(&at);
+    assert(alttab_get_selected_window(&at) == 201);
+    alttab_select_prev_win(&at);
+    assert(alttab_get_selected_window(&at) == 201);
+
+    // Reset back to app 0 before App-level navigation tests
+    alttab_select_window(&at, 101);
+    assert(at.selected_idx == 0);
 
     // Test 3: Navigation and wrapping
     alttab_select_next(&at);
@@ -80,6 +110,18 @@ int main(void) {
     assert(at.y == (1080 - at.height) / 2);
 
     alttab_cleanup(&at);
+
+    // Test 5: Workspace-filtered Alt+Tab population
+    Client ws0 = {.win = 401, .workspace = 0};
+    strncpy(ws0.title, "Browser", sizeof(ws0.title) - 1);
+    Client ws1 = {.win = 402, .workspace = 1};
+    strncpy(ws1.title, "Music", sizeof(ws1.title) - 1);
+    ws0.next = &ws1;
+    alttab_populate_workspace(NULL, &at, &ws0, 0);
+    assert(at.app_count == 1);
+    assert(alttab_get_selected_window(&at) == 401);
+    alttab_cleanup(&at);
+
     printf("test_alttab passed!\n");
     return 0;
 }

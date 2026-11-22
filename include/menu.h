@@ -3,7 +3,7 @@
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
-#include "gtk_theme.h"
+#include "wm.h"
 
 #define MENU_MAX_ITEMS 24
 #define MENU_MIN_WIDTH 180
@@ -39,7 +39,8 @@ typedef enum {
     DESKTOP_ACTION_WALLPAPER_PATH,
     DESKTOP_ACTION_TERMINAL,
     DESKTOP_ACTION_APPLICATIONS,
-    DESKTOP_ACTION_SETTINGS
+    DESKTOP_ACTION_SETTINGS,
+    DESKTOP_ACTION_INTERNET
 } MenuActionId;
 
 typedef void (*MenuCallback)(int action_id, void *userdata);

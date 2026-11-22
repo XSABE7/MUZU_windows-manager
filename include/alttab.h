@@ -4,7 +4,6 @@
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
 #include "wm.h"
-#include "gtk_theme.h"
 
 #define ALTTAB_MAX_APPS 32
 #define ALTTAB_MAX_WINS_PER_APP 32
@@ -20,7 +19,9 @@ typedef struct {
     cairo_surface_t *icon_surface;
     int owns_icon_surface;
     Window wins[ALTTAB_MAX_WINS_PER_APP];
+    char win_titles[ALTTAB_MAX_WINS_PER_APP][128];
     int win_count;
+    int selected_win;
 } AltTabApp;
 
 typedef struct {
@@ -36,9 +37,13 @@ typedef struct {
 
 void alttab_init(Display *dpy, AltTab *at, const GtkTheme *theme);
 void alttab_populate(Display *dpy, AltTab *at, Client *clients);
+void alttab_populate_workspace(Display *dpy, AltTab *at, Client *clients, int workspace);
 void alttab_calculate_geometry(AltTab *at, int screen_w, int screen_h);
 void alttab_select_next(AltTab *at);
 void alttab_select_prev(AltTab *at);
+void alttab_select_next_win(AltTab *at);
+void alttab_select_prev_win(AltTab *at);
+void alttab_select_window(AltTab *at, Window win);
 void alttab_render(Display *dpy, AltTab *at);
 Window alttab_get_selected_window(const AltTab *at);
 void alttab_show(Display *dpy, AltTab *at, int screen_w, int screen_h);

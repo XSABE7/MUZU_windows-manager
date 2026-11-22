@@ -53,25 +53,6 @@ cairo_surface_t *titlebar_pre_render(Display *dpy, int width, int is_focused, co
     return surf;
 }
 
-Window titlebar_create(Display *dpy, Window client_win, int width) {
-    int screen = DefaultScreen(dpy);
-    Window root = RootWindow(dpy, screen);
-
-    XSetWindowAttributes attrs;
-    attrs.background_pixel = BlackPixel(dpy, screen);
-    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | Button1MotionMask | EnterWindowMask | LeaveWindowMask;
-
-    Window frame = XCreateWindow(dpy, root, 0, 0, width, TITLEBAR_HEIGHT, 0,
-                                 DefaultDepth(dpy, screen), InputOutput,
-                                 DefaultVisual(dpy, screen),
-                                 CWBackPixel | CWEventMask, &attrs);
-
-    XStoreName(dpy, frame, "MUZUwm Titlebar");
-    XReparentWindow(dpy, client_win, frame, 0, TITLEBAR_HEIGHT);
-    XMapWindow(dpy, frame);
-    return frame;
-}
-
 void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
     if (!dpy || !c || c->frame == None) return;
 
@@ -128,68 +109,89 @@ void titlebar_draw(Display *dpy, Client *c, const GtkTheme *theme) {
         cairo_set_source_rgb(cr, 0.90, 0.92, 0.95);
     }
     cairo_move_to(cr, 64, 16);
-    cairo_show_text(cr, c->title[0] ? c->title : "MUZUwm Window");
+    char display_title[320];
+    if (c->slot >= 1 && c->slot <= 10) {
+        snprintf(display_title, sizeof(display_title), "[%d] %s",
+                 c->slot % 10, c->title[0] ? c->title : "MUZUwm Window");
+    } else {
+        snprintf(display_title, sizeof(display_title), "%s",
+                 c->title[0] ? c->title : "MUZUwm Window");
+    }
+    cairo_show_text(cr, display_title);
     cairo_restore(cr);
 
-    // macOS Traffic Light Controls (Top-Left)
+    // Control Buttons: X (Close), M (Maximize), Z (Minimize / Disappear)
+    cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+    cairo_set_font_size(cr, 11.0);
+
+    // 1. 'X' at x = 14 (Close)
     if (!focused) {
-        // Subtle muted dots for unfocused state
         cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.50);
-        cairo_new_path(cr);
-        cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill(cr);
-        cairo_new_path(cr);
-        cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill(cr);
-        cairo_new_path(cr);
-        cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill(cr);
     } else {
-        // 1. Red (Close)
-        cairo_new_path(cr);
         cairo_set_source_rgb(cr, 1.00, 0.37, 0.34); // #FF5F56
-        cairo_arc(cr, 14, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill_preserve(cr);
-        cairo_set_source_rgba(cr, 0.80, 0.15, 0.15, 0.8);
-        cairo_set_line_width(cr, 0.6);
-        cairo_stroke(cr);
-
-        // 2. Yellow (Minimize)
-        cairo_new_path(cr);
-        cairo_set_source_rgb(cr, 1.00, 0.74, 0.18); // #FFBD2E
-        cairo_arc(cr, 30, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill_preserve(cr);
-        cairo_set_source_rgba(cr, 0.75, 0.50, 0.10, 0.8);
-        cairo_set_line_width(cr, 0.6);
-        cairo_stroke(cr);
-
-        // 3. Green (Maximize)
-        cairo_new_path(cr);
-        cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
-        cairo_arc(cr, 46, TITLEBAR_HEIGHT / 2, 5.0, 0, 2 * 3.14159);
-        cairo_fill_preserve(cr);
-        cairo_set_source_rgba(cr, 0.10, 0.55, 0.15, 0.8);
-        cairo_set_line_width(cr, 0.6);
-        cairo_stroke(cr);
     }
+    cairo_text_extents_t ext_x;
+    cairo_text_extents(cr, "X", &ext_x);
+    cairo_move_to(cr, 14.0 - ext_x.width / 2.0 - ext_x.x_bearing,
+                      (TITLEBAR_HEIGHT / 2.0) - ext_x.height / 2.0 - ext_x.y_bearing);
+    cairo_show_text(cr, "X");
+
+    // 2. 'M' at x = 30 (Maximize or Disabled Gray)
+    if (!focused) {
+        cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.50);
+    } else if (c->can_fullscreen) {
+        cairo_set_source_rgb(cr, 0.15, 0.79, 0.25); // #27C93F
+    } else {
+        cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.45); // Disabled
+    }
+    cairo_text_extents_t ext_m;
+    cairo_text_extents(cr, "M", &ext_m);
+    cairo_move_to(cr, 30.0 - ext_m.width / 2.0 - ext_m.x_bearing,
+                      (TITLEBAR_HEIGHT / 2.0) - ext_m.height / 2.0 - ext_m.y_bearing);
+    cairo_show_text(cr, "M");
+
+    // 3. 'Z' at x = 46 (Disappear / Minimize)
+    if (!focused) {
+        cairo_set_source_rgba(cr, 0.45, 0.47, 0.52, 0.50);
+    } else {
+        cairo_set_source_rgb(cr, 1.00, 0.74, 0.18); // #FFBD2E
+    }
+    cairo_text_extents_t ext_z;
+    cairo_text_extents(cr, "Z", &ext_z);
+    cairo_move_to(cr, 46.0 - ext_z.width / 2.0 - ext_z.x_bearing,
+                      (TITLEBAR_HEIGHT / 2.0) - ext_z.height / 2.0 - ext_z.y_bearing);
+    cairo_show_text(cr, "Z");
 
     cairo_destroy(cr);
     cairo_surface_flush(c->titlebar_surface);
     if (dpy) XFlush(dpy);
 }
 
-TitlebarAction titlebar_get_action(int click_x, int width) {
+TitlebarAction titlebar_get_action_for_client(int click_x, int width, const Client *c) {
     (void)width;
     if (click_x < 0) return TITLEBAR_CLICK_NONE;
-    if (click_x < 22) return TITLEBAR_CLICK_CLOSE;
-    if (click_x < 38) return TITLEBAR_CLICK_MINIMIZE;
-    if (click_x < 56) return TITLEBAR_CLICK_MAXIMIZE;
+    if (click_x < 22) return TITLEBAR_CLICK_CLOSE;     /* X */
+    if (click_x < 38) {                               /* M */
+        if (c && !c->can_fullscreen) return TITLEBAR_CLICK_NONE;
+        return TITLEBAR_CLICK_MAXIMIZE;
+    }
+    if (click_x < 56) return TITLEBAR_CLICK_MINIMIZE;  /* Z */
     return TITLEBAR_CLICK_DRAG;
+}
+
+TitlebarAction titlebar_get_action(int click_x, int width) {
+    return titlebar_get_action_for_client(click_x, width, NULL);
 }
 
 void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
     if (!c || !cfg) return;
-    if (!c->is_maximized && !c->can_fullscreen) return;
+    if (!c->can_fullscreen) return;
+
+    int bw = (cfg->border_width > 0) ? cfg->border_width : 0;
+    int max_w = cfg->screen_width - cfg->left_inset - cfg->right_inset - 2 * bw;
+    int max_h = cfg->screen_height - cfg->top_inset - cfg->bottom_inset - 2 * bw;
+    if (max_w < 10) max_w = 10;
+    if (max_h < 10) max_h = 10;
 
     if (!c->is_maximized) {
         c->saved_x = c->x;
@@ -200,10 +202,10 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
 
         c->mode = CLIENT_FLOATING;
         c->snap_state = SNAP_TOP;
-        c->x = 0;
-        c->y = cfg->top_inset;
-        c->width = cfg->screen_width;
-        c->height = cfg->screen_height - cfg->top_inset;
+        c->x = cfg->mon_x + cfg->left_inset;
+        c->y = cfg->mon_y + cfg->top_inset;
+        c->width = max_w;
+        c->height = max_h;
         c->is_maximized = 1;
 
         if (dpy) {
@@ -216,15 +218,14 @@ void client_toggle_maximize(Display *dpy, Client *c, LayoutConfig *cfg) {
             }
         }
     } else {
-        int max_h = cfg->screen_height - cfg->top_inset;
-        int bad_saved = (c->saved_width <= 0 || c->saved_width >= cfg->screen_width ||
+        int bad_saved = (c->saved_width <= 0 || c->saved_width >= max_w ||
                          c->saved_height <= 0 || c->saved_height >= max_h);
         if (bad_saved) {
             // Window started auto-maximized: restore to a centered floating size
             c->saved_width = cfg->screen_width * 3 / 5;
             c->saved_height = cfg->screen_height * 3 / 5;
-            c->saved_x = (cfg->screen_width - c->saved_width) / 2;
-            c->saved_y = cfg->top_inset + (max_h - c->saved_height) / 2;
+            c->saved_x = cfg->mon_x + cfg->left_inset + (max_w - c->saved_width) / 2;
+            c->saved_y = cfg->mon_y + cfg->top_inset + (max_h - c->saved_height) / 2;
             c->saved_mode = CLIENT_FLOATING;
         }
         c->x = c->saved_x;
@@ -257,58 +258,5 @@ void titlebar_cleanup(Client *c) {
     if (c->titlebar_cache) {
         cairo_surface_destroy(c->titlebar_cache);
         c->titlebar_cache = NULL;
-    }
-}
-
-void handle_titlebar_drag(Display *dpy, Client *c, int root_x, int root_y, int screen_w, int screen_h) {
-    if (!c) return;
-
-    // Detach to floating if currently tiled
-    if (c->mode == CLIENT_TILED) {
-        c->mode = CLIENT_FLOATING;
-        c->snap_state = SNAP_NONE;
-    }
-
-    if (c->is_maximized) {
-        c->is_maximized = 0;
-        c->snap_state = SNAP_NONE;
-        c->width = (c->saved_width > 0 && c->saved_width < screen_w) ? c->saved_width : (screen_w / 2);
-        c->height = (c->saved_height > 0 && c->saved_height < screen_h) ? c->saved_height : (screen_h * 2 / 3);
-        if (dpy) {
-            Window target = c->frame ? c->frame : c->win;
-            if (target != None) {
-                XResizeWindow(dpy, target, c->width, c->height);
-                if (c->frame) {
-                    int ch = c->height - TITLEBAR_HEIGHT;
-                    if (ch < 10) ch = 10;
-                    XResizeWindow(dpy, c->win, c->width, ch);
-                }
-            }
-        }
-    }
-
-    c->x = root_x;
-    c->y = root_y;
-    if (dpy) {
-        Window target = c->frame ? c->frame : c->win;
-        if (target != None) {
-            XMoveWindow(dpy, target, c->x, c->y);
-        }
-    }
-}
-
-void handle_titlebar_double_click(Display *dpy, Client *c, LayoutConfig *cfg) {
-    if (!c || !c->can_fullscreen) return;
-    (void)dpy;
-    if (c->mode == CLIENT_FLOATING) {
-        c->mode = CLIENT_TILED;
-        c->snap_state = SNAP_NONE;
-    } else {
-        c->mode = CLIENT_FLOATING;
-        c->snap_state = SNAP_NONE;
-        c->x = cfg->screen_width / 4;
-        c->y = cfg->screen_height / 4;
-        c->width = cfg->screen_width / 2;
-        c->height = cfg->screen_height / 2;
     }
 }
